@@ -3,6 +3,8 @@ const COURSE_URL = "/api/course";
 const ENROLLMENT_URL = "/api/enrollment";
 const PAYMENT_URL = "/api/payment";
 const NOTIFICATION_URL = "/api/notification";
+const AI_URL = "/api/ai";
+const LEARNING_URL = "/api/learning";
 
 export interface TokenResponse {
   access_token: string;
@@ -141,6 +143,71 @@ export interface Notification {
 export interface NotificationList {
   items: Notification[];
   total: number;
+}
+
+export interface QuizQuestion {
+  id: string;
+  text: string;
+  options: string[];
+  order: number;
+}
+
+export interface QuizData {
+  id: string;
+  lesson_id: string;
+  course_id: string;
+  questions: QuizQuestion[];
+  created_at: string;
+}
+
+export interface QuizQuestionResult {
+  question_id: string;
+  selected: number;
+  correct_index: number;
+  is_correct: boolean;
+  explanation: string | null;
+}
+
+export interface QuizAttemptResult {
+  id: string;
+  quiz_id: string;
+  score: number;
+  total_questions: number;
+  correct_count: number;
+  results: QuizQuestionResult[];
+  completed_at: string;
+}
+
+export interface QuizAttemptSummary {
+  id: string;
+  score: number;
+  completed_at: string;
+}
+
+export interface QuizAttemptList {
+  items: QuizAttemptSummary[];
+  total: number;
+}
+
+export interface AiQuizQuestion {
+  text: string;
+  options: string[];
+  correct_index: number;
+  explanation: string;
+}
+
+export interface AiQuizResponse {
+  lesson_id: string;
+  questions: AiQuizQuestion[];
+  model_used: string;
+  cached: boolean;
+}
+
+export interface AiSummaryResponse {
+  lesson_id: string;
+  summary: string;
+  model_used: string;
+  cached: boolean;
 }
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
@@ -476,6 +543,50 @@ export const notifications = {
   markRead(token: string, id: string) {
     return request<Notification>(`${NOTIFICATION_URL}/notifications/${id}/read`, {
       method: "PATCH",
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export const ai = {
+  generateQuiz(token: string, lessonId: string, content: string) {
+    return request<AiQuizResponse>(`${AI_URL}/ai/quiz/generate`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ lesson_id: lessonId, content }),
+    });
+  },
+  generateSummary(token: string, lessonId: string, content: string) {
+    return request<AiSummaryResponse>(`${AI_URL}/ai/summary/generate`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ lesson_id: lessonId, content }),
+    });
+  },
+};
+
+export const quizzes = {
+  getByLesson(token: string, lessonId: string) {
+    return request<QuizData>(`${LEARNING_URL}/quizzes/lesson/${lessonId}`, {
+      headers: authHeaders(token),
+    });
+  },
+  create(token: string, data: { lesson_id: string; course_id: string; questions: AiQuizQuestion[] }) {
+    return request<QuizData>(`${LEARNING_URL}/quizzes`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  submit(token: string, quizId: string, answers: number[]) {
+    return request<QuizAttemptResult>(`${LEARNING_URL}/quizzes/${quizId}/submit`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ answers }),
+    });
+  },
+  myAttempts(token: string, quizId: string) {
+    return request<QuizAttemptList>(`${LEARNING_URL}/quizzes/${quizId}/attempts/me`, {
       headers: authHeaders(token),
     });
   },
