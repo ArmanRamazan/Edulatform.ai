@@ -8,6 +8,9 @@ import { Header } from "@/components/Header";
 import { useAuth } from "@/hooks/use-auth";
 import { useCurriculum } from "@/hooks/use-courses";
 import { useCompletedLessons, useCompleteLesson } from "@/hooks/use-progress";
+import { useQuiz, useSubmitQuiz } from "@/hooks/use-quiz";
+import { useSummary } from "@/hooks/use-ai";
+import type { QuizQuestionResult } from "@/lib/api";
 
 export default function LessonPage({
   params,
@@ -32,6 +35,17 @@ export default function LessonPage({
   const completed = completedIds.has(lessonId);
 
   const completeLesson = useCompleteLesson(token, courseId);
+
+  const { data: quizData } = useQuiz(token, lessonId);
+  const { data: summaryData, isLoading: summaryLoading } = useSummary(
+    token, lessonId, lesson?.content ?? ""
+  );
+
+  const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
+  const [quizResults, setQuizResults] = useState<QuizQuestionResult[] | null>(null);
+  const [quizScore, setQuizScore] = useState<number | null>(null);
+
+  const submitQuiz = useSubmitQuiz(token, quizData?.id ?? "");
 
   const allLessons = curriculum.flatMap((m) => m.lessons);
   const currentIdx = allLessons.findIndex((l) => l.id === lessonId);
@@ -126,6 +140,102 @@ export default function LessonPage({
               <div className="prose prose-sm mb-6 max-w-none whitespace-pre-wrap text-gray-700">
                 {lesson.content}
               </div>
+
+              {/* Summary */}
+              {summaryLoading && token && (
+                <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <h3 className="mb-2 text-sm font-semibold text-blue-700">Краткое содержание</h3>
+                  <p className="text-sm text-blue-600">Генерируем...</p>
+                </div>
+              )}
+              {summaryData && (
+                <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
+                  <h3 className="mb-2 text-sm font-semibold text-blue-700">Краткое содержание</h3>
+                  <p className="whitespace-pre-wrap text-sm text-gray-700">{summaryData.summary}</p>
+                </div>
+              )}
+
+              {/* Quiz */}
+              {quizData && (
+                <div className="mb-4 rounded-lg border border-purple-100 bg-purple-50 p-4">
+                  <h3 className="mb-3 text-sm font-semibold text-purple-700">
+                    Проверьте себя ({quizData.questions.length} вопросов)
+                  </h3>
+                  <div className="space-y-4">
+                    {quizData.questions.map((q, qi) => (
+                      <div key={q.id}>
+                        <p className="mb-2 text-sm font-medium text-gray-800">{qi + 1}. {q.text}</p>
+                        <div className="space-y-1">
+                          {q.options.map((opt, oi) => {
+                            const result = quizResults?.find(r => r.question_id === q.id);
+                            let optClass = "border-gray-200 hover:bg-gray-50";
+                            if (result) {
+                              if (oi === result.correct_index) optClass = "border-green-300 bg-green-50";
+                              else if (oi === result.selected && !result.is_correct) optClass = "border-red-300 bg-red-50";
+                            } else if (selectedAnswers[qi] === oi) {
+                              optClass = "border-purple-300 bg-purple-100";
+                            }
+                            return (
+                              <button
+                                key={oi}
+                                onClick={() => {
+                                  if (!quizResults) setSelectedAnswers(prev => ({ ...prev, [qi]: oi }));
+                                }}
+                                disabled={!!quizResults}
+                                className={`block w-full rounded border px-3 py-1.5 text-left text-sm ${optClass} disabled:cursor-default`}
+                              >
+                                {opt}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {quizResults?.find(r => r.question_id === q.id)?.explanation && (
+                          <p className="mt-1 text-xs text-gray-500">
+                            {quizResults.find(r => r.question_id === q.id)!.explanation}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+
+                  {quizScore !== null ? (
+                    <div className="mt-4 rounded bg-white p-3 text-center">
+                      <p className="text-lg font-bold text-purple-700">
+                        {Math.round(quizScore * 100)}%
+                      </p>
+                      <p className="text-sm text-gray-500">
+                        Правильных: {quizResults?.filter(r => r.is_correct).length} из {quizData.questions.length}
+                      </p>
+                      <button
+                        onClick={() => {
+                          setQuizResults(null);
+                          setQuizScore(null);
+                          setSelectedAnswers({});
+                        }}
+                        className="mt-2 text-sm text-purple-600 hover:underline"
+                      >
+                        Попробовать ещё раз
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        const answers = quizData.questions.map((_, i) => selectedAnswers[i] ?? 0);
+                        submitQuiz.mutate(answers, {
+                          onSuccess: (data) => {
+                            setQuizResults(data.results);
+                            setQuizScore(data.score);
+                          },
+                        });
+                      }}
+                      disabled={submitQuiz.isPending || Object.keys(selectedAnswers).length < quizData.questions.length}
+                      className="mt-4 rounded bg-purple-600 px-4 py-2 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
+                    >
+                      {submitQuiz.isPending ? "Проверяем..." : "Проверить ответы"}
+                    </button>
+                  )}
+                </div>
+              )}
 
               <div className="flex items-center gap-3 border-t border-gray-100 pt-4">
                 {completed ? (
