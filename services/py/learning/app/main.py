@@ -13,14 +13,18 @@ from common.health import create_health_router
 from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.quiz_repo import QuizRepository
+from app.repositories.flashcard_repo import FlashcardRepository
 from app.services.quiz_service import QuizService
+from app.services.flashcard_service import FlashcardService
 from app.routes.quizzes import router as quizzes_router
+from app.routes.flashcards import router as flashcards_router
 
 app_settings = Settings()
 
 _pool: asyncpg.Pool | None = None
 _redis: Redis | None = None
 _quiz_service: QuizService | None = None
+_flashcard_service: FlashcardService | None = None
 
 
 def get_quiz_service() -> QuizService:
@@ -28,9 +32,14 @@ def get_quiz_service() -> QuizService:
     return _quiz_service
 
 
+def get_flashcard_service() -> FlashcardService:
+    assert _flashcard_service is not None
+    return _flashcard_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service
+    global _pool, _redis, _quiz_service, _flashcard_service
 
     _pool = await create_pool(
         app_settings.database_url,
@@ -48,6 +57,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     quiz_repo = QuizRepository(_pool)
     _quiz_service = QuizService(quiz_repo)
+
+    flashcard_repo = FlashcardRepository(_pool)
+    _flashcard_service = FlashcardService(flashcard_repo)
     yield
     await _redis.aclose()
     await _pool.close()
@@ -69,6 +81,7 @@ app.add_middleware(
     window=60,
 )
 app.include_router(quizzes_router)
+app.include_router(flashcards_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
