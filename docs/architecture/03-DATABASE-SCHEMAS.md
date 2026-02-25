@@ -37,6 +37,12 @@ payment-db (PostgreSQL 16 Alpine, :5436)
 notification-db (PostgreSQL 16 Alpine, :5437)
   └── database: notification
        └── table: notifications
+
+learning-db (PostgreSQL 16 Alpine, :5438)
+  └── database: learning
+       ├── table: quizzes
+       ├── table: questions
+       └── table: quiz_attempts
 ```
 
 ---
@@ -399,6 +405,85 @@ CREATE TABLE notifications (
 
 **Миграции:**
 - `001_notifications.sql` — создание ENUM notification_type и таблицы notifications
+
+---
+
+## Learning DB
+
+### Table: `quizzes`
+
+```sql
+CREATE TABLE IF NOT EXISTS quizzes (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lesson_id   UUID NOT NULL UNIQUE,
+    course_id   UUID NOT NULL,
+    teacher_id  UUID NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `lesson_id` | UUID | UNIQUE, NOT NULL | ID урока (из Course Service); один квиз на урок |
+| `course_id` | UUID | NOT NULL | ID курса (из Course Service) |
+| `teacher_id` | UUID | NOT NULL | ID преподавателя-создателя (из Identity) |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + UNIQUE (lesson_id). Нет FK constraints — eventual consistency.
+
+### Table: `questions`
+
+```sql
+CREATE TABLE IF NOT EXISTS questions (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id         UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    text            TEXT NOT NULL,
+    options         JSONB NOT NULL,
+    correct_index   INT NOT NULL,
+    explanation     TEXT,
+    "order"         INT NOT NULL DEFAULT 0
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `quiz_id` | UUID | FK → quizzes(id) CASCADE, NOT NULL | Квиз, которому принадлежит вопрос |
+| `text` | TEXT | NOT NULL | Текст вопроса |
+| `options` | JSONB | NOT NULL | Массив вариантов ответа (строки) |
+| `correct_index` | INT | NOT NULL | Индекс правильного варианта в `options` |
+| `explanation` | TEXT | nullable | Объяснение правильного ответа |
+| `"order"` | INT | NOT NULL, DEFAULT 0 | Порядок вопроса в квизе |
+
+**Индексы:** PK (id) + idx_questions_quiz_id.
+
+### Table: `quiz_attempts`
+
+```sql
+CREATE TABLE IF NOT EXISTS quiz_attempts (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id         UUID NOT NULL REFERENCES quizzes(id),
+    student_id      UUID NOT NULL,
+    answers         JSONB NOT NULL,
+    score           FLOAT NOT NULL,
+    completed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `quiz_id` | UUID | FK → quizzes(id), NOT NULL | Квиз, по которому сделана попытка |
+| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
+| `answers` | JSONB | NOT NULL | Массив выбранных индексов ответов (`int[]`) |
+| `score` | FLOAT | NOT NULL | Доля правильных ответов (0.0–1.0) |
+| `completed_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время завершения попытки |
+
+**Индексы:** PK (id) + idx_quiz_attempts_quiz_student (quiz_id, student_id). Нет ограничения на количество попыток — студент может проходить квиз многократно.
+
+**Миграции:**
+- `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
 
 ---
 

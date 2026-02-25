@@ -885,6 +885,172 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+## Learning Engine Service (`:8007`)
+
+### POST /quizzes
+
+Создать квиз для урока из результата AI-генерации. Только для **verified teacher** (owner check по `teacher_id`).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
+  "course_id": "660e8400-e29b-41d4-a716-446655440000",
+  "questions": [
+    {
+      "text": "Что такое переменная?",
+      "options": ["Значение", "Именованная ячейка памяти", "Функция", "Тип данных"],
+      "correct_index": 1,
+      "explanation": "Переменная — именованная область памяти для хранения данных.",
+      "order": 0
+    }
+  ]
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "...",
+  "lesson_id": "...",
+  "course_id": "...",
+  "teacher_id": "...",
+  "created_at": "2026-02-25T12:00:00+00:00",
+  "questions": [
+    {
+      "id": "...",
+      "quiz_id": "...",
+      "text": "Что такое переменная?",
+      "options": ["Значение", "Именованная ячейка памяти", "Функция", "Тип данных"],
+      "order": 0
+    }
+  ]
+}
+```
+
+> Поле `correct_index` и `explanation` не возвращаются в ответе — только при сабмите.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != teacher` или `is_verified == false` |
+| 409 | Квиз для этого урока уже существует (UNIQUE constraint на `lesson_id`) |
+| 422 | Невалидные данные |
+
+---
+
+### GET /quizzes/lesson/{lesson_id}
+
+Получить квиз для урока. Требует JWT. Правильные ответы (`correct_index`, `explanation`) не возвращаются студентам.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "id": "...",
+  "lesson_id": "...",
+  "course_id": "...",
+  "teacher_id": "...",
+  "created_at": "2026-02-25T12:00:00+00:00",
+  "questions": [
+    {
+      "id": "...",
+      "quiz_id": "...",
+      "text": "Что такое переменная?",
+      "options": ["Значение", "Именованная ячейка памяти", "Функция", "Тип данных"],
+      "order": 0
+    }
+  ]
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 404 | Квиз для урока не найден |
+
+---
+
+### POST /quizzes/{quiz_id}/submit
+
+Сдать квиз. Только для `role=student`. Возвращает оценку и обратную связь по каждому вопросу.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "answers": [1, 0, 2]
+}
+```
+
+> `answers` — массив выбранных индексов (`int`) по порядку вопросов.
+
+**Response `201`:**
+```json
+{
+  "id": "...",
+  "quiz_id": "...",
+  "student_id": "...",
+  "score": 0.67,
+  "answers": [1, 0, 2],
+  "completed_at": "2026-02-25T12:00:00+00:00",
+  "feedback": [
+    {
+      "question_id": "...",
+      "correct": true,
+      "correct_index": 1,
+      "explanation": "Переменная — именованная область памяти для хранения данных."
+    }
+  ]
+}
+```
+
+> `score` — доля правильных ответов (0.0–1.0).
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != student` |
+| 404 | Квиз не найден |
+| 422 | Количество ответов не совпадает с количеством вопросов |
+
+---
+
+### GET /quizzes/{quiz_id}/attempts/me
+
+Список попыток текущего студента по квизу. Только для `role=student`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+[
+  {
+    "id": "...",
+    "quiz_id": "...",
+    "student_id": "...",
+    "score": 0.67,
+    "answers": [1, 0, 2],
+    "completed_at": "2026-02-25T12:00:00+00:00"
+  }
+]
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != student` |
+
+---
+
 ## JWT Token Format
 
 ```json
@@ -910,7 +1076,7 @@ Mock оплата курса. Всегда возвращает `status=complete
 - Алгоритм: **HS256**
 - Shared secret: `JWT_SECRET` env var (одинаковый для всех сервисов)
 - TTL: 1 час (3600 секунд)
-- Все 5 сервисов валидируют JWT самостоятельно, без обращения к Identity
+- Все 6 сервисов валидируют JWT самостоятельно, без обращения к Identity
 
 ---
 
@@ -925,6 +1091,7 @@ Mock оплата курса. Всегда возвращает `status=complete
 | `/api/enrollment/*` | `http://localhost:8003/*` |
 | `/api/payment/*` | `http://localhost:8004/*` |
 | `/api/notification/*` | `http://localhost:8005/*` |
+| `/api/learning/*` | `http://localhost:8007/*` |
 
 ---
 

@@ -27,12 +27,14 @@ docker compose -f docker-compose.dev.yml up
 | enrollment-db | postgres:16-alpine | 5435 |
 | payment-db | postgres:16-alpine | 5436 |
 | notification-db | postgres:16-alpine | 5437 |
+| learning-db | postgres:16-alpine | 5438 |
 | redis | redis:7-alpine | 6379 |
 | identity | Dockerfile build | 8001 |
 | course | Dockerfile build | 8002 |
 | enrollment | Dockerfile build | 8003 |
 | payment | Dockerfile build | 8004 |
 | notification | Dockerfile build | 8005 |
+| learning | Dockerfile build | 8007 |
 | seed (profile) | Dockerfile build | — |
 
 ### Prod (`docker-compose.prod.yml`)
@@ -97,6 +99,7 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "<port>"]
 - `deploy/docker/enrollment.Dockerfile`
 - `deploy/docker/payment.Dockerfile`
 - `deploy/docker/notification.Dockerfile`
+- `deploy/docker/learning.Dockerfile`
 - `deploy/docker/seed.Dockerfile`
 - `deploy/docker/locust.Dockerfile`
 
@@ -135,6 +138,7 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 | enrollment | `postgresql://enrollment:enrollment@enrollment-db:5432/enrollment` | `dev-secret-key` |
 | payment | `postgresql://payment:payment@payment-db:5432/payment` | `dev-secret-key` |
 | notification | `postgresql://notification:notification@notification-db:5432/notification` | `dev-secret-key` |
+| learning | `postgresql://learning:learning@learning-db:5432/learning` | `dev-secret-key` |
 
 ### Seed-specific
 
@@ -173,7 +177,7 @@ docker compose -f docker-compose.dev.yml --profile seed up seed
 
 Scrape config (`deploy/docker/prometheus/prometheus.yml`):
 - `scrape_interval: 5s`
-- Jobs: `identity` (`:8001`), `course` (`:8002`), `enrollment` (`:8003`), `payment` (`:8004`), `notification` (`:8005`)
+- Jobs: `identity` (`:8001`), `course` (`:8002`), `enrollment` (`:8003`), `payment` (`:8004`), `notification` (`:8005`), `learning` (`:8007`)
 
 Метрики автоматически экспортируются через `prometheus-fastapi-instrumentator`:
 - `http_requests_total` — счётчик запросов
@@ -220,11 +224,12 @@ Locust UI: http://localhost:8089
 | enrollment-db | `pg_isready -U enrollment` | 5s | 3s | 5 |
 | payment-db | `pg_isready -U payment` | 5s | 3s | 5 |
 | notification-db | `pg_isready -U notification` | 5s | 3s | 5 |
+| learning-db | `pg_isready -U learning` | 5s | 3s | 5 |
 | redis | `redis-cli ping` | 5s | 3s | 5 |
 
 Все сервисы запускаются после `service_healthy` condition на своих БД.
 
-### Application-level (все 5 Python сервисов)
+### Application-level (все 6 Python сервисов)
 
 | Endpoint | Описание | Checks |
 |----------|----------|--------|
@@ -273,3 +278,4 @@ cd apps/buyer && npm run dev  # :3001
 - `/api/enrollment/*` → `http://localhost:8003/*`
 - `/api/payment/*` → `http://localhost:8004/*`
 - `/api/notification/*` → `http://localhost:8005/*`
+- `/api/learning/*` → `http://localhost:8007/*`
