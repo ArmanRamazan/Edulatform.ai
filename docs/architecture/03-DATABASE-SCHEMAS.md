@@ -1,7 +1,7 @@
 # 03 — Database Schemas
 
-> Последнее обновление: 2026-02-23
-> Стадия: Phase 1.3 (UX & Product Quality)
+> Последнее обновление: 2026-02-25
+> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
 
 ---
 
@@ -42,7 +42,9 @@ learning-db (PostgreSQL 16 Alpine, :5438)
   └── database: learning
        ├── table: quizzes
        ├── table: questions
-       └── table: quiz_attempts
+       ├── table: quiz_attempts
+       ├── table: flashcards
+       └── table: review_logs
 ```
 
 ---
@@ -484,6 +486,71 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
 
 **Миграции:**
 - `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
+- `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
+
+### Table: `flashcards`
+
+```sql
+CREATE TABLE IF NOT EXISTS flashcards (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id UUID NOT NULL,
+    course_id UUID NOT NULL,
+    concept TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    source_type VARCHAR(20),
+    source_id UUID,
+    stability FLOAT DEFAULT 0,
+    difficulty FLOAT DEFAULT 0,
+    due TIMESTAMPTZ DEFAULT now(),
+    last_review TIMESTAMPTZ,
+    reps INT DEFAULT 0,
+    lapses INT DEFAULT 0,
+    state INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
+| `course_id` | UUID | NOT NULL | ID курса (из Course) |
+| `concept` | TEXT | NOT NULL | Вопрос (лицевая сторона карточки) |
+| `answer` | TEXT | NOT NULL | Ответ (обратная сторона карточки) |
+| `source_type` | VARCHAR(20) | nullable | Источник: manual, quiz_mistake, key_concept |
+| `source_id` | UUID | nullable | ID источника (quiz question, etc.) |
+| `stability` | FLOAT | DEFAULT 0 | FSRS stability parameter |
+| `difficulty` | FLOAT | DEFAULT 0 | FSRS difficulty parameter |
+| `due` | TIMESTAMPTZ | DEFAULT now() | Когда карточка должна быть повторена |
+| `last_review` | TIMESTAMPTZ | nullable | Время последнего повторения |
+| `reps` | INT | DEFAULT 0 | Количество повторений (FSRS step) |
+| `lapses` | INT | DEFAULT 0 | Количество "забываний" (переходов в Relearning) |
+| `state` | INT | DEFAULT 0 | FSRS состояние: 0=New, 1=Learning, 2=Review, 3=Relearning |
+| `created_at` | TIMESTAMPTZ | DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + idx_flashcards_student_due (student_id, due) + idx_flashcards_student_course (student_id, course_id).
+
+### Table: `review_logs`
+
+```sql
+CREATE TABLE IF NOT EXISTS review_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    card_id UUID REFERENCES flashcards(id) ON DELETE CASCADE,
+    rating INT NOT NULL,
+    review_duration_ms INT,
+    reviewed_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `card_id` | UUID | FK → flashcards(id) CASCADE | Карточка |
+| `rating` | INT | NOT NULL | Оценка: 1=Again, 2=Hard, 3=Good, 4=Easy |
+| `review_duration_ms` | INT | nullable | Время ответа в миллисекундах |
+| `reviewed_at` | TIMESTAMPTZ | DEFAULT now() | Время повторения |
+
+**Индексы:** PK (id) + idx_review_logs_card (card_id).
 
 ---
 

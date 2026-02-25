@@ -106,15 +106,15 @@ CREATE INDEX idx_quiz_attempts_quiz_student ON quiz_attempts(quiz_id, student_id
 
 | # | Задача | Статус |
 |---|--------|--------|
-| 2.1.1 | FSRS integration (py-fsrs library) | 🔴 |
-| 2.1.2 | Flashcard model: Card, ReviewLog | 🔴 |
+| 2.1.1 | FSRS integration (py-fsrs v6.3.0 library) | ✅ |
+| 2.1.2 | Flashcard model: Card, ReviewLog + migration | ✅ |
 | 2.1.3 | Auto-generate cards from quiz mistakes + key concepts | 🔴 |
-| 2.1.4 | POST /flashcards/review {card_id, rating} → next_review | 🔴 |
-| 2.1.5 | GET /flashcards/due → cards due for review today | 🔴 |
+| 2.1.4 | POST /flashcards/:id/review {rating} → next_review | ✅ |
+| 2.1.5 | GET /flashcards/due → cards due for review today | ✅ |
 | 2.1.6 | Smart notifications: "Time to review!" (FSRS-scheduled) | 🔴 |
-| 2.1.7 | Frontend: flashcard UI (swipe, rate: Again/Hard/Good/Easy) | 🔴 |
-| 2.1.8 | "Review due" badge in header | 🔴 |
-| 2.1.9 | Tests: FSRS scheduling, card CRUD, review flow | 🔴 |
+| 2.1.7 | Frontend: flashcard review page (flip card, rate: Again/Hard/Good/Easy) | ✅ |
+| 2.1.8 | "Review due" badge in header | ✅ |
+| 2.1.9 | Tests: FSRS scheduling, card CRUD, review flow | ✅ (11 тестов) |
 
 **DB Schema:**
 ```sql

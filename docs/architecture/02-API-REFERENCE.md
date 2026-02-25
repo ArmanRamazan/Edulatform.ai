@@ -1,7 +1,7 @@
 # 02 — API Reference
 
-> Последнее обновление: 2026-02-23
-> Стадия: Phase 1.3 (UX & Product Quality)
+> Последнее обновление: 2026-02-25
+> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
 
 ---
 
@@ -1048,6 +1048,135 @@ Mock оплата курса. Всегда возвращает `status=complete
 |------|---------|
 | 401 | Отсутствует или невалидный токен |
 | 403 | `role != student` |
+
+### POST /flashcards
+
+Создать флешкарту. Только для `role=student`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "course_id": "660e8400-e29b-41d4-a716-446655440000",
+  "concept": "Что такое FSRS?",
+  "answer": "Free Spaced Repetition Scheduler — алгоритм для оптимального повторения",
+  "source_type": "manual",
+  "source_id": null
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "...",
+  "course_id": "...",
+  "concept": "Что такое FSRS?",
+  "answer": "Free Spaced Repetition Scheduler...",
+  "source_type": "manual",
+  "stability": 0.0,
+  "difficulty": 0.0,
+  "due": "2026-02-25T12:00:00+00:00",
+  "state": 0,
+  "reps": 0,
+  "lapses": 0,
+  "created_at": "2026-02-25T12:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != student` |
+| 422 | Невалидные данные |
+
+---
+
+### GET /flashcards/due
+
+Карточки, которые нужно повторить сейчас (`due <= now()`). Только для `role=student`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query params:** `limit` (default 20), `offset` (default 0)
+
+**Response `200`:**
+```json
+{
+  "items": [
+    {
+      "id": "...",
+      "course_id": "...",
+      "concept": "Что такое FSRS?",
+      "answer": "Free Spaced Repetition Scheduler...",
+      "source_type": "manual",
+      "stability": 4.93,
+      "difficulty": 5.31,
+      "due": "2026-02-25T12:00:00+00:00",
+      "state": 2,
+      "reps": 3,
+      "lapses": 0,
+      "created_at": "2026-02-20T10:00:00+00:00"
+    }
+  ],
+  "total": 5
+}
+```
+
+---
+
+### POST /flashcards/{card_id}/review
+
+Повторить карточку. FSRS рассчитывает следующую дату повторения. Только для `role=student`, только свои карточки.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "rating": 3,
+  "review_duration_ms": 5200
+}
+```
+
+> `rating`: 1=Again, 2=Hard, 3=Good, 4=Easy
+
+**Response `200`:**
+```json
+{
+  "card_id": "...",
+  "rating": 3,
+  "new_stability": 4.93,
+  "new_difficulty": 5.31,
+  "next_due": "2026-03-02T12:00:00+00:00",
+  "new_state": 2
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != student` или не ваша карточка |
+| 404 | Карточка не найдена |
+
+---
+
+### DELETE /flashcards/{card_id}
+
+Удалить флешкарту. Только для `role=student`, только свои.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `204`:** Нет тела.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != student` |
+| 404 | Карточка не найдена или не ваша |
 
 ---
 

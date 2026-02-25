@@ -4,7 +4,7 @@
 
 ## Текущий статус
 
-**Стадия:** Phase 2.0 (Learning Intelligence) — 157 RPS, p99 51ms
+**Стадия:** Phase 2.1 (Spaced Repetition + Flashcards) — 157 RPS, p99 51ms
 
 | Компонент | Статус | Описание |
 |-----------|--------|----------|
@@ -14,14 +14,14 @@
 | Payment Service | ✅ Готов | Mock-оплата, GET /me, GET /:id |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Gemini Flash, Redis cache |
-| Learning Engine | ✅ Готов | Quiz persistence, quiz attempts, scoring, 4 endpoints |
+| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, 8 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 190 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 21, learning 12 |
+| Unit Tests | ✅ 201 тест | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 21, learning 23 |
 
 ## Стек
 
@@ -63,7 +63,7 @@ npm run dev    # http://localhost:3001
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 7 сервисов (190 тестов)
+# Все 7 сервисов (201 тест)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
@@ -118,7 +118,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ├── services/py/payment/     — Payment: mock-оплата
 ├── services/py/notification/— Notifications: in-app, mark as read
 ├── services/py/ai/          — AI: quiz generation, summary, Gemini Flash, Redis cache
-├── services/py/learning/   — Learning Engine: quiz persistence, attempts, scoring
+├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, spaced repetition
 ├── apps/buyer/              — Next.js frontend
 ├── deploy/docker/           — Dockerfiles, Prometheus, Grafana
 ├── tools/seed/              — Data generation (50K users, 100K courses, 200K enrollments)

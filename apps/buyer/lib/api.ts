@@ -210,6 +210,35 @@ export interface AiSummaryResponse {
   cached: boolean;
 }
 
+export interface FlashcardData {
+  id: string;
+  course_id: string;
+  concept: string;
+  answer: string;
+  source_type: string | null;
+  stability: number;
+  difficulty: number;
+  due: string;
+  state: number;
+  reps: number;
+  lapses: number;
+  created_at: string;
+}
+
+export interface DueCardsResponse {
+  items: FlashcardData[];
+  total: number;
+}
+
+export interface ReviewResponse {
+  card_id: string;
+  rating: number;
+  new_stability: number;
+  new_difficulty: number;
+  next_due: string;
+  new_state: number;
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
   if (!res.ok) {
@@ -587,6 +616,38 @@ export const quizzes = {
   },
   myAttempts(token: string, quizId: string) {
     return request<QuizAttemptList>(`${LEARNING_URL}/quizzes/${quizId}/attempts/me`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export const flashcards = {
+  create(token: string, data: { course_id: string; concept: string; answer: string; source_type?: string; source_id?: string }) {
+    return request<FlashcardData>(`${LEARNING_URL}/flashcards`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  due(token: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<DueCardsResponse>(`${LEARNING_URL}/flashcards/due${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+  review(token: string, cardId: string, data: { rating: number; review_duration_ms?: number }) {
+    return request<ReviewResponse>(`${LEARNING_URL}/flashcards/${cardId}/review`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  delete(token: string, cardId: string) {
+    return fetch(`${LEARNING_URL}/flashcards/${cardId}`, {
+      method: "DELETE",
       headers: authHeaders(token),
     });
   },

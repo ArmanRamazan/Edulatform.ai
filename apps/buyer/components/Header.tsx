@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { useDueCount } from "@/hooks/use-flashcards";
 import { identity as identityApi } from "@/lib/api";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -12,6 +13,7 @@ const ROLE_LABELS: Record<string, string> = {
 
 export function Header() {
   const { user, token, loading, logout } = useAuth();
+  const dueCount = useDueCount(token);
 
   async function handleResend() {
     if (!token) return;
@@ -42,6 +44,16 @@ export function Header() {
                 ) : (
                   <Link href="/enrollments" className="text-sm hover:underline">
                     Мои курсы
+                  </Link>
+                )}
+                {user.role === "student" && (
+                  <Link href="/flashcards" className="relative text-sm hover:underline">
+                    Повторение
+                    {(dueCount.data ?? 0) > 0 && (
+                      <span className="absolute -right-3 -top-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                        {dueCount.data}
+                      </span>
+                    )}
                   </Link>
                 )}
                 <Link href="/notifications" className="text-sm hover:underline">

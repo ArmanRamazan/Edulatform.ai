@@ -31,7 +31,7 @@ eduplatform/
 │   │   ├── payment/               #   Mock-оплата
 │   │   ├── notification/          #   In-app уведомления
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
-│   │   └── learning/              #   Quiz persistence, quiz attempts, scoring
+│   │   └── learning/              #   Quiz persistence, flashcards (FSRS spaced repetition), scoring
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Routing, auth check, rate limiting
 │       ├── search/                #   Поисковый proxy + ranking
@@ -172,7 +172,8 @@ apps/{app}/
 │   ├── use-progress.ts    #     useCourseProgress, useCompleteLesson (optimistic)
 │   ├── use-notifications.ts #   useMyNotifications, useMarkRead (optimistic)
 │   ├── use-quiz.ts        #     useQuiz, useSubmitQuiz, useMyAttempts
-│   └── use-ai.ts          #     useGenerateQuiz, useSummary
+│   ├── use-ai.ts          #     useGenerateQuiz, useSummary
+│   └── use-flashcards.ts  #     useDueCards, useDueCount, useReviewCard, useCreateFlashcard
 ├── lib/                   #   API вызовы, утилиты, конфиг
 ├── public/                #   Статика (favicon, robots.txt)
 ├── next.config.ts
