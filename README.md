@@ -38,10 +38,10 @@ EduPlatform — не очередной видеохостинг с прогре
 
 ## Архитектура
 
-Монорепа: **Python** (бизнес-логика, 6 микросервисов) + **Next.js** (frontend) + **Rust** (performance-critical, будет).
+Монорепа: **Python** (бизнес-логика, 7 микросервисов) + **Next.js** (frontend) + **Rust** (performance-critical, будет).
 
-- **6 сервисов**: Identity, Course, Enrollment, Payment, Notification, AI
-- **178 unit-тестов**, нагрузочное тестирование через Locust
+- **7 сервисов**: Identity, Course, Enrollment, Payment, Notification, AI, Learning
+- **190 unit-тестов**, нагрузочное тестирование через Locust
 - **157 RPS, p99 = 51ms** на текущей стадии
 - Prometheus + Grafana для observability
 - Clean Architecture, каждый сервис — своя PostgreSQL
@@ -69,4 +69,4 @@ cd services/py/identity && uv run --package identity pytest tests/ -v
 
 ## Статус
 
-**Phase 2.0 — Learning Intelligence.** Foundation готов (6 сервисов, фронтенд, мониторинг, тесты). Сейчас строим AI-слой: quiz generation, summary, далее — Socratic tutor, spaced repetition, knowledge graph.
+**Phase 2.0 — Learning Intelligence.** Foundation готов (7 сервисов, фронтенд, мониторинг, тесты). AI-слой готов: quiz generation, summary, Learning Engine (квизы + попытки). Далее — Socratic tutor, spaced repetition, knowledge graph.

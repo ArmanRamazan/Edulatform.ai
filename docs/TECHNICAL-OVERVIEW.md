@@ -14,13 +14,14 @@
 | Payment Service | ✅ Готов | Mock-оплата, GET /me, GET /:id |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Gemini Flash, Redis cache |
+| Learning Engine | ✅ Готов | Quiz persistence, quiz attempts, scoring, 4 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 178 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 21 |
+| Unit Tests | ✅ 190 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 21, learning 12 |
 
 ## Стек
 
@@ -62,13 +63,14 @@ npm run dev    # http://localhost:3001
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 6 сервисов (178 тестов)
+# Все 7 сервисов (190 тестов)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
 cd services/py/payment && uv run --package payment pytest tests/ -v
 cd services/py/notification && uv run --package notification pytest tests/ -v
 cd services/py/ai && uv run --package ai pytest tests/ -v
+cd services/py/learning && uv run --package learning pytest tests/ -v
 ```
 
 ### Нагрузочное тестирование
@@ -93,6 +95,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 | Payment API | 8004 |
 | Notification API | 8005 |
 | AI API | 8006 |
+| Learning API | 8007 |
 | Buyer Frontend | 3001 |
 | Grafana | 3000 |
 | Prometheus | 9090 |
@@ -102,6 +105,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 | Enrollment DB (Postgres) | 5435 |
 | Payment DB (Postgres) | 5436 |
 | Notification DB (Postgres) | 5437 |
+| Learning DB (Postgres) | 5438 |
 | Redis | 6379 |
 
 ## Структура
@@ -114,6 +118,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ├── services/py/payment/     — Payment: mock-оплата
 ├── services/py/notification/— Notifications: in-app, mark as read
 ├── services/py/ai/          — AI: quiz generation, summary, Gemini Flash, Redis cache
+├── services/py/learning/   — Learning Engine: quiz persistence, attempts, scoring
 ├── apps/buyer/              — Next.js frontend
 ├── deploy/docker/           — Dockerfiles, Prometheus, Grafana
 ├── tools/seed/              — Data generation (50K users, 100K courses, 200K enrollments)
@@ -129,7 +134,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 
 | Стадия | Пользователи | Ключевые изменения | Статус |
 |--------|-------------|-------------------|--------|
-| **Foundation** | до 10K | 5 Python сервисов, Next.js, Postgres, Locust | ✅ Готово |
+| **Foundation** | до 10K | 7 Python сервисов, Next.js, Postgres, Locust | ✅ Готово |
 | **Learning Intelligence** | 10K → 100K | AI-тьютор, квизы, spaced repetition, knowledge graph | 🟡 В работе |
 | **Growth** | 100K → 1M | Реальные платежи, seller dashboard, SEO, mobile, CI/CD | 🔴 Не начато |
 | **Scale** | 1M → 10M | Rust gateway, event bus, video platform, multi-region | 🔴 Не начато |

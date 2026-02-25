@@ -29,7 +29,9 @@ eduplatform/
 │   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization
 │   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion
 │   │   ├── payment/               #   Mock-оплата
-│   │   └── notification/          #   In-app уведомления
+│   │   ├── notification/          #   In-app уведомления
+│   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
+│   │   └── learning/              #   Quiz persistence, quiz attempts, scoring
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Routing, auth check, rate limiting
 │       ├── search/                #   Поисковый proxy + ranking
@@ -168,7 +170,9 @@ apps/{app}/
 │   ├── use-enrollments.ts #     useMyEnrollments, useEnroll (mutation)
 │   ├── use-reviews.ts     #     useCourseReviews, useCreateReview (optimistic)
 │   ├── use-progress.ts    #     useCourseProgress, useCompleteLesson (optimistic)
-│   └── use-notifications.ts #   useMyNotifications, useMarkRead (optimistic)
+│   ├── use-notifications.ts #   useMyNotifications, useMarkRead (optimistic)
+│   ├── use-quiz.ts        #     useQuiz, useSubmitQuiz, useMyAttempts
+│   └── use-ai.ts          #     useGenerateQuiz, useSummary
 ├── lib/                   #   API вызовы, утилиты, конфиг
 ├── public/                #   Статика (favicon, robots.txt)
 ├── next.config.ts
