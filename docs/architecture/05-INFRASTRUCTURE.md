@@ -1,7 +1,7 @@
 # 05 — Infrastructure & Docker
 
-> Последнее обновление: 2026-02-23
-> Стадия: Phase 1.3 (UX & Product Quality)
+> Последнее обновление: 2026-02-25
+> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
 
 ---
 
@@ -34,6 +34,7 @@ docker compose -f docker-compose.dev.yml up
 | enrollment | Dockerfile build | 8003 |
 | payment | Dockerfile build | 8004 |
 | notification | Dockerfile build | 8005 |
+| ai | Dockerfile build | 8006 |
 | learning | Dockerfile build | 8007 |
 | seed (profile) | Dockerfile build | — |
 
@@ -138,6 +139,7 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 | enrollment | `postgresql://enrollment:enrollment@enrollment-db:5432/enrollment` | `dev-secret-key` |
 | payment | `postgresql://payment:payment@payment-db:5432/payment` | `dev-secret-key` |
 | notification | `postgresql://notification:notification@notification-db:5432/notification` | `dev-secret-key` |
+| ai | — (stateless, Redis cache only) | `dev-secret-key` |
 | learning | `postgresql://learning:learning@learning-db:5432/learning` | `dev-secret-key` |
 
 ### Seed-specific
@@ -177,7 +179,7 @@ docker compose -f docker-compose.dev.yml --profile seed up seed
 
 Scrape config (`deploy/docker/prometheus/prometheus.yml`):
 - `scrape_interval: 5s`
-- Jobs: `identity` (`:8001`), `course` (`:8002`), `enrollment` (`:8003`), `payment` (`:8004`), `notification` (`:8005`), `learning` (`:8007`)
+- Jobs: `identity` (`:8001`), `course` (`:8002`), `enrollment` (`:8003`), `payment` (`:8004`), `notification` (`:8005`), `ai` (`:8006`), `learning` (`:8007`)
 
 Метрики автоматически экспортируются через `prometheus-fastapi-instrumentator`:
 - `http_requests_total` — счётчик запросов
@@ -229,7 +231,7 @@ Locust UI: http://localhost:8089
 
 Все сервисы запускаются после `service_healthy` condition на своих БД.
 
-### Application-level (все 6 Python сервисов)
+### Application-level (все 7 Python сервисов)
 
 | Endpoint | Описание | Checks |
 |----------|----------|--------|

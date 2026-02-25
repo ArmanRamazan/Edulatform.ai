@@ -1,13 +1,13 @@
 # 04 — Authentication Flow
 
-> Последнее обновление: 2026-02-23
-> Стадия: Phase 1.3 (UX & Product Quality)
+> Последнее обновление: 2026-02-25
+> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
 
 ---
 
 ## Обзор
 
-Аутентификация реализована через **JWT с shared secret**. Все 5 сервисов используют один и тот же `JWT_SECRET` для валидации токенов. Identity создаёт токены при register/login, остальные сервисы только валидируют.
+Аутентификация реализована через **JWT с shared secret**. Все 7 сервисов используют один и тот же `JWT_SECRET` для валидации токенов. Identity создаёт токены при register/login, остальные сервисы только валидируют.
 
 ```
 ┌─────────┐        ┌──────────┐        ┌──────────┐
@@ -131,7 +131,7 @@ CREATE TABLE refresh_tokens (
 
 ## Авторизация в сервисах
 
-Все сервисы **не обращаются к Identity Service**. Вся авторизация происходит через JWT claims:
+Все 7 сервисов **не обращаются к Identity Service**. Вся авторизация происходит через JWT claims:
 
 1. Route layer извлекает `Authorization: Bearer <token>` из header
 2. Декодирует JWT тем же `JWT_SECRET` (env var)
@@ -179,6 +179,22 @@ CREATE TABLE refresh_tokens (
 ### Notification Service
 
 **Authenticated:** `POST /notifications`, `GET /notifications/me`, `PATCH /notifications/{id}/read`
+
+### Learning Engine
+
+**Teacher-only (role=teacher + is_verified):**
+- `POST /quizzes` — создание квиза для урока
+
+**Student-only (role=student):**
+- `POST /quizzes/{id}/submit` — сдача квиза
+- `GET /quizzes/{id}/attempts/me` — мои попытки
+- `POST /flashcards` — создание карточки
+- `GET /flashcards/due` — карточки к повторению
+- `POST /flashcards/{id}/review` — повторение карточки
+- `DELETE /flashcards/{id}` — удаление карточки
+
+**Authenticated (любая роль):**
+- `GET /quizzes/lesson/{id}` — получение квиза для урока
 
 ---
 
@@ -254,7 +270,7 @@ CREATE TABLE refresh_tokens (
 |-------------|---------|---------------|
 | ~~Нет refresh token~~ | ~~YAGNI для MVP~~ | ✅ Phase 1.2 — refresh token rotation |
 | ~~Нет blacklist токенов~~ | ~~Нет Redis кэша~~ | ✅ Phase 1.2 — revoke family via DB |
-| Shared secret (HS256) | Простота, 5 сервисов | Phase 2 (RSA/JWKS при gateway) |
+| Shared secret (HS256) | Простота, 7 сервисов | Phase 3 (RSA/JWKS при gateway) |
 | ~~Manual verification~~ | ~~Нет admin panel~~ | ✅ Admin panel реализован |
 | localStorage | Простота | Cookie httpOnly при production |
 | Email stub (логирование) | Нет SMTP | Phase 2 (реальная отправка через email service) |

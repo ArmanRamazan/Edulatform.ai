@@ -17,7 +17,7 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 
 | Стадия | Пользователи | Суть | Критерий перехода |
 |--------|-------------|------|-------------------|
-| Foundation | до 10K | Базовая платформа, полный цикл обучения | ✅ 157 тестов, 157 RPS, p99=51ms |
+| Foundation | до 10K | Базовая платформа, полный цикл обучения | ✅ 201 тест, 157 RPS, p99=51ms |
 | **Learning Intelligence** | **10K → 100K** | **AI-тьютор, квизы, spaced repetition, knowledge graph, gamification** | **Completion rate > 40%, retention 7d > 60%** |
 | Growth | 100K → 1M | Реальные платежи, seller dashboard, SEO, mobile, CI/CD | Revenue $100K/мес, 1000 teachers |
 | Scale | 1M → 10M | Rust gateway, event bus, video platform, multi-region | 5K+ RPS, horizontal scaling |
@@ -64,7 +64,7 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 | 1.2 | JWT refresh, rate limiting, CORS, XSS, health checks | 146 тестов |
 | 1.3 | Categories, email verify, forgot password, auto-completion, TanStack Query | 157 тестов |
 
-**Итого Foundation:** 157 тестов, 7 сервисов (5 backend + frontend + shared lib), полный user journey.
+**Итого Foundation:** 201 тест, 7 backend сервисов + frontend + shared lib, полный user journey.
 
 ---
 
@@ -82,13 +82,13 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 
 | # | Задача | Зачем | Статус |
 |---|--------|-------|--------|
-| 2.0.1 | AI Service (Python): model routing (cheap/mid/expensive) | Центральная точка LLM-вызовов | 🔴 |
-| 2.0.2 | Gemini Flash API интеграция + Redis кэширование ответов | Дешёвая генерация ($0.08/M tokens) | 🔴 |
-| 2.0.3 | Quiz model в Learning Engine: questions, answers, attempts | Активное вспоминание | 🔴 |
-| 2.0.4 | AI Quiz Generator: авто-генерация вопросов из lesson content | Масштабирование без ручной работы | 🔴 |
-| 2.0.5 | AI Lesson Summary: краткое содержание каждого урока | Быстрый повтор | 🔴 |
-| 2.0.6 | Frontend: quiz UI после урока + summary блок | UX активного обучения | 🔴 |
-| 2.0.7 | Тесты: AI service + learning engine + frontend | Качество | 🔴 |
+| 2.0.1 | AI Service (Python): model routing (cheap/mid/expensive) | Центральная точка LLM-вызовов | ✅ |
+| 2.0.2 | Gemini Flash API интеграция + Redis кэширование ответов | Дешёвая генерация ($0.08/M tokens) | ✅ |
+| 2.0.3 | Quiz model в Learning Engine: questions, answers, attempts | Активное вспоминание | ✅ |
+| 2.0.4 | AI Quiz Generator: авто-генерация вопросов из lesson content | Масштабирование без ручной работы | ✅ |
+| 2.0.5 | AI Lesson Summary: краткое содержание каждого урока | Быстрый повтор | ✅ |
+| 2.0.6 | Frontend: quiz UI после урока + summary блок | UX активного обучения | ✅ |
+| 2.0.7 | Тесты: AI service + learning engine + frontend | Качество | ✅ |
 
 **Метрики:** quiz completion rate, accuracy, time-on-quiz.
 **Evidence:** Active recall → +25% retention vs passive review.
@@ -101,12 +101,12 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 
 | # | Задача | Зачем | Статус |
 |---|--------|-------|--------|
-| 2.1.1 | FSRS интеграция (py-fsrs, open source) | Алгоритм оптимального повторения | 🔴 |
-| 2.1.2 | Flashcard model: cards из quiz-ошибок + ключевые концепты | Автоматическая генерация карточек | 🔴 |
+| 2.1.1 | FSRS интеграция (py-fsrs, open source) | Алгоритм оптимального повторения | ✅ |
+| 2.1.2 | Flashcard model: cards из quiz-ошибок + ключевые концепты | Автоматическая генерация карточек | ✅ |
 | 2.1.3 | Smart notifications: FSRS-scheduled review reminders | "Пора повторить!" в нужный момент | 🔴 |
-| 2.1.4 | Frontend: flashcard UI (swipe, rate difficulty) | UX повторения | 🔴 |
-| 2.1.5 | "Review due" badge в header + dashboard | Вовлечение | 🔴 |
-| 2.1.6 | Тесты: FSRS scheduling, card CRUD | Качество | 🔴 |
+| 2.1.4 | Frontend: flashcard UI (swipe, rate difficulty) | UX повторения | ✅ |
+| 2.1.5 | "Review due" badge в header + dashboard | Вовлечение | ✅ |
+| 2.1.6 | Тесты: FSRS scheduling, card CRUD | Качество | ✅ |
 
 **Метрики:** retention rate (7d, 30d), review streak, забывание vs baseline.
 **Evidence:** Spaced repetition → +60% long-term retention vs massed study.

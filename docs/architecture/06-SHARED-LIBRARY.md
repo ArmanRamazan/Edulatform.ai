@@ -1,7 +1,7 @@
 # 06 — Shared Library (common)
 
-> Последнее обновление: 2026-02-23
-> Стадия: Phase 1.3 (UX & Product Quality)
+> Последнее обновление: 2026-02-25
+> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
 
 ---
 
@@ -146,4 +146,4 @@ class Settings(BaseAppSettings):
 
 ## Правило выноса в common
 
-Код выносится в `libs/py/common/` только когда используется в **2+ сервисах**. Все 6 модулей используются во всех 5 сервисах (Identity, Course, Enrollment, Payment, Notification).
+Код выносится в `libs/py/common/` только когда используется в **2+ сервисах**. Все 6 модулей используются во всех 7 сервисах (Identity, Course, Enrollment, Payment, Notification, AI, Learning).
