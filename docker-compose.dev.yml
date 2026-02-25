@@ -81,6 +81,22 @@ services:
       timeout: 3s
       retries: 5
 
+  learning-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: learning
+      POSTGRES_USER: learning
+      POSTGRES_PASSWORD: learning
+    ports:
+      - "5438:5432"
+    volumes:
+      - learning-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learning"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     ports:
@@ -206,6 +222,25 @@ services:
       redis:
         condition: service_healthy
 
+  learning:
+    build:
+      context: .
+      dockerfile: deploy/docker/learning.Dockerfile
+    ports:
+      - "8007:8007"
+    environment:
+      DATABASE_URL: postgresql://learning:learning@learning-db:5432/learning
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: dev-secret-key
+    volumes:
+      - ./services/py/learning/app:/app/app
+      - ./services/py/learning/migrations:/app/migrations
+      - ./libs/py/common/common:/libs/common/common
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8007 --reload --timeout-graceful-shutdown 10
+    depends_on:
+      learning-db:
+        condition: service_healthy
+
   seed:
     build:
       context: .
@@ -227,6 +262,8 @@ services:
         condition: service_started
       notification:
         condition: service_started
+      learning:
+        condition: service_started
     profiles:
       - seed
 
@@ -236,3 +273,4 @@ volumes:
   enrollment-db-data:
   payment-db-data:
   notification-db-data:
+  learning-db-data:
