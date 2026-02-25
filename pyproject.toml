@@ -12,5 +12,6 @@ members = [
     "services/py/payment",
     "services/py/notification",
     "services/py/ai",
+    "services/py/learning",
     "tools/seed",
 ]
