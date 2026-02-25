@@ -6,7 +6,7 @@
 > **Baseline (индустрия):** 13% completion rate, пассивное видео.
 > **Target:** 40%+ completion, 60%+ 7-day retention.
 >
-> **Предусловие:** Phase 0–1 завершены — полный цикл обучения, 157 тестов, 157 RPS.
+> **Предусловие:** Phase 0–1 завершены — полный цикл обучения, 190 тестов (7 сервисов), 157 RPS.
 
 ---
 
@@ -28,8 +28,8 @@
 
 | Сервис | Порт | Назначение | БД |
 |--------|------|-----------|-----|
-| AI Service | :8006 | LLM routing, quiz gen, summaries, tutor | ai-db (5438) |
-| Learning Engine | :8007 | FSRS, quizzes, flashcards, concepts, gamification | learning-db (5439) |
+| AI Service | :8006 | LLM routing, quiz gen, summaries, tutor | Redis (stateless, no DB) |
+| Learning Engine | :8007 | FSRS, quizzes, flashcards, concepts, gamification | learning-db (5438) |
 
 ---
 
@@ -41,56 +41,60 @@
 | # | Задача | Статус |
 |---|--------|--------|
 | **Backend: AI Service** | | |
-| 2.0.1 | Scaffold AI Service (FastAPI, Clean Architecture) | 🔴 |
-| 2.0.2 | Model router: task type → model tier (cheap/mid/expensive) | 🔴 |
-| 2.0.3 | Gemini Flash API client + error handling + retries | 🔴 |
-| 2.0.4 | Redis response cache (same lesson → same quiz for all) | 🔴 |
-| 2.0.5 | POST /ai/quiz/generate {lesson_id, content} → questions | 🔴 |
-| 2.0.6 | POST /ai/summary/generate {lesson_id, content} → summary | 🔴 |
+| 2.0.1 | Scaffold AI Service (FastAPI, Clean Architecture) | ✅ |
+| 2.0.2 | Model router: task type → model tier (cheap/mid/expensive) | ✅ |
+| 2.0.3 | Gemini Flash API client + error handling + retries | ✅ |
+| 2.0.4 | Redis response cache (same lesson → same quiz for all) | ✅ |
+| 2.0.5 | POST /ai/quiz/generate {lesson_id, content} → questions | ✅ |
+| 2.0.6 | POST /ai/summary/generate {lesson_id, content} → summary | ✅ |
 | **Backend: Learning Engine** | | |
-| 2.0.7 | Scaffold Learning Engine (FastAPI, Clean Architecture) | 🔴 |
-| 2.0.8 | Quiz model: Quiz, Question (MCQ), Answer, Attempt | 🔴 |
-| 2.0.9 | POST /quizzes (create from AI output) | 🔴 |
-| 2.0.10 | POST /quizzes/:id/submit {answers} → score + feedback | 🔴 |
-| 2.0.11 | GET /quizzes/lesson/:lesson_id → quiz for this lesson | 🔴 |
+| 2.0.7 | Scaffold Learning Engine (FastAPI, Clean Architecture) | ✅ |
+| 2.0.8 | Quiz model: Quiz, Question (MCQ), Answer, Attempt | ✅ |
+| 2.0.9 | POST /quizzes (create from AI output) | ✅ |
+| 2.0.10 | POST /quizzes/:id/submit {answers} → score + feedback | ✅ |
+| 2.0.11 | GET /quizzes/lesson/:lesson_id → quiz for this lesson | ✅ |
 | **Frontend** | | |
-| 2.0.12 | Quiz UI: after-lesson quiz flow (MCQ, submit, score) | 🔴 |
-| 2.0.13 | Summary block: collapsible summary above lesson content | 🔴 |
+| 2.0.12 | Quiz UI: after-lesson quiz flow (MCQ, submit, score) | ✅ |
+| 2.0.13 | Summary block: collapsible summary above lesson content | ✅ |
 | 2.0.14 | "Generate quiz" button for teacher (triggers AI) | 🔴 |
 | **Infra** | | |
-| 2.0.15 | Docker compose: ai-service + learning-engine + DBs | 🔴 |
+| 2.0.15 | Docker compose: ai-service + learning-engine + DBs | ✅ |
 | 2.0.16 | Seed: quizzes for demo courses | 🔴 |
 | **Tests** | | |
-| 2.0.17 | AI Service tests: router, quiz gen, summary gen, cache | 🔴 |
-| 2.0.18 | Learning Engine tests: quiz CRUD, submit, scoring | 🔴 |
+| 2.0.17 | AI Service tests: router, quiz gen, summary gen, cache | ✅ (21 тестов) |
+| 2.0.18 | Learning Engine tests: quiz CRUD, submit, scoring | ✅ (12 тестов) |
 
-**DB Schema (learning-db):**
+**DB Schema (learning-db :5438) — реализовано:**
 ```sql
 CREATE TABLE quizzes (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lesson_id UUID NOT NULL,
-    course_id UUID NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT now()
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lesson_id   UUID NOT NULL UNIQUE,       -- один квиз на урок
+    course_id   UUID NOT NULL,
+    teacher_id  UUID NOT NULL,              -- кто создал
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE questions (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    quiz_id UUID REFERENCES quizzes(id) ON DELETE CASCADE,
-    text TEXT NOT NULL,
-    options JSONB NOT NULL,        -- ["option A", "option B", ...]
-    correct_index INT NOT NULL,
-    explanation TEXT,
-    "order" INT DEFAULT 0
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id         UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    text            TEXT NOT NULL,
+    options         JSONB NOT NULL,          -- ["option A", "option B", ...]
+    correct_index   INT NOT NULL,
+    explanation     TEXT,
+    "order"         INT NOT NULL DEFAULT 0   -- SQL reserved word, quoted
 );
 
 CREATE TABLE quiz_attempts (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    quiz_id UUID REFERENCES quizzes(id),
-    student_id UUID NOT NULL,
-    answers JSONB NOT NULL,        -- [0, 2, 1, ...] selected indexes
-    score FLOAT NOT NULL,          -- 0.0 to 1.0
-    completed_at TIMESTAMPTZ DEFAULT now()
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id         UUID NOT NULL REFERENCES quizzes(id),
+    student_id      UUID NOT NULL,
+    answers         JSONB NOT NULL,          -- [0, 2, 1, ...] selected indexes
+    score           FLOAT NOT NULL,          -- 0.0 to 1.0
+    completed_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_questions_quiz_id ON questions(quiz_id);
+CREATE INDEX idx_quiz_attempts_quiz_student ON quiz_attempts(quiz_id, student_id);
 ```
 
 ---
