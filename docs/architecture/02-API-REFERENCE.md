@@ -1,7 +1,7 @@
 # 02 — API Reference
 
 > Последнее обновление: 2026-02-26
-> Стадия: Phase 2.3 ✅ (Knowledge Graph + Concept Mastery) — далее 2.4 Gamification
+> Стадия: Phase 2.4 (Gamification — Streaks) — далее XP, badges
 
 ---
 
@@ -1487,6 +1487,54 @@ Mastery студента по concepts курса. Требует JWT.
 ```
 
 > `mastery` — значение 0.0–1.0. Обновляется автоматически при сдаче квиза (score × 0.3).
+
+---
+
+### POST /streaks/activity
+
+Записать ежедневную активность. Требует JWT (любая роль). При первом вызове создаёт streak. Повторный вызов в тот же день — no-op. Consecutive day — инкремент. Gap >1 дня — сброс до 1.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "current_streak": 3,
+  "longest_streak": 7,
+  "last_activity_date": "2026-02-26",
+  "active_today": true
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+
+---
+
+### GET /streaks/me
+
+Текущий streak пользователя. Требует JWT. Если streak прерван (last_activity > вчера), `current_streak` возвращается как 0.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "current_streak": 3,
+  "longest_streak": 7,
+  "last_activity_date": "2026-02-26",
+  "active_today": true
+}
+```
+
+> Если у пользователя нет записи — возвращает `current_streak: 0, longest_streak: 0, last_activity_date: null, active_today: false`.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
 
 ---
 

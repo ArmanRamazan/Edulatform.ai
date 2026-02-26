@@ -1,7 +1,7 @@
 # 03 — Database Schemas
 
-> Последнее обновление: 2026-02-25
-> Стадия: Phase 2.3 (Knowledge Graph + Adaptive Path)
+> Последнее обновление: 2026-02-26
+> Стадия: Phase 2.4 (Gamification — Streaks)
 
 ---
 
@@ -47,7 +47,8 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: review_logs
        ├── table: concepts
        ├── table: concept_prerequisites
-       └── table: concept_mastery
+       ├── table: concept_mastery
+       └── table: streaks
 ```
 
 ---
@@ -487,11 +488,6 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
 
 **Индексы:** PK (id) + idx_quiz_attempts_quiz_student (quiz_id, student_id). Нет ограничения на количество попыток — студент может проходить квиз многократно.
 
-**Миграции:**
-- `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
-- `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
-- `003_concepts.sql` — создание таблиц concepts, concept_prerequisites, concept_mastery и индексов
-
 ### Table: `flashcards`
 
 ```sql
@@ -629,6 +625,36 @@ CREATE TABLE IF NOT EXISTS concept_mastery (
 **Индексы:** PK (id) + UNIQUE (student_id, concept_id).
 
 **Mastery algorithm:** при сдаче квиза (QuizService.submit_quiz) mastery обновляется автоматически: `mastery += score × 0.3`, capped at 1.0. Обновляются все concepts, привязанные к lesson_id квиза.
+
+### Table: `streaks`
+
+```sql
+CREATE TABLE IF NOT EXISTS streaks (
+    user_id             UUID PRIMARY KEY,
+    current_streak      INT NOT NULL DEFAULT 1,
+    longest_streak      INT NOT NULL DEFAULT 1,
+    last_activity_date  DATE NOT NULL DEFAULT CURRENT_DATE,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `user_id` | UUID | PK | ID пользователя (из Identity) |
+| `current_streak` | INT | NOT NULL, DEFAULT 1 | Текущая серия дней подряд |
+| `longest_streak` | INT | NOT NULL, DEFAULT 1 | Максимальная серия за всё время |
+| `last_activity_date` | DATE | NOT NULL, DEFAULT CURRENT_DATE | Дата последней активности |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Последнее обновление |
+
+**Индексы:** PK (user_id). Одна запись на пользователя.
+
+**Бизнес-логика:** Первая активность — создаёт запись (current=1). Повторный вызов в тот же день — no-op. Consecutive day — инкремент current_streak. Gap >1 дня — сброс current_streak до 1. longest_streak обновляется при каждом инкременте. GET /streaks/me возвращает current_streak=0, если last_activity_date раньше вчерашнего дня.
+
+**Миграции:**
+- `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
+- `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
+- `003_concepts.sql` — создание таблиц concepts, concept_prerequisites, concept_mastery и индексов
+- `004_streaks.sql` — создание таблицы streaks
 
 ---
 
