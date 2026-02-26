@@ -1538,6 +1538,117 @@ Mastery студента по concepts курса. Требует JWT.
 
 ---
 
+### Leaderboard
+
+Opt-in рейтинг студентов внутри курса. Студент должен сначала opt-in в курс, чтобы участвовать.
+
+#### `POST /leaderboards/courses/{course_id}/opt-in`
+
+Подписаться на leaderboard курса. Идемпотентно — повторный opt-in сохраняет score.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "course_id": "uuid",
+  "opted_in": true,
+  "score": 0
+}
+```
+
+#### `DELETE /leaderboards/courses/{course_id}/opt-in`
+
+Отписаться от leaderboard курса. Score сохраняется.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "course_id": "uuid",
+  "opted_in": false,
+  "score": 150
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Запись не найдена (не был opt-in) |
+
+#### `GET /leaderboards/courses/{course_id}`
+
+Получить рейтинг курса (только opted-in пользователи).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query:** `limit` (1-100, default 20), `offset` (>=0, default 0)
+
+**Response `200`:**
+```json
+{
+  "course_id": "uuid",
+  "entries": [
+    { "student_id": "uuid", "score": 200, "rank": 1 },
+    { "student_id": "uuid", "score": 150, "rank": 2 }
+  ],
+  "total": 42
+}
+```
+
+#### `GET /leaderboards/courses/{course_id}/me`
+
+Получить свою позицию в рейтинге курса.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "course_id": "uuid",
+  "score": 150,
+  "rank": 3,
+  "opted_in": true
+}
+```
+
+> Если opted_in=false, rank=0 (не участвует в рейтинге, но score сохранён).
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Запись не найдена |
+
+#### `POST /leaderboards/courses/{course_id}/score`
+
+Добавить баллы в leaderboard (для XP system и других сервисов).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Body:**
+```json
+{
+  "points": 20
+}
+```
+
+**Response `200`:**
+```json
+{
+  "course_id": "uuid",
+  "opted_in": true,
+  "score": 170
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Запись не найдена (не был opt-in) |
+
+---
+
 ## JWT Token Format
 
 ```json

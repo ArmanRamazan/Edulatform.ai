@@ -16,14 +16,17 @@ from app.repositories.quiz_repo import QuizRepository
 from app.repositories.flashcard_repo import FlashcardRepository
 from app.repositories.concept_repo import ConceptRepository
 from app.repositories.streak_repo import StreakRepository
+from app.repositories.leaderboard_repo import LeaderboardRepository
 from app.services.quiz_service import QuizService
 from app.services.flashcard_service import FlashcardService
 from app.services.concept_service import ConceptService
 from app.services.streak_service import StreakService
+from app.services.leaderboard_service import LeaderboardService
 from app.routes.quizzes import router as quizzes_router
 from app.routes.flashcards import router as flashcards_router
 from app.routes.concepts import router as concepts_router
 from app.routes.streaks import router as streaks_router
+from app.routes.leaderboard import router as leaderboard_router
 
 app_settings = Settings()
 
@@ -33,6 +36,7 @@ _quiz_service: QuizService | None = None
 _flashcard_service: FlashcardService | None = None
 _concept_service: ConceptService | None = None
 _streak_service: StreakService | None = None
+_leaderboard_service: LeaderboardService | None = None
 
 
 def get_quiz_service() -> QuizService:
@@ -55,9 +59,14 @@ def get_streak_service() -> StreakService:
     return _streak_service
 
 
+def get_leaderboard_service() -> LeaderboardService:
+    assert _leaderboard_service is not None
+    return _leaderboard_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service
+    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service
 
     _pool = await create_pool(
         app_settings.database_url,
@@ -76,6 +85,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/005_streaks.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/006_leaderboard.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
@@ -90,6 +101,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     streak_repo = StreakRepository(_pool)
     _streak_service = StreakService(streak_repo)
+
+    leaderboard_repo = LeaderboardRepository(_pool)
+    _leaderboard_service = LeaderboardService(leaderboard_repo)
     yield
     await _redis.aclose()
     await _pool.close()
@@ -114,6 +128,7 @@ app.include_router(quizzes_router)
 app.include_router(flashcards_router)
 app.include_router(concepts_router)
 app.include_router(streaks_router)
+app.include_router(leaderboard_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 

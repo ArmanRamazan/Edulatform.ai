@@ -48,7 +48,8 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: concepts
        ├── table: concept_prerequisites
        ├── table: concept_mastery
-       └── table: streaks
+       ├── table: streaks
+       └── table: leaderboard_entries
 ```
 
 ---
@@ -650,11 +651,31 @@ CREATE TABLE IF NOT EXISTS streaks (
 
 **Бизнес-логика:** Первая активность — создаёт запись (current=1). Повторный вызов в тот же день — no-op. Consecutive day — инкремент current_streak. Gap >1 дня — сброс current_streak до 1. longest_streak обновляется при каждом инкременте. GET /streaks/me возвращает current_streak=0, если last_activity_date раньше вчерашнего дня.
 
+### Таблица `leaderboard_entries`
+
+Opt-in leaderboard: рейтинг студентов внутри курса.
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, DEFAULT gen_random_uuid() | Уникальный ID записи |
+| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
+| `course_id` | UUID | NOT NULL | ID курса |
+| `score` | INT | NOT NULL, DEFAULT 0 | Накопленные баллы |
+| `opted_in` | BOOLEAN | NOT NULL, DEFAULT TRUE | Участвует ли в рейтинге |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Последнее обновление |
+
+**Constraints:** UNIQUE(student_id, course_id).
+
+**Индексы:** Partial index на (course_id, score DESC) WHERE opted_in = TRUE — для быстрого получения топ-N.
+
+**Бизнес-логика:** opt-in создаёт запись (score=0). Opt-out ставит opted_in=FALSE, score сохраняется. add_score инкрементирует score. Leaderboard показывает только opted_in=TRUE записи, ранжированные по score DESC.
+
 **Миграции:**
 - `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
 - `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
 - `003_concepts.sql` — создание таблиц concepts, concept_prerequisites, concept_mastery и индексов
 - `004_streaks.sql` — создание таблицы streaks
+- `006_leaderboard.sql` — создание таблицы leaderboard_entries с partial index
 
 ---
 
