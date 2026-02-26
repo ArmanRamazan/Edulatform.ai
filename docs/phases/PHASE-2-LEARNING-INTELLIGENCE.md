@@ -227,7 +227,7 @@ CREATE TABLE concept_mastery (
 | 2.4.2 | Streaks: daily activity counter (midnight reset) | ✅ |
 | 2.4.3 | Badges: first course, 7-day streak, quiz ace, 100% mastery | 🔴 |
 | 2.4.4 | Leaderboard per course (opt-in) | ✅ |
-| 2.4.5 | Course discussions: comments per lesson, upvotes | 🔴 |
+| 2.4.5 | Course discussions: comments per lesson, upvotes | ✅ |
 | 2.4.6 | Frontend: XP counter in header, streak flame, badge shelf | 🔴 |
 | 2.4.7 | Streak at risk notification (23:00 if no activity) | 🔴 |
 | 2.4.8 | Tests: XP calculation, streak logic, badge unlock | 🟡 (streak: 9 тестов) |

@@ -138,3 +138,17 @@ def mock_concept_repo():
 @pytest.fixture
 def concept_service(mock_concept_repo):
     return ConceptService(repo=mock_concept_repo)
+
+
+from app.repositories.discussion_repo import DiscussionRepository
+from app.services.discussion_service import DiscussionService
+
+
+@pytest.fixture
+def mock_discussion_repo():
+    return AsyncMock(spec=DiscussionRepository)
+
+
+@pytest.fixture
+def discussion_service(mock_discussion_repo):
+    return DiscussionService(repo=mock_discussion_repo)

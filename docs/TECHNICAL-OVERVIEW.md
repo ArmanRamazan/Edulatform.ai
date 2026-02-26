@@ -14,14 +14,14 @@
 | Payment Service | ✅ Готов | Mock-оплата, GET /me, GET /:id |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, credit tracking |
-| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph (concepts + prerequisites + mastery), 15 endpoints |
+| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), 20 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 245 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 30, learning 58 |
+| Unit Tests | ✅ 259 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 30, learning 72 |
 
 ## Стек
 
@@ -118,7 +118,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ├── services/py/payment/     — Payment: mock-оплата
 ├── services/py/notification/— Notifications: in-app, mark as read
 ├── services/py/ai/          — AI: quiz gen, summary, Socratic tutor, Gemini Flash, Redis cache, credit tracking
-├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, knowledge graph, concept mastery
+├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, knowledge graph, discussions
 ├── apps/buyer/              — Next.js frontend
 ├── deploy/docker/           — Dockerfiles, Prometheus, Grafana
 ├── tools/seed/              — Data generation (50K users, 100K courses, 200K enrollments)

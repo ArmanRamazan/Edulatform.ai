@@ -1649,6 +1649,135 @@ Opt-in рейтинг студентов внутри курса. Студент
 
 ---
 
+### POST /discussions/comments
+
+Создать комментарий к уроку (поддерживает ответы на комментарии).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request Body:**
+```json
+{
+  "lesson_id": "uuid",
+  "course_id": "uuid",
+  "content": "Great explanation!",
+  "parent_id": "uuid | null"
+}
+```
+
+**Response (201):**
+```json
+{
+  "id": "uuid",
+  "lesson_id": "uuid",
+  "course_id": "uuid",
+  "user_id": "uuid",
+  "content": "Great explanation!",
+  "parent_id": null,
+  "upvote_count": 0,
+  "created_at": "2025-01-01T00:00:00Z",
+  "updated_at": "2025-01-01T00:00:00Z"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | parent_id указан, но комментарий не найден |
+
+---
+
+### GET /discussions/lessons/{lesson_id}/comments
+
+Список комментариев к уроку (пагинация).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query:** `?limit=20&offset=0`
+
+**Response (200):**
+```json
+{
+  "comments": [
+    {
+      "id": "uuid",
+      "lesson_id": "uuid",
+      "course_id": "uuid",
+      "user_id": "uuid",
+      "content": "Great explanation!",
+      "parent_id": null,
+      "upvote_count": 3,
+      "created_at": "2025-01-01T00:00:00Z",
+      "updated_at": "2025-01-01T00:00:00Z"
+    }
+  ],
+  "total": 42
+}
+```
+
+---
+
+### PATCH /discussions/comments/{comment_id}
+
+Редактировать свой комментарий.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request Body:**
+```json
+{
+  "content": "Updated text"
+}
+```
+
+**Response (200):** CommentResponse (см. POST)
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Попытка редактировать чужой комментарий |
+| 404 | Комментарий не найден |
+
+---
+
+### DELETE /discussions/comments/{comment_id}
+
+Удалить свой комментарий (каскадно удаляет ответы).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response:** `204 No Content`
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Попытка удалить чужой комментарий |
+| 404 | Комментарий не найден |
+
+---
+
+### POST /discussions/comments/{comment_id}/upvote
+
+Toggle upvote на комментарий. Повторный вызов — снимает upvote.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response (200):**
+```json
+{
+  "comment_id": "uuid",
+  "upvoted": true,
+  "upvote_count": 4
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Комментарий не найден |
+
+---
+
 ## JWT Token Format
 
 ```json

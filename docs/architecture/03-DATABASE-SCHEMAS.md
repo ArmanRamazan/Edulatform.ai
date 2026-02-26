@@ -670,12 +670,41 @@ Opt-in leaderboard: рейтинг студентов внутри курса.
 
 **Бизнес-логика:** opt-in создаёт запись (score=0). Opt-out ставит opted_in=FALSE, score сохраняется. add_score инкрементирует score. Leaderboard показывает только opted_in=TRUE записи, ранжированные по score DESC.
 
+### comments
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| id | UUID PK | gen_random_uuid() |
+| lesson_id | UUID NOT NULL | Урок, к которому относится комментарий |
+| course_id | UUID NOT NULL | Курс |
+| user_id | UUID NOT NULL | Автор комментария |
+| content | TEXT NOT NULL | Текст комментария (1–5000 символов) |
+| parent_id | UUID NULL FK→comments(id) CASCADE | Ответ на комментарий |
+| upvote_count | INT NOT NULL DEFAULT 0 | Кэшированный счётчик upvotes |
+| created_at | TIMESTAMPTZ | DEFAULT now() |
+| updated_at | TIMESTAMPTZ | DEFAULT now() |
+
+**Индексы:** `idx_comments_lesson` (lesson_id, created_at DESC), `idx_comments_parent` (parent_id WHERE parent_id IS NOT NULL)
+
+### comment_votes
+
+| Колонка | Тип | Описание |
+|---------|-----|----------|
+| comment_id | UUID NOT NULL FK→comments(id) CASCADE | Комментарий |
+| user_id | UUID NOT NULL | Кто поставил upvote |
+| created_at | TIMESTAMPTZ | DEFAULT now() |
+
+**PK:** (comment_id, user_id) — один upvote от пользователя на комментарий.
+
+**Бизнес-логика:** Создание комментария любым авторизованным пользователем. Ответы через parent_id. Удаление каскадное (удаляет ответы и голоса). Upvote — toggle: повторный вызов снимает голос. upvote_count обновляется при add/remove vote.
+
 **Миграции:**
 - `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
 - `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
 - `003_concepts.sql` — создание таблиц concepts, concept_prerequisites, concept_mastery и индексов
 - `004_streaks.sql` — создание таблицы streaks
 - `006_leaderboard.sql` — создание таблицы leaderboard_entries с partial index
+- `007_discussions.sql` — создание таблиц comments, comment_votes с индексами
 
 ---
 
