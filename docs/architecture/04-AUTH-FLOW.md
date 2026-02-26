@@ -1,7 +1,7 @@
 # 04 — Authentication Flow
 
 > Последнее обновление: 2026-02-25
-> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
+> Стадия: Phase 2.3 (Knowledge Graph + Adaptive Path)
 
 ---
 
@@ -179,6 +179,14 @@ CREATE TABLE refresh_tokens (
 ### Notification Service
 
 **Authenticated:** `POST /notifications`, `GET /notifications/me`, `PATCH /notifications/{id}/read`
+
+### AI Service
+
+**Authenticated (любая роль):**
+- `POST /ai/quiz/generate` — генерация квиза из содержания урока
+- `POST /ai/summary/generate` — генерация краткого содержания
+- `POST /ai/tutor/chat` — Socratic AI-тьютор (чат по уроку, лимит 10/день)
+- `POST /ai/tutor/feedback` — оценка ответа тьютора (thumbs up/down)
 
 ### Learning Engine
 

@@ -119,12 +119,12 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 
 | # | Задача | Зачем | Статус |
 |---|--------|-------|--------|
-| 2.2.1 | Chat interface per lesson (ask questions about content) | Контекстная помощь | 🔴 |
-| 2.2.2 | Socratic prompt pipeline (Claude Haiku) | Наводящие вопросы вместо ответов | 🔴 |
-| 2.2.3 | Контекст: lesson content как RAG-источник | Тьютор знает материал урока | 🔴 |
-| 2.2.4 | Rate tutor response (thumbs up/down) | Улучшение промптов | 🔴 |
-| 2.2.5 | Frontend: chat drawer на странице урока | UX | 🔴 |
-| 2.2.6 | Тесты: tutor service, prompt pipeline | Качество | 🔴 |
+| 2.2.1 | Chat interface per lesson (ask questions about content) | Контекстная помощь | ✅ |
+| 2.2.2 | Socratic prompt pipeline (Gemini Flash) | Наводящие вопросы вместо ответов | ✅ |
+| 2.2.3 | Контекст: lesson content как RAG-источник | Тьютор знает материал урока | ✅ |
+| 2.2.4 | Rate tutor response (thumbs up/down) | Улучшение промптов | ✅ |
+| 2.2.5 | Frontend: chat drawer на странице урока | UX | ✅ |
+| 2.2.6 | Тесты: tutor service, prompt pipeline | Качество | ✅ |
 
 **Метрики:** questions asked/lesson, understanding score, NPS.
 **Evidence:** Socratic method → deeper conceptual understanding (Khanmigo model).
@@ -137,13 +137,13 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 
 | # | Задача | Зачем | Статус |
 |---|--------|-------|--------|
-| 2.3.1 | Concept model: knowledge points per course (teacher-defined) | Граф знаний курса | 🔴 |
-| 2.3.2 | Concept mastery tracking (per-student, 0.0→1.0) | Персональный уровень | 🔴 |
-| 2.3.3 | Adaptive pre-test: входной тест → определение уровня | Пропуск изученного | 🔴 |
-| 2.3.4 | Learning Velocity Dashboard: concepts/hour, тренд | Метакогниция | 🔴 |
-| 2.3.5 | Frontend: knowledge graph visualization (force-directed) | Визуальная карта знаний | 🔴 |
-| 2.3.6 | Teacher UI: тегирование concepts per lesson | Создание графа | 🔴 |
-| 2.3.7 | Тесты: concept CRUD, mastery, adaptive path | Качество | 🔴 |
+| 2.3.1 | Concept model: knowledge points per course (teacher-defined) | Граф знаний курса | ✅ |
+| 2.3.2 | Concept mastery tracking (per-student, 0.0→1.0) | Персональный уровень | ✅ |
+| 2.3.3 | Adaptive pre-test: входной тест → определение уровня | Пропуск изученного | 🔴 YAGNI |
+| 2.3.4 | Learning Velocity Dashboard: concepts/hour, тренд | Метакогниция | 🔴 YAGNI |
+| 2.3.5 | Frontend: mastery progress + teacher concept management | Визуальная карта знаний | ✅ |
+| 2.3.6 | Teacher UI: concept CRUD + prerequisites per course | Создание графа | ✅ |
+| 2.3.7 | Тесты: concept CRUD, mastery, quiz integration | Качество | ✅ |
 
 **Метрики:** time-to-competency, concepts mastered/week, skip rate.
 **Evidence:** Squirrel AI knowledge graph (10K+ points) → TIME Best Invention 2025.

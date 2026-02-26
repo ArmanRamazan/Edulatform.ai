@@ -1,7 +1,7 @@
 # 03 — Database Schemas
 
 > Последнее обновление: 2026-02-25
-> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
+> Стадия: Phase 2.3 (Knowledge Graph + Adaptive Path)
 
 ---
 
@@ -44,7 +44,10 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: questions
        ├── table: quiz_attempts
        ├── table: flashcards
-       └── table: review_logs
+       ├── table: review_logs
+       ├── table: concepts
+       ├── table: concept_prerequisites
+       └── table: concept_mastery
 ```
 
 ---
@@ -487,6 +490,7 @@ CREATE TABLE IF NOT EXISTS quiz_attempts (
 **Миграции:**
 - `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
 - `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
+- `003_concepts.sql` — создание таблиц concepts, concept_prerequisites, concept_mastery и индексов
 
 ### Table: `flashcards`
 
@@ -551,6 +555,80 @@ CREATE TABLE IF NOT EXISTS review_logs (
 | `reviewed_at` | TIMESTAMPTZ | DEFAULT now() | Время повторения |
 
 **Индексы:** PK (id) + idx_review_logs_card (card_id).
+
+### Table: `concepts`
+
+```sql
+CREATE TABLE IF NOT EXISTS concepts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id UUID NOT NULL,
+    lesson_id UUID,
+    name VARCHAR(200) NOT NULL,
+    description TEXT DEFAULT '',
+    parent_id UUID REFERENCES concepts(id) ON DELETE SET NULL,
+    "order" INT DEFAULT 0,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(course_id, name)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `course_id` | UUID | NOT NULL | ID курса (из Course Service) |
+| `lesson_id` | UUID | nullable | ID урока, к которому привязан concept |
+| `name` | VARCHAR(200) | NOT NULL | Название concept (уникально в рамках курса) |
+| `description` | TEXT | DEFAULT '' | Описание concept |
+| `parent_id` | UUID | nullable, FK → concepts(id) SET NULL | Родительский concept (иерархия) |
+| `"order"` | INT | DEFAULT 0 | Порядок отображения |
+| `created_at` | TIMESTAMPTZ | DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + UNIQUE (course_id, name).
+
+### Table: `concept_prerequisites`
+
+```sql
+CREATE TABLE IF NOT EXISTS concept_prerequisites (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    concept_id UUID NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+    prerequisite_id UUID NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+    UNIQUE(concept_id, prerequisite_id),
+    CHECK(concept_id != prerequisite_id)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `concept_id` | UUID | FK → concepts(id) CASCADE, NOT NULL | Concept, который требует prerequisite |
+| `prerequisite_id` | UUID | FK → concepts(id) CASCADE, NOT NULL | Prerequisite concept |
+
+**Индексы:** PK (id) + UNIQUE (concept_id, prerequisite_id). CHECK constraint запрещает self-reference.
+
+### Table: `concept_mastery`
+
+```sql
+CREATE TABLE IF NOT EXISTS concept_mastery (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    student_id UUID NOT NULL,
+    concept_id UUID NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+    mastery FLOAT DEFAULT 0.0,
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(student_id, concept_id)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
+| `concept_id` | UUID | FK → concepts(id) CASCADE, NOT NULL | Concept |
+| `mastery` | FLOAT | DEFAULT 0.0 | Уровень владения (0.0–1.0) |
+| `updated_at` | TIMESTAMPTZ | DEFAULT now() | Последнее обновление |
+
+**Индексы:** PK (id) + UNIQUE (student_id, concept_id).
+
+**Mastery algorithm:** при сдаче квиза (QuizService.submit_quiz) mastery обновляется автоматически: `mastery += score × 0.3`, capped at 1.0. Обновляются все concepts, привязанные к lesson_id квиза.
 
 ---
 

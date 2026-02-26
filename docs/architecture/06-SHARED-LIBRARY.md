@@ -1,7 +1,7 @@
 # 06 — Shared Library (common)
 
 > Последнее обновление: 2026-02-25
-> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
+> Стадия: Phase 2.3 (Knowledge Graph + Adaptive Path)
 
 ---
 

@@ -1,7 +1,7 @@
 # 02 — API Reference
 
 > Последнее обновление: 2026-02-25
-> Стадия: Phase 2.1 (Spaced Repetition + Flashcards)
+> Стадия: Phase 2.3 (Knowledge Graph + Adaptive Path)
 
 ---
 
@@ -885,6 +885,136 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+## AI Service (`:8006`)
+
+### POST /ai/quiz/generate
+
+Генерация квиза из содержания урока через Gemini Flash. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
+  "content": "Текст урока (min 10, max 50000 символов)"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "lesson_id": "...",
+  "questions": [
+    {
+      "text": "Вопрос?",
+      "options": ["A", "B", "C", "D"],
+      "correct_index": 1,
+      "explanation": "Объяснение"
+    }
+  ],
+  "model_used": "gemini-2.0-flash-lite",
+  "cached": false
+}
+```
+
+---
+
+### POST /ai/summary/generate
+
+Генерация краткого содержания урока. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
+  "content": "Текст урока (min 10, max 50000 символов)"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "lesson_id": "...",
+  "summary": "Краткое содержание...",
+  "model_used": "gemini-2.0-flash-lite",
+  "cached": true
+}
+```
+
+---
+
+### POST /ai/tutor/chat
+
+Сократический AI-тьютор. Отправка сообщения в контексте урока. AI не даёт прямых ответов — задаёт наводящие вопросы. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
+  "message": "Что такое переменная?",
+  "lesson_content": "Текст урока (min 10, max 50000 символов)",
+  "session_id": null
+}
+```
+
+> `session_id` — `null` для нового диалога, строка для продолжения существующего.
+
+**Response `200`:**
+```json
+{
+  "session_id": "uuid-строка",
+  "message": "Хороший вопрос! Как ты думаешь, что происходит когда ты присваиваешь значение имени?",
+  "model_used": "gemini-2.0-flash-lite",
+  "credits_remaining": 9
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Дневной лимит чатов исчерпан (10/день) |
+
+---
+
+### POST /ai/tutor/feedback
+
+Оценка ответа тьютора (thumbs up/down). Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "session_id": "uuid-строка",
+  "message_index": 1,
+  "rating": 1
+}
+```
+
+> `rating`: -1 (плохо), 0 (нейтрально), 1 (хорошо)
+
+**Response `200`:**
+```json
+{
+  "status": "ok"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Невалидный message_index |
+| 401 | Отсутствует или невалидный токен |
+| 404 | Сессия не найдена |
+
+---
+
 ## Learning Engine Service (`:8007`)
 
 ### POST /quizzes
@@ -1180,6 +1310,186 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### POST /concepts
+
+Создать concept (знание) для курса. Только для **verified teacher**.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "course_id": "660e8400-e29b-41d4-a716-446655440000",
+  "name": "Variables",
+  "description": "Understanding variables and assignment",
+  "lesson_id": null,
+  "parent_id": null,
+  "order": 0
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "...",
+  "course_id": "...",
+  "lesson_id": null,
+  "name": "Variables",
+  "description": "Understanding variables and assignment",
+  "parent_id": null,
+  "order": 0,
+  "created_at": "2026-02-25T12:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != teacher` или `is_verified == false` |
+| 409 | Concept с таким именем уже существует в курсе (UNIQUE constraint) |
+
+---
+
+### PUT /concepts/{concept_id}
+
+Обновить concept. Только для **verified teacher**.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:** Все поля опциональны.
+```json
+{
+  "name": "Updated Name",
+  "description": "New description",
+  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
+  "parent_id": null,
+  "order": 1
+}
+```
+
+**Response `200`:** Объект `Concept`.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Не verified teacher |
+| 404 | Concept не найден |
+
+---
+
+### DELETE /concepts/{concept_id}
+
+Удалить concept. Только для **verified teacher**.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `204`:** No content.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Не verified teacher |
+| 404 | Concept не найден |
+
+---
+
+### POST /concepts/{concept_id}/prerequisites
+
+Добавить prerequisite связь между concepts (в рамках одного курса). Только для **verified teacher**.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "prerequisite_id": "770e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Response `201`:** `{"status": "ok"}`
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Не verified teacher или concepts из разных курсов |
+| 404 | Concept или prerequisite не найден |
+
+---
+
+### DELETE /concepts/{concept_id}/prerequisites/{prerequisite_id}
+
+Удалить prerequisite связь. Только для **verified teacher**.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `204`:** No content.
+
+---
+
+### GET /concepts/course/{course_id}
+
+Knowledge graph курса: все concepts с prerequisite связями. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "course_id": "...",
+  "concepts": [
+    {
+      "id": "...",
+      "course_id": "...",
+      "lesson_id": null,
+      "name": "Variables",
+      "description": "...",
+      "parent_id": null,
+      "order": 0,
+      "created_at": "...",
+      "prerequisites": []
+    },
+    {
+      "id": "...",
+      "course_id": "...",
+      "lesson_id": null,
+      "name": "Functions",
+      "description": "...",
+      "parent_id": null,
+      "order": 1,
+      "created_at": "...",
+      "prerequisites": ["<variables-concept-id>"]
+    }
+  ]
+}
+```
+
+---
+
+### GET /concepts/mastery/course/{course_id}
+
+Mastery студента по concepts курса. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "course_id": "...",
+  "items": [
+    {
+      "concept_id": "...",
+      "name": "Variables",
+      "mastery": 0.75
+    }
+  ]
+}
+```
+
+> `mastery` — значение 0.0–1.0. Обновляется автоматически при сдаче квиза (score × 0.3).
+
+---
+
 ## JWT Token Format
 
 ```json
@@ -1205,7 +1515,7 @@ Mock оплата курса. Всегда возвращает `status=complete
 - Алгоритм: **HS256**
 - Shared secret: `JWT_SECRET` env var (одинаковый для всех сервисов)
 - TTL: 1 час (3600 секунд)
-- Все 6 сервисов валидируют JWT самостоятельно, без обращения к Identity
+- Все 7 сервисов валидируют JWT самостоятельно, без обращения к Identity
 
 ---
 
@@ -1220,6 +1530,7 @@ Mock оплата курса. Всегда возвращает `status=complete
 | `/api/enrollment/*` | `http://localhost:8003/*` |
 | `/api/payment/*` | `http://localhost:8004/*` |
 | `/api/notification/*` | `http://localhost:8005/*` |
+| `/api/ai/*` | `http://localhost:8006/*` |
 | `/api/learning/*` | `http://localhost:8007/*` |
 
 ---

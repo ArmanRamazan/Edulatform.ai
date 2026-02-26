@@ -239,6 +239,44 @@ export interface ReviewResponse {
   new_state: number;
 }
 
+export interface TutorChatResponse {
+  session_id: string;
+  message: string;
+  model_used: string;
+  credits_remaining: number;
+}
+
+export interface TutorFeedbackResponse {
+  status: string;
+}
+
+export interface ConceptData {
+  id: string;
+  course_id: string;
+  lesson_id: string | null;
+  name: string;
+  description: string;
+  parent_id: string | null;
+  order: number;
+  created_at: string;
+  prerequisites: string[];
+}
+
+export interface CourseGraphResponse {
+  concepts: ConceptData[];
+}
+
+export interface MasteryItem {
+  concept_id: string;
+  concept_name: string;
+  mastery: number;
+}
+
+export interface CourseMasteryResponse {
+  course_id: string;
+  items: MasteryItem[];
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
   if (!res.ok) {
@@ -246,6 +284,14 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
     throw new Error(body.detail || `HTTP ${res.status}`);
   }
   return res.json() as Promise<T>;
+}
+
+async function requestVoid(url: string, options?: RequestInit): Promise<void> {
+  const res = await fetch(url, options);
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(body.detail || `HTTP ${res.status}`);
+  }
 }
 
 function authHeaders(token: string): HeadersInit {
@@ -306,25 +352,23 @@ export const identity = {
     });
   },
   resendVerification(token: string) {
-    return fetch(`${IDENTITY_URL}/resend-verification`, {
+    return requestVoid(`${IDENTITY_URL}/resend-verification`, {
       method: "POST",
       headers: authHeaders(token),
     });
   },
   forgotPassword(email: string) {
-    return fetch(`${IDENTITY_URL}/forgot-password`, {
+    return requestVoid(`${IDENTITY_URL}/forgot-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ email }),
     });
   },
   resetPassword(token: string, new_password: string) {
-    return fetch(`${IDENTITY_URL}/reset-password`, {
+    return requestVoid(`${IDENTITY_URL}/reset-password`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ token, new_password }),
-    }).then((res) => {
-      if (!res.ok) return res.json().then((b) => { throw new Error(b.detail || "Error"); });
     });
   },
 };
@@ -417,7 +461,7 @@ export const modules = {
     });
   },
   delete(token: string, moduleId: string) {
-    return fetch(`${COURSE_URL}/modules/${moduleId}`, {
+    return requestVoid(`${COURSE_URL}/modules/${moduleId}`, {
       method: "DELETE",
       headers: authHeaders(token),
     });
@@ -455,7 +499,7 @@ export const lessons = {
     });
   },
   delete(token: string, lessonId: string) {
-    return fetch(`${COURSE_URL}/lessons/${lessonId}`, {
+    return requestVoid(`${COURSE_URL}/lessons/${lessonId}`, {
       method: "DELETE",
       headers: authHeaders(token),
     });
@@ -592,6 +636,29 @@ export const ai = {
       body: JSON.stringify({ lesson_id: lessonId, content }),
     });
   },
+  tutorChat(token: string, data: {
+    lesson_id: string;
+    message: string;
+    lesson_content: string;
+    session_id?: string;
+  }) {
+    return request<TutorChatResponse>(`${AI_URL}/ai/tutor/chat`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  tutorFeedback(token: string, data: {
+    session_id: string;
+    message_index: number;
+    rating: number;
+  }) {
+    return request<TutorFeedbackResponse>(`${AI_URL}/ai/tutor/feedback`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
 };
 
 export const quizzes = {
@@ -646,9 +713,49 @@ export const flashcards = {
     });
   },
   delete(token: string, cardId: string) {
-    return fetch(`${LEARNING_URL}/flashcards/${cardId}`, {
+    return requestVoid(`${LEARNING_URL}/flashcards/${cardId}`, {
       method: "DELETE",
       headers: authHeaders(token),
+    });
+  },
+};
+
+export const concepts = {
+  getCourseGraph(token: string, courseId: string) {
+    return request<CourseGraphResponse>(`${LEARNING_URL}/concepts/course/${courseId}`, {
+      headers: authHeaders(token),
+    });
+  },
+  getCourseMastery(token: string, courseId: string) {
+    return request<CourseMasteryResponse>(`${LEARNING_URL}/concepts/mastery/course/${courseId}`, {
+      headers: authHeaders(token),
+    });
+  },
+  create(token: string, data: { course_id: string; name: string; description?: string; lesson_id?: string; parent_id?: string; order?: number }) {
+    return request<ConceptData>(`${LEARNING_URL}/concepts`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  update(token: string, conceptId: string, data: { name?: string; description?: string; lesson_id?: string; parent_id?: string; order?: number }) {
+    return request<ConceptData>(`${LEARNING_URL}/concepts/${conceptId}`, {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  delete(token: string, conceptId: string) {
+    return requestVoid(`${LEARNING_URL}/concepts/${conceptId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+  },
+  addPrerequisite(token: string, conceptId: string, prerequisiteId: string) {
+    return request<{ status: string }>(`${LEARNING_URL}/concepts/${conceptId}/prerequisites`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ prerequisite_id: prerequisiteId }),
     });
   },
 };

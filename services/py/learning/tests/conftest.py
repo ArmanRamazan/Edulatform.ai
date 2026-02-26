@@ -108,3 +108,33 @@ def mock_flashcard_repo():
 @pytest.fixture
 def flashcard_service(mock_flashcard_repo):
     return FlashcardService(repo=mock_flashcard_repo)
+
+
+from app.domain.concept import Concept
+from app.repositories.concept_repo import ConceptRepository
+from app.services.concept_service import ConceptService
+
+
+@pytest.fixture
+def concept_id():
+    return uuid4()
+
+
+@pytest.fixture
+def sample_concept(concept_id, course_id, lesson_id):
+    return Concept(
+        id=concept_id, course_id=course_id, lesson_id=lesson_id,
+        name="Variables", description="Understanding variables",
+        parent_id=None, order=0,
+        created_at=datetime.now(timezone.utc),
+    )
+
+
+@pytest.fixture
+def mock_concept_repo():
+    return AsyncMock(spec=ConceptRepository)
+
+
+@pytest.fixture
+def concept_service(mock_concept_repo):
+    return ConceptService(repo=mock_concept_repo)

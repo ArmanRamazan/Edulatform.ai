@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import asyncpg
@@ -8,10 +10,18 @@ from common.errors import ConflictError, ForbiddenError, NotFoundError
 from app.domain.quiz import Quiz, Question, QuizAttempt, QuestionResult
 from app.repositories.quiz_repo import QuizRepository
 
+if TYPE_CHECKING:
+    from app.services.concept_service import ConceptService
+
+logger = logging.getLogger(__name__)
+
 
 class QuizService:
-    def __init__(self, repo: QuizRepository) -> None:
+    def __init__(
+        self, repo: QuizRepository, concept_service: ConceptService | None = None
+    ) -> None:
         self._repo = repo
+        self._concept_service = concept_service
 
     async def create_quiz(
         self,
@@ -80,6 +90,17 @@ class QuizService:
         attempt = await self._repo.create_attempt(
             quiz_id=quiz_id, student_id=student_id, answers=answers, score=score,
         )
+
+        if self._concept_service is not None:
+            try:
+                await self._concept_service.update_mastery_for_lesson(
+                    student_id=student_id,
+                    lesson_id=quiz.lesson_id,
+                    score_delta=score * 0.3,
+                )
+            except Exception:
+                logger.warning("Failed to update mastery for quiz %s", quiz_id)
+
         return attempt, results
 
     async def list_my_attempts(

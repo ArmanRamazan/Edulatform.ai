@@ -31,7 +31,7 @@ eduplatform/
 │   │   ├── payment/               #   Mock-оплата
 │   │   ├── notification/          #   In-app уведомления
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
-│   │   └── learning/              #   Quiz persistence, flashcards (FSRS spaced repetition), scoring
+│   │   └── learning/              #   Quiz persistence, flashcards (FSRS spaced repetition), scoring, knowledge graph (concepts + mastery)
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Routing, auth check, rate limiting
 │       ├── search/                #   Поисковый proxy + ranking
@@ -163,6 +163,7 @@ apps/{app}/
 │   ├── Header.tsx         #     Навигация, auth state, email verification banner
 │   ├── Providers.tsx      #     QueryClientProvider (TanStack Query)
 │   ├── CourseCardSkeleton.tsx  #  Loading skeleton для курсов
+│   ├── TutorDrawer.tsx    #     Slide-out chat panel для AI-тьютора на уроке
 │   └── ...                #     Используют packages/ui как основу
 ├── hooks/                 #   Custom React hooks (TanStack Query)
 │   ├── use-auth.ts        #     Login/register/logout (не server state)
@@ -173,6 +174,8 @@ apps/{app}/
 │   ├── use-notifications.ts #   useMyNotifications, useMarkRead (optimistic)
 │   ├── use-quiz.ts        #     useQuiz, useSubmitQuiz, useMyAttempts
 │   ├── use-ai.ts          #     useGenerateQuiz, useSummary
+│   ├── use-tutor.ts       #     useTutorChat, useTutorFeedback
+│   ├── use-concepts.ts    #     useCourseGraph, useCourseMastery, useCreateConcept, useDeleteConcept
 │   └── use-flashcards.ts  #     useDueCards, useDueCount, useReviewCard, useCreateFlashcard
 ├── lib/                   #   API вызовы, утилиты, конфиг
 ├── public/                #   Статика (favicon, robots.txt)
