@@ -11,6 +11,7 @@ import {
   type Lesson,
 } from "@/lib/api";
 import { Header } from "@/components/Header";
+import { getErrorMessage } from "@/lib/errors";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function EditCoursePage({ params }: { params: Promise<{ id: string }> }) {
@@ -72,7 +73,7 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
       setCourse(updated);
       setMessage("Сохранено");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(getErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -88,7 +89,7 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
       setNewModuleTitle("");
       loadCurriculum();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(getErrorMessage(e));
     }
   }
 
@@ -98,7 +99,7 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
       await modulesApi.delete(token, moduleId);
       loadCurriculum();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(getErrorMessage(e));
     }
   }
 
@@ -116,7 +117,7 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
       setAddingLessonTo(null);
       loadCurriculum();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(getErrorMessage(e));
     }
   }
 
@@ -126,7 +127,7 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
       await lessonsApi.delete(token, lessonId);
       loadCurriculum();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(getErrorMessage(e));
     }
   }
 
@@ -146,7 +147,7 @@ export default function EditCoursePage({ params }: { params: Promise<{ id: strin
       setEditingLesson(null);
       loadCurriculum();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка");
+      setError(getErrorMessage(e));
     }
   }
 

@@ -4,6 +4,7 @@ import { Suspense, useState, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { identity as identityApi } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 import { Header } from "@/components/Header";
 
 function VerifyEmailContent() {
@@ -23,7 +24,7 @@ function VerifyEmailContent() {
       .then(() => setStatus("success"))
       .catch((e) => {
         setStatus("error");
-        setError(e instanceof Error ? e.message : "Ошибка верификации");
+        setError(getErrorMessage(e, "Ошибка верификации"));
       });
   }, [token]);
 

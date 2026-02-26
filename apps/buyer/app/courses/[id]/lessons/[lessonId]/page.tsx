@@ -10,6 +10,8 @@ import { useCurriculum } from "@/hooks/use-courses";
 import { useCompletedLessons, useCompleteLesson } from "@/hooks/use-progress";
 import { useQuiz, useSubmitQuiz } from "@/hooks/use-quiz";
 import { useSummary } from "@/hooks/use-ai";
+import { TutorDrawer } from "@/components/TutorDrawer";
+import { getErrorMessage } from "@/lib/errors";
 import type { QuizQuestionResult } from "@/lib/api";
 
 export default function LessonPage({
@@ -44,6 +46,7 @@ export default function LessonPage({
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [quizResults, setQuizResults] = useState<QuizQuestionResult[] | null>(null);
   const [quizScore, setQuizScore] = useState<number | null>(null);
+  const [tutorOpen, setTutorOpen] = useState(false);
 
   const submitQuiz = useSubmitQuiz(token, quizData?.id ?? "");
 
@@ -119,7 +122,7 @@ export default function LessonPage({
         <main className="min-w-0 flex-1">
           {error ? (
             <div className="rounded bg-red-50 p-4 text-red-600">
-              {error instanceof Error ? error.message : "Ошибка"}
+              {getErrorMessage(error)}
             </div>
           ) : !lesson ? (
             <p className="text-gray-400">Загрузка...</p>
@@ -133,6 +136,7 @@ export default function LessonPage({
                     src={lesson.video_url}
                     className="h-full w-full rounded"
                     allowFullScreen
+                    title="Видео урока"
                   />
                 </div>
               )}
@@ -237,6 +241,19 @@ export default function LessonPage({
                 </div>
               )}
 
+              {/* Tutor button */}
+              {token && (
+                <div className="mb-4 flex items-center gap-2 rounded-lg border border-teal-100 bg-teal-50 p-3">
+                  <span className="text-sm text-teal-700">Не понимаете материал?</span>
+                  <button
+                    onClick={() => setTutorOpen(true)}
+                    className="rounded bg-teal-600 px-3 py-1.5 text-sm text-white hover:bg-teal-700"
+                  >
+                    Спросить AI-тьютора
+                  </button>
+                </div>
+              )}
+
               <div className="flex items-center gap-3 border-t border-gray-100 pt-4">
                 {completed ? (
                   <span className="rounded bg-green-100 px-3 py-1.5 text-sm text-green-700">
@@ -283,6 +300,16 @@ export default function LessonPage({
         </main>
       </div>
       </div>
+
+      {token && lesson && (
+        <TutorDrawer
+          open={tutorOpen}
+          onClose={() => setTutorOpen(false)}
+          token={token}
+          lessonId={lessonId}
+          lessonContent={lesson.content}
+        />
+      )}
     </>
   );
 }

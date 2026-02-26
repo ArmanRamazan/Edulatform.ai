@@ -9,6 +9,8 @@ import { useCourse, useCurriculum } from "@/hooks/use-courses";
 import { useMyEnrollments, useEnrollmentCount, useEnroll } from "@/hooks/use-enrollments";
 import { useCourseReviews, useCreateReview } from "@/hooks/use-reviews";
 import { useCourseProgress, useCompletedLessons } from "@/hooks/use-progress";
+import { useCourseMastery } from "@/hooks/use-concepts";
+import { getErrorMessage } from "@/lib/errors";
 
 const LEVEL_LABELS: Record<string, string> = {
   beginner: "Начальный",
@@ -51,6 +53,8 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   );
   const completedLessonIds = new Set(completedData?.completed_lesson_ids ?? []);
 
+  const { data: masteryData } = useCourseMastery(enrolled ? token : null, id);
+
   const enroll = useEnroll(token);
   const [enrolling, setEnrolling] = useState(false);
   const [error, setError] = useState("");
@@ -83,7 +87,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
         body: course.is_free ? "Бесплатная запись" : `Оплата: $${course.price}`,
       });
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка записи");
+      setError(getErrorMessage(e, "Ошибка записи"));
     } finally {
       setEnrolling(false);
     }
@@ -96,7 +100,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
     );
   }
 
-  const displayError = error || (courseError instanceof Error ? courseError.message : courseError ? "Ошибка" : "");
+  const displayError = error || (courseError ? getErrorMessage(courseError) : "");
 
   return (
     <>
@@ -266,6 +270,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
                       <button
                         key={n}
                         onClick={() => setReviewRating(n)}
+                        aria-label={`Оценка ${n} из 5`}
                         className={`text-lg ${n <= reviewRating ? "text-yellow-500" : "text-gray-300"}`}
                       >
                         ★
@@ -281,7 +286,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
                   />
                   {createReview.error && (
                     <p className="mb-2 text-sm text-red-500">
-                      {createReview.error instanceof Error ? createReview.error.message : "Ошибка"}
+                      {getErrorMessage(createReview.error)}
                     </p>
                   )}
                   <button
@@ -314,6 +319,29 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
                 </ul>
               )}
             </div>
+
+            {/* Knowledge Mastery */}
+            {token && masteryData && masteryData.items.length > 0 && (
+              <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
+                <h2 className="mb-4 text-lg font-semibold">Ваш прогресс по темам</h2>
+                <div className="space-y-3">
+                  {masteryData.items.map((item) => (
+                    <div key={item.concept_id}>
+                      <div className="mb-1 flex justify-between text-sm">
+                        <span className="text-gray-700">{item.concept_name}</span>
+                        <span className="text-gray-500">{Math.round(item.mastery * 100)}%</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-gray-200">
+                        <div
+                          className="h-2 rounded-full bg-blue-600 transition-all"
+                          style={{ width: `${Math.round(item.mastery * 100)}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </>
         )}
       </main>

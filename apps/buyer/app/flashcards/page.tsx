@@ -73,6 +73,9 @@ export default function FlashcardsPage() {
 
             <div
               onClick={!flipped ? handleFlip : undefined}
+              onKeyDown={!flipped ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); handleFlip(); } } : undefined}
+              role="button"
+              tabIndex={0}
               className={`min-h-[200px] rounded-xl border-2 p-8 ${
                 flipped
                   ? "border-purple-200 bg-purple-50"

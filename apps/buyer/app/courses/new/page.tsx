@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { courses } from "@/lib/api";
 import { useAuth } from "@/hooks/use-auth";
+import { getErrorMessage } from "@/lib/errors";
 import { Header } from "@/components/Header";
 
 export default function NewCoursePage() {
@@ -58,7 +59,7 @@ export default function NewCoursePage() {
       });
       router.push(`/courses/${course.id}/edit`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create");
+      setError(getErrorMessage(err, "Failed to create"));
     } finally {
       setSubmitting(false);
     }

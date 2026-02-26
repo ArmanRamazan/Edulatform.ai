@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Header } from "@/components/Header";
 import { CourseCard } from "@/components/CourseCard";
 import { useCourseList, useCategories } from "@/hooks/use-courses";
+import { getErrorMessage } from "@/lib/errors";
 
 export default function HomePage() {
   const [query, setQuery] = useState("");
@@ -33,7 +34,9 @@ export default function HomePage() {
       <Header />
       <main className="mx-auto max-w-6xl px-4 py-6">
         <form onSubmit={handleSearch} className="mb-4 flex gap-2">
+          <label htmlFor="search-input" className="sr-only">Поиск курсов</label>
           <input
+            id="search-input"
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -49,7 +52,9 @@ export default function HomePage() {
         </form>
 
         <div className="mb-6 flex flex-wrap items-center gap-3">
+          <label htmlFor="category-select" className="sr-only">Категория</label>
           <select
+            id="category-select"
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
@@ -60,7 +65,9 @@ export default function HomePage() {
             ))}
           </select>
 
+          <label htmlFor="level-select" className="sr-only">Уровень</label>
           <select
+            id="level-select"
             value={level}
             onChange={(e) => setLevel(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
@@ -81,7 +88,9 @@ export default function HomePage() {
             <option value="false">Платные</option>
           </select>
 
+          <label htmlFor="sort-select" className="sr-only">Сортировка</label>
           <select
+            id="sort-select"
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
             className="rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none"
@@ -94,7 +103,7 @@ export default function HomePage() {
 
         {error ? (
           <div className="mb-4 rounded bg-red-50 p-3 text-sm text-red-600">
-            {error instanceof Error ? error.message : "Ошибка загрузки"}
+            {getErrorMessage(error, "Ошибка загрузки")}
           </div>
         ) : isLoading ? (
           <p className="text-center text-gray-400">Загрузка...</p>

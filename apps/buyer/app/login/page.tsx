@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { getErrorMessage } from "@/lib/errors";
 import { Header } from "@/components/Header";
 
 export default function LoginPage() {
@@ -22,7 +23,7 @@ export default function LoginPage() {
       await login(email, password);
       router.push("/");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Login failed");
+      setError(getErrorMessage(err, "Login failed"));
     } finally {
       setSubmitting(false);
     }

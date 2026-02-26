@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
+import { getErrorMessage } from "@/lib/errors";
 import { Header } from "@/components/Header";
 
 export default function RegisterPage() {
@@ -25,7 +26,7 @@ export default function RegisterPage() {
       await register(email, password, name, role);
       setRegistered(true);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Registration failed");
+      setError(getErrorMessage(err, "Registration failed"));
     } finally {
       setSubmitting(false);
     }

@@ -4,6 +4,7 @@ import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { identity as identityApi } from "@/lib/api";
+import { getErrorMessage } from "@/lib/errors";
 import { Header } from "@/components/Header";
 
 function ResetPasswordContent() {
@@ -31,7 +32,7 @@ function ResetPasswordContent() {
       await identityApi.resetPassword(token, password);
       setStatus("success");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка сброса пароля");
+      setError(getErrorMessage(err, "Ошибка сброса пароля"));
       setStatus("error");
     } finally {
       setSubmitting(false);
