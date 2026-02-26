@@ -885,6 +885,33 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### POST /notifications/streak-reminders/send
+
+Отправить streak-reminder уведомления пользователям, которые не занимались сегодня. Требует JWT с ролью `admin`. Пропускает пользователей, у которых уже есть непрочитанный streak_reminder.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Request:**
+```json
+{
+  "user_ids": ["uuid1", "uuid2"]
+}
+```
+
+**Response `200`:**
+```json
+{
+  "sent_count": 2
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Не админ |
+
+---
+
 ## AI Service (`:8006`)
 
 ### POST /ai/quiz/generate
@@ -1535,6 +1562,26 @@ Mastery студента по concepts курса. Требует JWT.
 | Code | Причина |
 |------|---------|
 | 401 | Отсутствует или невалидный токен |
+
+---
+
+### GET /streaks/at-risk
+
+Список user_id с активными streak, которые не занимались сегодня (last_activity = вчера). Для cron-job, вызывающего streak-reminder. Требует JWT с ролью `admin`.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Response `200`:**
+```json
+{
+  "user_ids": ["uuid1", "uuid2"]
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Не админ |
 
 ---
 

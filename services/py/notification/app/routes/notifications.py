@@ -4,11 +4,13 @@ from uuid import UUID
 import jwt
 from fastapi import APIRouter, Depends, Header, Query
 
-from common.errors import AppError
+from common.errors import AppError, ForbiddenError
 from app.domain.notification import (
     NotificationCreate,
     NotificationResponse,
     NotificationListResponse,
+    StreakReminderRequest,
+    StreakReminderResponse,
 )
 from app.services.notification_service import NotificationService
 
@@ -89,3 +91,15 @@ async def mark_as_read(
 ) -> NotificationResponse:
     notification = await service.mark_as_read(notification_id, claims["user_id"])
     return _to_response(notification)
+
+
+@router.post("/streak-reminders/send", response_model=StreakReminderResponse)
+async def send_streak_reminders(
+    body: StreakReminderRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[NotificationService, Depends(_get_notification_service)],
+) -> StreakReminderResponse:
+    if claims["role"] != "admin":
+        raise ForbiddenError("Only admins can send streak reminders")
+    sent_count = await service.send_streak_reminders(body.user_ids)
+    return StreakReminderResponse(sent_count=sent_count)

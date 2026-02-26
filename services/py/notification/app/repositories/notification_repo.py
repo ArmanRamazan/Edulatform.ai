@@ -61,6 +61,19 @@ class NotificationRepository:
         )
         return self._to_entity(row) if row else None
 
+    async def has_unread_by_type(
+        self, user_id: UUID, type: NotificationType,
+    ) -> bool:
+        count = await self._pool.fetchval(
+            """
+            SELECT count(*) FROM notifications
+            WHERE user_id = $1 AND type = $2 AND is_read = false
+            """,
+            user_id,
+            type,
+        )
+        return count > 0
+
     async def mark_as_read(self, notification_id: UUID) -> Notification | None:
         row = await self._pool.fetchrow(
             """

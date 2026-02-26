@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date, timedelta
 from uuid import UUID
 
 import asyncpg
@@ -40,6 +41,18 @@ class StreakRepository:
             user_id, current_streak, longest_streak,
         )
         return self._to_streak(row)
+
+    async def get_at_risk_user_ids(self, today: date) -> list[UUID]:
+        yesterday = today - timedelta(days=1)
+        rows = await self._pool.fetch(
+            """
+            SELECT user_id FROM streaks
+            WHERE last_activity_date = $1
+              AND current_streak >= 1
+            """,
+            yesterday,
+        )
+        return [row["user_id"] for row in rows]
 
     @staticmethod
     def _to_streak(row: asyncpg.Record) -> Streak:

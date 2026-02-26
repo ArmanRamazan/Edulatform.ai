@@ -37,6 +37,9 @@ class StreakService:
             longest_streak=new_longest,
         )
 
+    async def get_at_risk_user_ids(self) -> list[UUID]:
+        return await self._repo.get_at_risk_user_ids(date.today())
+
     async def get_streak(self, user_id: UUID) -> StreakResponse:
         existing = await self._repo.get_by_user(user_id)
 

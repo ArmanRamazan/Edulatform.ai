@@ -383,7 +383,7 @@ CREATE TABLE payments (
 ### ENUM: `notification_type`
 
 ```sql
-CREATE TYPE notification_type AS ENUM ('registration', 'enrollment', 'payment');
+CREATE TYPE notification_type AS ENUM ('registration', 'enrollment', 'payment', 'streak_reminder');
 ```
 
 ### Table: `notifications`
@@ -414,6 +414,7 @@ CREATE TABLE notifications (
 
 **Миграции:**
 - `001_notifications.sql` — создание ENUM notification_type и таблицы notifications
+- `003_streak_reminder_type.sql` — добавление `streak_reminder` в ENUM notification_type
 
 ---
 

@@ -21,3 +21,7 @@ class StreakResponse(BaseModel):
     longest_streak: int
     last_activity_date: date | None
     active_today: bool
+
+
+class AtRiskResponse(BaseModel):
+    user_ids: list[UUID]

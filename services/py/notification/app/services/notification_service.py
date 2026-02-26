@@ -33,6 +33,24 @@ class NotificationService:
     ) -> tuple[list[Notification], int]:
         return await self._repo.list_by_user(user_id, limit, offset)
 
+    async def send_streak_reminders(self, user_ids: list[UUID]) -> int:
+        sent = 0
+        for uid in user_ids:
+            has_existing = await self._repo.has_unread_by_type(
+                uid, NotificationType.STREAK_REMINDER,
+            )
+            if has_existing:
+                continue
+            await self._repo.create(
+                uid,
+                NotificationType.STREAK_REMINDER,
+                "Your streak is at risk!",
+                "You haven't studied today. Keep your streak alive!",
+            )
+            logger.info("[STREAK_REMINDER] user=%s", uid)
+            sent += 1
+        return sent
+
     async def mark_as_read(self, notification_id: UUID, user_id: UUID) -> Notification:
         notification = await self._repo.get_by_id(notification_id)
         if not notification:

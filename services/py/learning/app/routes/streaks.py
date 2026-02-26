@@ -6,8 +6,8 @@ from uuid import UUID
 import jwt
 from fastapi import APIRouter, Depends, Header
 
-from common.errors import AppError
-from app.domain.streak import StreakResponse
+from common.errors import AppError, ForbiddenError
+from app.domain.streak import AtRiskResponse, StreakResponse
 from app.services.streak_service import StreakService
 
 router = APIRouter(prefix="/streaks", tags=["streaks"])
@@ -59,3 +59,14 @@ async def get_my_streak(
     service: Annotated[StreakService, Depends(_get_streak_service)],
 ) -> StreakResponse:
     return await service.get_streak(user_id=claims["user_id"])
+
+
+@router.get("/at-risk", response_model=AtRiskResponse)
+async def get_at_risk_users(
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[StreakService, Depends(_get_streak_service)],
+) -> AtRiskResponse:
+    if claims["role"] != "admin":
+        raise ForbiddenError("Only admins can view at-risk users")
+    user_ids = await service.get_at_risk_user_ids()
+    return AtRiskResponse(user_ids=user_ids)

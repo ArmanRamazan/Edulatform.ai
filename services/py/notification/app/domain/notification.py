@@ -12,6 +12,15 @@ class NotificationType(StrEnum):
     REGISTRATION = "registration"
     ENROLLMENT = "enrollment"
     PAYMENT = "payment"
+    STREAK_REMINDER = "streak_reminder"
+
+
+class StreakReminderRequest(BaseModel):
+    user_ids: list[UUID]
+
+
+class StreakReminderResponse(BaseModel):
+    sent_count: int
 
 
 @dataclass(frozen=True)
