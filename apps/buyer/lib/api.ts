@@ -720,6 +720,64 @@ export const flashcards = {
   },
 };
 
+export interface XpEventData {
+  action: string;
+  points: number;
+  course_id: string | null;
+  created_at: string;
+}
+
+export interface XpSummaryResponse {
+  total_xp: number;
+  events: XpEventData[];
+}
+
+export interface BadgeData {
+  badge_type: string;
+  description: string;
+  unlocked_at: string;
+}
+
+export interface BadgeListResponse {
+  badges: BadgeData[];
+  total: number;
+}
+
+export interface StreakData {
+  current_streak: number;
+  longest_streak: number;
+  last_activity_date: string | null;
+  active_today: boolean;
+}
+
+export const xp = {
+  me(token: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<XpSummaryResponse>(`${LEARNING_URL}/xp/me${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export const badges = {
+  me(token: string) {
+    return request<BadgeListResponse>(`${LEARNING_URL}/badges/me`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export const streaks = {
+  me(token: string) {
+    return request<StreakData>(`${LEARNING_URL}/streaks/me`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
 export const concepts = {
   getCourseGraph(token: string, courseId: string) {
     return request<CourseGraphResponse>(`${LEARNING_URL}/concepts/course/${courseId}`, {

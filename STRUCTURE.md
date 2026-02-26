@@ -180,7 +180,8 @@ apps/{app}/
 │   ├── use-ai.ts          #     useGenerateQuiz, useSummary
 │   ├── use-tutor.ts       #     useTutorChat, useTutorFeedback
 │   ├── use-concepts.ts    #     useCourseGraph, useCourseMastery, useCreateConcept, useDeleteConcept
-│   └── use-flashcards.ts  #     useDueCards, useDueCount, useReviewCard, useCreateFlashcard
+│   ├── use-flashcards.ts  #     useDueCards, useDueCount, useReviewCard, useCreateFlashcard
+│   └── use-gamification.ts #    useMyXp, useMyXpHistory, useMyBadges, useMyStreak
 ├── lib/                   #   API вызовы, утилиты, конфиг
 ├── public/                #   Статика (favicon, robots.txt)
 ├── next.config.ts

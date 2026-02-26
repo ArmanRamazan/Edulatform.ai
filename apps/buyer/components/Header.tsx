@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { useDueCount } from "@/hooks/use-flashcards";
+import { useMyXp, useMyStreak } from "@/hooks/use-gamification";
 import { identity as identityApi } from "@/lib/api";
 
 const ROLE_LABELS: Record<string, string> = {
@@ -14,6 +15,8 @@ const ROLE_LABELS: Record<string, string> = {
 export function Header() {
   const { user, token, loading, logout } = useAuth();
   const dueCount = useDueCount(token);
+  const totalXp = useMyXp(token);
+  const streak = useMyStreak(token);
 
   async function handleResend() {
     if (!token) return;
@@ -68,6 +71,31 @@ export function Header() {
                   <Link href="/admin/teachers" className="text-sm hover:underline">
                     Панель админа
                   </Link>
+                )}
+                {user.role === "student" && (
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center gap-1 rounded bg-purple-100 px-2 py-0.5 text-xs font-semibold text-purple-700">
+                      XP {totalXp.data ?? 0}
+                    </span>
+                    {(streak.data?.current_streak ?? 0) > 0 ? (
+                      <Link
+                        href="/badges"
+                        className="flex items-center gap-1 rounded bg-orange-100 px-2 py-0.5 text-xs font-semibold text-orange-700"
+                        title={`Серия: ${streak.data?.current_streak} дн.`}
+                      >
+                        <span className="text-sm">&#x1F525;</span>
+                        {streak.data?.current_streak}
+                      </Link>
+                    ) : (
+                      <span
+                        className="flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs text-gray-400"
+                        title="Нет активной серии"
+                      >
+                        <span className="text-sm">&#x1F525;</span>
+                        0
+                      </span>
+                    )}
+                  </div>
                 )}
                 <span className="text-sm text-gray-500">{user.name}</span>
                 <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
