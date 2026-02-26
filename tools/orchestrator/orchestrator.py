@@ -336,9 +336,16 @@ def _infer_scope(title: str, milestone: str) -> str:
     """Infer task scope from title and milestone number."""
     title_lower = title.lower()
 
+    # Explicit "Frontend:" prefix — highest priority
+    if title_lower.startswith("frontend:") or title_lower.startswith("frontend "):
+        if "seller" in title_lower:
+            return "frontend:seller"
+        return "frontend:buyer"
+
     # Frontend indicators
     fe_keywords = ["ui", "страниц", "компонент", "дашборд", "landing", "onboarding",
-                   "responsive", "mobile", "seller app", "фронт", "next.js", "react"]
+                   "responsive", "mobile", "seller app", "фронт", "next.js", "react",
+                   "pricing page", "checkout flow", "header badge"]
     for kw in fe_keywords:
         if kw in title_lower:
             if "seller" in title_lower:
@@ -364,11 +371,14 @@ def _infer_scope(title: str, milestone: str) -> str:
         "course": ["курс", "модул", "урок", "каталог", "категори", "curriculum"],
         "enrollment": ["запис", "enrollment", "прогресс", "completion"],
         "payment": ["оплат", "платёж", "платеж", "stripe", "подписк", "subscription"],
-        "notification": ["уведомлен", "email", "notification", "письм"],
-        "ai": ["ai", "gemini", "llm", "генерац", "quiz generate", "summary"],
+        "notification": ["уведомлен", "email", "notification", "письм",
+                        "streak at risk", "напоминан"],
+        "ai": ["ai service", "ai credit", "gemini", "llm", "генерац",
+               "quiz generate", "summary generate", "/ai/"],
         "learning": ["quiz", "flashcard", "xp", "streak", "badge", "leaderboard",
                      "gamif", "балл", "достижен", "очки", "ачивк", "геймиф",
-                     "spaced repetition", "concept", "knowledge graph"],
+                     "spaced repetition", "concept", "knowledge graph",
+                     "discussion", "comment", "upvote", "certificate"],
     }
     for svc, keywords in svc_keywords.items():
         for kw in keywords:
