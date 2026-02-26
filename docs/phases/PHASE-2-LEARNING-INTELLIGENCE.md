@@ -148,41 +148,42 @@ CREATE TABLE review_logs (
 
 ---
 
-## Milestone 2.2 — Socratic AI Tutor
+## Milestone 2.2 — Socratic AI Tutor ✅
 
 > Глубокое понимание через диалог. AI не даёт ответ — ведёт к нему вопросами.
 > **Evidence:** Socratic method → deeper conceptual understanding (Khanmigo model).
 
 | # | Задача | Статус |
 |---|--------|--------|
-| 2.2.1 | POST /ai/tutor/chat {lesson_id, message, history} → response | 🔴 |
-| 2.2.2 | Socratic prompt template (system prompt + lesson context) | 🔴 |
-| 2.2.3 | Claude Haiku integration for tutor (mid-tier) | 🔴 |
-| 2.2.4 | Conversation memory (session-scoped, Redis) | 🔴 |
-| 2.2.5 | Rate tutor response (POST /ai/tutor/feedback) | 🔴 |
-| 2.2.6 | Frontend: chat drawer on lesson page | 🔴 |
-| 2.2.7 | AI credit tracking per user (free tier: 10 chats) | 🔴 |
-| 2.2.8 | Tests: tutor prompt, conversation flow, rate limiting | 🔴 |
+| 2.2.1 | POST /ai/tutor/chat {lesson_id, message, history} → response | ✅ |
+| 2.2.2 | Socratic prompt template (system prompt + lesson context) | ✅ |
+| 2.2.3 | Gemini Flash integration for tutor (with model routing) | ✅ |
+| 2.2.4 | Conversation memory (session-scoped, Redis) | ✅ |
+| 2.2.5 | Rate tutor response (POST /ai/tutor/feedback) | ✅ |
+| 2.2.6 | Frontend: chat drawer on lesson page (TutorDrawer) | ✅ |
+| 2.2.7 | AI credit tracking per user (10 chats/day, Redis counter) | ✅ |
+| 2.2.8 | Tests: tutor prompt, conversation flow, credit tracking | ✅ (9 тестов) |
 
 ---
 
-## Milestone 2.3 — Knowledge Graph + Adaptive Path
+## Milestone 2.3 — Knowledge Graph + Adaptive Path ✅
 
 > Персонализация. Пропускай изученное, фокусируйся на пробелах.
 > **Evidence:** Squirrel AI knowledge graph → TIME Best Invention 2025.
 
 | # | Задача | Статус |
 |---|--------|--------|
-| 2.3.1 | Concept model: knowledge points per course | 🔴 |
-| 2.3.2 | Concept edges: prerequisite, related, extends | 🔴 |
-| 2.3.3 | Concept mastery tracking per student (0.0 → 1.0) | 🔴 |
-| 2.3.4 | Adaptive pre-test: diagnostic → skip known material | 🔴 |
-| 2.3.5 | Learning Velocity Dashboard: concepts/hour, trend | 🔴 |
-| 2.3.6 | Teacher UI: tag concepts per lesson | 🔴 |
-| 2.3.7 | Frontend: force-directed knowledge graph visualization | 🔴 |
-| 2.3.8 | Tests: concept CRUD, mastery, adaptive path logic | 🔴 |
+| 2.3.1 | Concept model: knowledge points per course | ✅ |
+| 2.3.2 | Concept edges: prerequisite, related, extends | ✅ |
+| 2.3.3 | Concept mastery tracking per student (0.0 → 1.0) | ✅ |
+| 2.3.4 | Adaptive pre-test: diagnostic → skip known material | ⏭️ YAGNI |
+| 2.3.5 | Learning Velocity Dashboard: concepts/hour, trend | ⏭️ YAGNI |
+| 2.3.6 | Teacher UI: concept CRUD + prerequisites | ✅ |
+| 2.3.7 | Frontend: mastery progress visualization | ✅ |
+| 2.3.8 | Quiz submit auto-updates concept mastery (score × 0.3) | ✅ |
+| 2.3.9 | Tests: concept CRUD, mastery, quiz integration | ✅ (14 тестов) |
 
-**DB Schema:**
+**DB Schema — реализовано:**
 ```sql
 CREATE TABLE concepts (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

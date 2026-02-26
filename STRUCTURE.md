@@ -53,7 +53,11 @@ eduplatform/
 │
 ├── tools/                         # Dev utilities
 │   ├── seed/                      #   Database seeding scripts
-│   └── locust/                    #   Load test scenarios
+│   ├── locust/                    #   Load test scenarios
+│   └── orchestrator/              #   AI orchestrator: autonomous Claude Code executor
+│       ├── orchestrator.py        #     Phase parser, task executor, budget tracker, state persistence
+│       ├── run.sh                 #     Launcher script (./run.sh --phase 2.4)
+│       └── pyproject.toml         #     uv workspace member (pure stdlib, no deps)
 │
 └── docs/                          # Документация (goals, phases, ADR)
 ```

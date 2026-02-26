@@ -1,7 +1,7 @@
 # 02 — API Reference
 
-> Последнее обновление: 2026-02-25
-> Стадия: Phase 2.3 (Knowledge Graph + Adaptive Path)
+> Последнее обновление: 2026-02-26
+> Стадия: Phase 2.3 ✅ (Knowledge Graph + Concept Mastery) — далее 2.4 Gamification
 
 ---
 
