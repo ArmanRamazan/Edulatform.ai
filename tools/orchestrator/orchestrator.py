@@ -786,18 +786,19 @@ def main() -> None:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  ./run.sh                     Run all remaining phases
-  ./run.sh --phase 2.4         Run a specific phase
+  ./run.sh                        Run all remaining phases
+  ./run.sh --phase 2.4            Run a single phase
+  ./run.sh --phase 2.4 2.5        Run phases 2.4 then 2.5
   ./run.sh --phase 2.4 --dry-run  Preview tasks without executing
-  ./run.sh --resume            Resume after pause/crash
-  ./run.sh --status            Show current status
+  ./run.sh --resume               Resume after pause/crash
+  ./run.sh --status               Show current status
 
 Stop gracefully:
   Ctrl+C                       Saves state after current task
   touch tools/orchestrator/.stop   Same, but from another terminal
 """,
     )
-    parser.add_argument("--phase", help="Run a specific phase (e.g. 2.4, 3.1)")
+    parser.add_argument("--phase", nargs="+", help="Run specific phases (e.g. --phase 2.4 2.5)")
     parser.add_argument("--resume", action="store_true", help="Resume from saved state")
     parser.add_argument("--dry-run", action="store_true", help="Plan only, don't execute")
     parser.add_argument("--status", action="store_true", help="Show status and exit")
@@ -840,7 +841,7 @@ Stop gracefully:
     print(f"  Root: {ROOT}")
     print(f"  Budget: {budget_chars:,} chars per {BUDGET_WINDOW_HOURS}h window\n")
 
-    phases_to_parse = [args.phase] if args.phase else PHASE_ORDER
+    phases_to_parse = args.phase if args.phase else PHASE_ORDER
     all_phases: dict[str, list[Task]] = {}
 
     for phase in phases_to_parse:
