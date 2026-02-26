@@ -12,6 +12,8 @@ COURSE=http://localhost:8002
 ENROLLMENT=http://localhost:8003
 PAYMENT=http://localhost:8004
 NOTIFICATION=http://localhost:8005
+AI=http://localhost:8006
+LEARNING=http://localhost:8007
 FRONTEND=http://localhost:3001
 
 DEMO_DELAY=${DEMO_DELAY:-1}
@@ -127,13 +129,15 @@ jq_field() {
 
 header "0. Health Check — all services"
 
-for svc_name in identity course enrollment payment notification; do
+for svc_name in identity course enrollment payment notification ai learning; do
     case "$svc_name" in
         identity)     svc_url="$IDENTITY" ;;
         course)       svc_url="$COURSE" ;;
         enrollment)   svc_url="$ENROLLMENT" ;;
         payment)      svc_url="$PAYMENT" ;;
         notification) svc_url="$NOTIFICATION" ;;
+        ai)           svc_url="$AI" ;;
+        learning)     svc_url="$LEARNING" ;;
     esac
     step "$svc_name /health/ready"
     call GET "${svc_url}/health/ready"
@@ -412,14 +416,183 @@ call GET "$COURSE/courses?category_id=${CATEGORY_ID}&level=beginner&limit=5"
 browse "$FRONTEND/notifications" "Opening notifications page..."
 
 # ---------------------------------------------------------------------------
+# 8. AI-Powered Learning (AI service + browser)
+# ---------------------------------------------------------------------------
+
+header "8. AI-Powered Learning"
+
+step "Re-login student (was logged out in section 6)"
+call POST "$IDENTITY/login" "{\"email\":\"${STUDENT_EMAIL}\",\"password\":\"newdemo123\"}"
+STUDENT_TOKEN=$(jq_field '.access_token')
+
+LESSON_CONTENT="Python is a high-level, interpreted programming language created by Guido van Rossum. It supports multiple programming paradigms including procedural, object-oriented, and functional programming. Key features include dynamic typing, automatic memory management via garbage collection, and a comprehensive standard library. Python uses indentation to define code blocks instead of curly braces. Variables do not need explicit type declarations. Common data structures include lists (ordered, mutable), tuples (ordered, immutable), dictionaries (key-value pairs), and sets (unordered, unique elements). Python supports list comprehensions for concise iteration and filtering. Exception handling uses try/except/finally blocks. Functions are first-class objects and can be passed as arguments."
+
+step "POST /ai/quiz/generate — AI generates quiz from lesson content"
+call POST "$AI/ai/quiz/generate" \
+    "{\"lesson_id\":\"${LESSON1_ID}\",\"content\":\"${LESSON_CONTENT}\"}" \
+    "$STUDENT_TOKEN"
+echo -e "  ${G}AI generated quiz with $(echo "$LAST_BODY" | jq '.questions | length') questions${N}"
+
+step "POST /ai/summary/generate — AI summarizes lesson"
+call POST "$AI/ai/summary/generate" \
+    "{\"lesson_id\":\"${LESSON1_ID}\",\"content\":\"${LESSON_CONTENT}\"}" \
+    "$STUDENT_TOKEN"
+echo -e "  ${G}Summary preview: $(echo "$LAST_BODY" | jq -r '.summary' | head -c 120)...${N}"
+
+step "POST /ai/tutor/chat — start Socratic tutoring session"
+call POST "$AI/ai/tutor/chat" \
+    "{\"lesson_id\":\"${LESSON1_ID}\",\"message\":\"What is the difference between a list and a tuple in Python?\",\"lesson_content\":\"${LESSON_CONTENT}\"}" \
+    "$STUDENT_TOKEN"
+SESSION_ID=$(jq_field '.session_id')
+CREDITS=$(jq_field '.credits_remaining')
+echo -e "  ${G}Tutor session: ${SESSION_ID}, credits remaining: ${CREDITS}${N}"
+
+step "POST /ai/tutor/chat — follow-up question (multi-turn)"
+call POST "$AI/ai/tutor/chat" \
+    "{\"lesson_id\":\"${LESSON1_ID}\",\"message\":\"So tuples are faster because they are immutable?\",\"lesson_content\":\"${LESSON_CONTENT}\",\"session_id\":\"${SESSION_ID}\"}" \
+    "$STUDENT_TOKEN"
+echo -e "  ${G}Credits remaining: $(jq_field '.credits_remaining')${N}"
+
+step "POST /ai/tutor/feedback — rate tutor response"
+call POST "$AI/ai/tutor/feedback" \
+    "{\"session_id\":\"${SESSION_ID}\",\"message_index\":0,\"rating\":1}" \
+    "$STUDENT_TOKEN"
+
+browse "$FRONTEND/courses/${COURSE_ID}/lessons/${LESSON1_ID}" "Opening lesson page — AI features visible..."
+
+# ---------------------------------------------------------------------------
+# 9. Quizzes & Knowledge Graph (Learning service)
+# ---------------------------------------------------------------------------
+
+header "9. Quizzes & Knowledge Graph"
+
+step "Teacher: POST /quizzes — create quiz for lesson 1"
+call POST "$LEARNING/quizzes" \
+    "{\"lesson_id\":\"${LESSON1_ID}\",\"course_id\":\"${COURSE_ID}\",\"questions\":[{\"text\":\"What keyword defines a function in Python?\",\"options\":[\"func\",\"def\",\"function\",\"define\"],\"correct_index\":1,\"explanation\":\"The def keyword is used to define functions in Python.\"},{\"text\":\"Which data structure is immutable?\",\"options\":[\"list\",\"dict\",\"tuple\",\"set\"],\"correct_index\":2,\"explanation\":\"Tuples are immutable ordered sequences.\"},{\"text\":\"How does Python define code blocks?\",\"options\":[\"Curly braces\",\"Parentheses\",\"Indentation\",\"Keywords\"],\"correct_index\":2,\"explanation\":\"Python uses indentation instead of braces.\"}]}" \
+    "$TEACHER_TOKEN"
+QUIZ_ID=$(jq_field '.id')
+echo -e "  ${G}Quiz ID: ${QUIZ_ID}${N}"
+
+step "Teacher: POST /concepts — create 'Python Basics' concept"
+call POST "$LEARNING/concepts" \
+    "{\"course_id\":\"${COURSE_ID}\",\"lesson_id\":\"${LESSON1_ID}\",\"name\":\"Python Basics\",\"description\":\"Core Python syntax and data types\"}" \
+    "$TEACHER_TOKEN"
+CONCEPT1_ID=$(jq_field '.id')
+
+step "Teacher: POST /concepts — create 'Data Structures' concept"
+call POST "$LEARNING/concepts" \
+    "{\"course_id\":\"${COURSE_ID}\",\"lesson_id\":\"${LESSON1_ID}\",\"name\":\"Data Structures\",\"description\":\"Lists, tuples, dicts, and sets\"}" \
+    "$TEACHER_TOKEN"
+CONCEPT2_ID=$(jq_field '.id')
+
+step "Teacher: POST /concepts/${CONCEPT2_ID}/prerequisites — Data Structures requires Python Basics"
+call POST "$LEARNING/concepts/${CONCEPT2_ID}/prerequisites" \
+    "{\"prerequisite_id\":\"${CONCEPT1_ID}\"}" \
+    "$TEACHER_TOKEN"
+
+step "Student: GET /concepts/course/${COURSE_ID} — view knowledge graph"
+call GET "$LEARNING/concepts/course/${COURSE_ID}" "" "$STUDENT_TOKEN"
+echo -e "  ${G}Concepts in graph: $(echo "$LAST_BODY" | jq '.concepts | length')${N}"
+
+step "Student: POST /quizzes/${QUIZ_ID}/submit — take the quiz"
+call POST "$LEARNING/quizzes/${QUIZ_ID}/submit" \
+    '{"answers":[1,2,2]}' \
+    "$STUDENT_TOKEN"
+QUIZ_SCORE=$(jq_field '.score')
+echo -e "  ${G}Quiz score: ${QUIZ_SCORE} ($(jq_field '.correct_count')/$(jq_field '.total_questions') correct)${N}"
+
+step "Student: GET /quizzes/${QUIZ_ID}/attempts/me — view attempt history"
+call GET "$LEARNING/quizzes/${QUIZ_ID}/attempts/me" "" "$STUDENT_TOKEN"
+
+step "Student: GET /concepts/mastery/course/${COURSE_ID} — view mastery after quiz"
+call GET "$LEARNING/concepts/mastery/course/${COURSE_ID}" "" "$STUDENT_TOKEN"
+echo -e "  ${G}Mastery updated from quiz performance${N}"
+
+browse "$FRONTEND/courses/${COURSE_ID}" "Opening course page — quiz results and knowledge graph..."
+
+# ---------------------------------------------------------------------------
+# 10. Flashcards & Gamification
+# ---------------------------------------------------------------------------
+
+header "10. Flashcards & Gamification"
+
+step "Student: POST /flashcards — create flashcard"
+call POST "$LEARNING/flashcards" \
+    "{\"course_id\":\"${COURSE_ID}\",\"concept\":\"Python list vs tuple\",\"answer\":\"Lists are mutable and use square brackets. Tuples are immutable and use parentheses.\"}" \
+    "$STUDENT_TOKEN"
+CARD_ID=$(jq_field '.id')
+echo -e "  ${G}Flashcard ID: ${CARD_ID}, due: $(jq_field '.due')${N}"
+
+step "Student: GET /flashcards/due — check due cards"
+call GET "$LEARNING/flashcards/due" "" "$STUDENT_TOKEN"
+echo -e "  ${G}Due cards: $(jq_field '.total')${N}"
+
+step "Student: POST /flashcards/${CARD_ID}/review — review with 'Good' rating"
+call POST "$LEARNING/flashcards/${CARD_ID}/review" \
+    '{"rating":3}' \
+    "$STUDENT_TOKEN"
+echo -e "  ${G}Next review: $(jq_field '.next_due'), stability: $(jq_field '.new_stability')${N}"
+
+step "Student: POST /streaks/activity — record daily activity"
+call POST "$LEARNING/streaks/activity" "" "$STUDENT_TOKEN"
+echo -e "  ${G}Current streak: $(jq_field '.current_streak') days${N}"
+
+step "Student: POST /leaderboards/courses/${COURSE_ID}/opt-in — join leaderboard"
+call POST "$LEARNING/leaderboards/courses/${COURSE_ID}/opt-in" "" "$STUDENT_TOKEN"
+
+step "Student: POST /leaderboards/courses/${COURSE_ID}/score — add quiz score"
+call POST "$LEARNING/leaderboards/courses/${COURSE_ID}/score" \
+    '{"points":100}' \
+    "$STUDENT_TOKEN"
+
+step "Student: GET /leaderboards/courses/${COURSE_ID} — view leaderboard"
+call GET "$LEARNING/leaderboards/courses/${COURSE_ID}" "" "$STUDENT_TOKEN"
+echo -e "  ${G}Leaderboard entries: $(jq_field '.total')${N}"
+
+step "Student: POST /discussions/comments — comment on lesson"
+call POST "$LEARNING/discussions/comments" \
+    "{\"lesson_id\":\"${LESSON1_ID}\",\"course_id\":\"${COURSE_ID}\",\"content\":\"Great lesson! The explanation of list comprehensions was very clear.\"}" \
+    "$STUDENT_TOKEN"
+COMMENT_ID=$(jq_field '.id')
+
+step "Teacher: POST /discussions/comments/${COMMENT_ID}/upvote — upvote student comment"
+call POST "$LEARNING/discussions/comments/${COMMENT_ID}/upvote" "" "$TEACHER_TOKEN"
+echo -e "  ${G}Upvoted! Count: $(jq_field '.upvote_count')${N}"
+
+step "Student: GET /discussions/lessons/${LESSON1_ID}/comments — view discussion"
+call GET "$LEARNING/discussions/lessons/${LESSON1_ID}/comments" "" "$STUDENT_TOKEN"
+
+step "Student: GET /xp/me — check XP earned"
+call GET "$LEARNING/xp/me" "" "$STUDENT_TOKEN"
+echo -e "  ${G}Total XP: $(jq_field '.total_xp')${N}"
+
+step "Student: GET /badges/me — check unlocked badges"
+call GET "$LEARNING/badges/me" "" "$STUDENT_TOKEN"
+echo -e "  ${G}Badges earned: $(jq_field '.total')${N}"
+
+browse "$FRONTEND/courses/${COURSE_ID}" "Opening course page — full gamification visible..."
+
+# ---------------------------------------------------------------------------
 # Done
 # ---------------------------------------------------------------------------
 
 echo ""
 echo -e "${G}======================================================================${N}"
 echo -e "${G}  Demo completed successfully!${N}"
-echo -e "${G}  Student: ${STUDENT_EMAIL}${N}"
-echo -e "${G}  Teacher: ${TEACHER_EMAIL}${N}"
-echo -e "${G}  Course:  Demo Course ${TS} (${COURSE_ID})${N}"
+echo -e "${G}----------------------------------------------------------------------${N}"
+echo -e "${G}  Student:  ${STUDENT_EMAIL}${N}"
+echo -e "${G}  Teacher:  ${TEACHER_EMAIL}${N}"
+echo -e "${G}  Course:   Demo Course ${TS} (${COURSE_ID})${N}"
+echo -e "${G}----------------------------------------------------------------------${N}"
+echo -e "${G}  Services demonstrated:${N}"
+echo -e "${G}    Identity (8001)     — registration, verification, auth${N}"
+echo -e "${G}    Course (8002)       — CRUD, curriculum, reviews, catalog${N}"
+echo -e "${G}    Enrollment (8003)   — enroll, progress, auto-completion${N}"
+echo -e "${G}    Payment (8004)      — mock payments${N}"
+echo -e "${G}    Notification (8005) — notifications${N}"
+echo -e "${G}    AI (8006)           — quiz gen, summary, Socratic tutor${N}"
+echo -e "${G}    Learning (8007)     — quizzes, flashcards, concepts,${N}"
+echo -e "${G}                          streaks, leaderboard, discussions,${N}"
+echo -e "${G}                          XP, badges${N}"
 echo -e "${G}======================================================================${N}"
 echo ""

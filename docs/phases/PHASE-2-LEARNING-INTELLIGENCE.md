@@ -243,7 +243,7 @@ CREATE TABLE concept_mastery (
 | 2.5.1 | Onboarding: guided first course experience | 🔴 |
 | 2.5.2 | Landing page: value proposition, screenshots/demo | 🔴 |
 | 2.5.3 | Responsive mobile web | 🔴 |
-| 2.5.4 | Update demo script (show AI features in browser) | 🔴 |
+| 2.5.4 | Update demo script (show AI features in browser) | ✅ |
 | 2.5.5 | Seed: courses with quizzes, flashcards, concepts, XP | 🔴 |
 | 2.5.6 | Bug fixes, UI polish, error states | 🔴 |
 
