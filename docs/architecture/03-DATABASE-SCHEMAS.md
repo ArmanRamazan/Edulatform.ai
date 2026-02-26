@@ -1,7 +1,7 @@
 # 03 — Database Schemas
 
 > Последнее обновление: 2026-02-26
-> Стадия: Phase 2.4 (Gamification — Streaks)
+> Стадия: Phase 2.4 (Gamification — Streaks, XP, Badges)
 
 ---
 
@@ -49,7 +49,9 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: concept_prerequisites
        ├── table: concept_mastery
        ├── table: streaks
-       └── table: leaderboard_entries
+       ├── table: leaderboard_entries
+       ├── table: xp_events
+       └── table: badges
 ```
 
 ---
@@ -705,6 +707,52 @@ Opt-in leaderboard: рейтинг студентов внутри курса.
 - `004_streaks.sql` — создание таблицы streaks
 - `006_leaderboard.sql` — создание таблицы leaderboard_entries с partial index
 - `007_discussions.sql` — создание таблиц comments, comment_votes с индексами
+- `008_xp_badges.sql` — создание таблиц xp_events, badges с индексами
+
+### Таблица `xp_events`
+
+```sql
+CREATE TABLE xp_events (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    action VARCHAR(50) NOT NULL,
+    points INT NOT NULL,
+    course_id UUID,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `user_id` | UUID | NOT NULL | Студент |
+| `action` | VARCHAR(50) | NOT NULL | Тип действия: `lesson_complete`, `quiz_submit`, `flashcard_review` |
+| `points` | INT | NOT NULL | Количество XP: 10, 20, 5 соответственно |
+| `course_id` | UUID | NULL | Курс (опционально) |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время начисления |
+
+**Индексы:** `idx_xp_events_user_id` (user_id), `idx_xp_events_user_created` (user_id, created_at DESC)
+
+### Таблица `badges`
+
+```sql
+CREATE TABLE badges (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID NOT NULL,
+    badge_type VARCHAR(50) NOT NULL,
+    unlocked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (user_id, badge_type)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `user_id` | UUID | NOT NULL | Студент |
+| `badge_type` | VARCHAR(50) | NOT NULL, UNIQUE(user_id, badge_type) | Тип: `first_enrollment`, `streak_7`, `quiz_ace`, `mastery_100` |
+| `unlocked_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время разблокировки |
+
+**Индексы:** `idx_badges_user_id` (user_id), UNIQUE (user_id, badge_type)
 
 ---
 

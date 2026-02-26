@@ -31,7 +31,7 @@ eduplatform/
 │   │   ├── payment/               #   Mock-оплата
 │   │   ├── notification/          #   In-app уведомления
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
-│   │   └── learning/              #   Quiz persistence, flashcards (FSRS spaced repetition), scoring, knowledge graph (concepts + mastery)
+│   │   └── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Routing, auth check, rate limiting
 │       ├── search/                #   Поисковый proxy + ranking

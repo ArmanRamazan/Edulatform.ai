@@ -1,7 +1,7 @@
 # 01 — Обзор системы
 
 > Последнее обновление: 2026-02-26
-> Стадия: Phase 2.3 ✅ (Knowledge Graph + Concept Mastery) — далее 2.4 Gamification
+> Стадия: Phase 2.4 (Gamification — Streaks, XP, Badges, Leaderboard, Discussions)
 
 ---
 

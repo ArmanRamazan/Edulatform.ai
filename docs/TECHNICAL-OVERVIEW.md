@@ -14,14 +14,14 @@
 | Payment Service | ✅ Готов | Mock-оплата, GET /me, GET /:id |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, credit tracking |
-| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), 20 endpoints |
+| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, 22 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 259 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 30, learning 72 |
+| Unit Tests | ✅ 285 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 30, learning 98 |
 
 ## Стек
 
