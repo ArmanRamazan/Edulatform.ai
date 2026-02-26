@@ -804,6 +804,7 @@ Stop gracefully:
     parser.add_argument("--status", action="store_true", help="Show status and exit")
     parser.add_argument("--budget", type=int, default=TOKEN_BUDGET_CHARS,
                         help=f"Token budget in chars (default: {TOKEN_BUDGET_CHARS:,})")
+    parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
     parser.add_argument("--verbose", "-v", action="store_true")
     args = parser.parse_args()
 
@@ -863,7 +864,7 @@ Stop gracefully:
     total = sum(len(t) for t in all_phases.values())
     print(f"\n  Total: {total} tasks across {len(all_phases)} phases")
 
-    if not args.dry_run:
+    if not args.dry_run and not args.yes:
         answer = input("\n  Start execution? [Y/n] ").strip().lower()
         if answer not in ("", "y", "yes"):
             print("  Aborted.")
