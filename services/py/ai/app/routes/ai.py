@@ -5,8 +5,12 @@ import jwt
 from fastapi import APIRouter, Depends, Header
 
 from common.errors import AppError
-from app.domain.models import QuizRequest, QuizResponse, SummaryRequest, SummaryResponse
+from app.domain.models import (
+    QuizRequest, QuizResponse, SummaryRequest, SummaryResponse,
+    TutorChatRequest, TutorChatResponse, TutorFeedbackRequest, TutorFeedbackResponse,
+)
 from app.services.ai_service import AIService
+from app.services.tutor_service import TutorService
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -14,6 +18,11 @@ router = APIRouter(prefix="/ai", tags=["ai"])
 def _get_ai_service() -> AIService:
     from app.main import get_ai_service
     return get_ai_service()
+
+
+def _get_tutor_service() -> TutorService:
+    from app.main import get_tutor_service
+    return get_tutor_service()
 
 
 def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
@@ -50,3 +59,31 @@ async def generate_summary(
     service: Annotated[AIService, Depends(_get_ai_service)],
 ) -> SummaryResponse:
     return await service.generate_summary(body.lesson_id, body.content)
+
+
+@router.post("/tutor/chat", response_model=TutorChatResponse)
+async def tutor_chat(
+    body: TutorChatRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[TutorService, Depends(_get_tutor_service)],
+) -> TutorChatResponse:
+    return await service.chat(
+        user_id=str(claims["user_id"]),
+        lesson_id=str(body.lesson_id),
+        message=body.message,
+        lesson_content=body.lesson_content,
+        session_id=body.session_id,
+    )
+
+
+@router.post("/tutor/feedback", response_model=TutorFeedbackResponse)
+async def tutor_feedback(
+    body: TutorFeedbackRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[TutorService, Depends(_get_tutor_service)],
+) -> TutorFeedbackResponse:
+    return await service.feedback(
+        session_id=body.session_id,
+        message_index=body.message_index,
+        rating=body.rating,
+    )
