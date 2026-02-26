@@ -38,6 +38,10 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
+# Force unbuffered stdout so prints appear immediately
+if not sys.stdout.line_buffering:
+    sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
+
 # ---------------------------------------------------------------------------
 # Config
 # ---------------------------------------------------------------------------
@@ -69,7 +73,7 @@ TEST_COMMANDS: dict[str, str] = {
     "ai": "cd services/py/ai && uv run --package ai pytest tests/ -v",
     "learning": "cd services/py/learning && uv run --package learning pytest tests/ -v",
     "buyer": "cd apps/buyer && pnpm build",
-    "seller": "cd apps/buyer && pnpm build",  # seller uses buyer build for now
+    "seller": "cd apps/seller && pnpm build",
 }
 
 log = logging.getLogger("orchestrator")
@@ -122,6 +126,22 @@ def _should_stop() -> bool:
 
 def _now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+
+
+def _p(msg: str) -> None:
+    """Print with immediate flush."""
+    print(msg, flush=True)
+
+
+def _has_git_changes() -> bool:
+    """Check if there are any staged or unstaged changes."""
+    result = subprocess.run(
+        ["git", "status", "--porcelain"],
+        cwd=str(ROOT),
+        capture_output=True,
+        text=True,
+    )
+    return bool(result.stdout.strip())
 
 
 # ---------------------------------------------------------------------------
@@ -204,6 +224,19 @@ class OrchestratorState:
             paused_at=data.get("paused_at", ""),
         )
 
+    def recover_crashed_tasks(self) -> None:
+        """Reset any 'running' tasks to 'pending' (crash recovery)."""
+        for tasks in self.phases.values():
+            for t in tasks:
+                if t.status == "running":
+                    log.warning("Recovering crashed task #%d: %s", t.id, t.title)
+                    t.status = "pending"
+                    t.error = ""
+                # Also reset 'skipped' so they get re-evaluated
+                if t.status == "skipped":
+                    t.status = "pending"
+                    t.error = ""
+
 
 # ---------------------------------------------------------------------------
 # Phase parser — reads docs/phases/ to extract tasks
@@ -245,7 +278,7 @@ def parse_phase_tasks(phase: str) -> list[Task]:
     # Convert to Task objects with proper prompts
     tasks: list[Task] = []
     for i, (title, scope, status) in enumerate(raw_tasks, 1):
-        if status in ("✅", "✅ Done", "⏳"):
+        if status.startswith("✅") or status in ("⏳",):
             continue  # skip done/deferred
 
         test_cmd = _infer_test_command(scope)
@@ -259,7 +292,15 @@ def parse_phase_tasks(phase: str) -> list[Task]:
             test_command=test_cmd,
         ))
 
-    # Set dependencies: frontend depends on backend tasks
+    # Sort: backend first, then infra, docs, frontend last
+    scope_order = {"backend": 0, "infra": 1, "docs": 2, "frontend": 3}
+    tasks.sort(key=lambda t: scope_order.get(t.scope.split(":")[0], 99))
+
+    # Re-assign IDs after sorting so they reflect execution order
+    for idx, t in enumerate(tasks, 1):
+        t.id = idx
+
+    # Set dependencies: frontend depends on backend tasks in this phase
     backend_ids = [t.id for t in tasks if t.scope.startswith("backend")]
     for t in tasks:
         if t.scope.startswith("frontend") and backend_ids:
@@ -270,8 +311,6 @@ def parse_phase_tasks(phase: str) -> list[Task]:
 
 def _extract_milestone_section(content: str, milestone: str) -> str:
     """Extract text between milestone heading and next milestone heading."""
-    # Match patterns like "## Milestone 2.4" or "## 2.4 —" or "## Milestone 3.1"
-    major, minor = milestone.split(".")
     patterns = [
         rf"##\s+Milestone\s+{re.escape(milestone)}\b",
         rf"##\s+{re.escape(milestone)}\s*[—–-]",
@@ -336,16 +375,42 @@ def _infer_scope(title: str, milestone: str) -> str:
     """Infer task scope from title and milestone number."""
     title_lower = title.lower()
 
-    # Explicit "Frontend:" prefix — highest priority
+    # Explicit "Frontend:" prefix — HIGHEST PRIORITY
     if title_lower.startswith("frontend:") or title_lower.startswith("frontend "):
         if "seller" in title_lower:
             return "frontend:seller"
         return "frontend:buyer"
 
+    # Backend service detection (word-boundary matching to avoid false positives)
+    svc_keywords = {
+        "identity": ["auth", "регистрац", "jwt", "пароль", "верификац", "пользовател"],
+        "course": ["курс", "модул", "урок", "каталог", "категори", "curriculum"],
+        "enrollment": ["запис", "enrollment", "прогресс", "completion"],
+        "payment": ["оплат", "платёж", "платеж", "stripe", "подписк", "subscription"],
+        "notification": ["уведомлен", "email", "notification", "письм",
+                        "streak at risk", "напоминан"],
+        "ai": ["ai service", "ai credit", "gemini", "llm", "генерац",
+               "quiz generate", "summary generate", "/ai/"],
+        "learning": ["quiz", "flashcard", r"\bxp\b", "streak", "badge", "leaderboard",
+                     "gamif", "балл", "достижен", "очки", "ачивк", "геймиф",
+                     "spaced repetition", "concept", "knowledge graph",
+                     "discussion", r"\bcomment\b", "upvote", "certificate",
+                     r"\bseed\b"],
+    }
+    for svc, keywords in svc_keywords.items():
+        for kw in keywords:
+            if kw.startswith(r"\b"):
+                # Regex word-boundary match
+                if re.search(kw, title_lower):
+                    return f"backend:{svc}"
+            elif kw in title_lower:
+                return f"backend:{svc}"
+
     # Frontend indicators
     fe_keywords = ["ui", "страниц", "компонент", "дашборд", "landing", "onboarding",
                    "responsive", "mobile", "seller app", "фронт", "next.js", "react",
-                   "pricing page", "checkout flow", "header badge"]
+                   "pricing page", "checkout flow", "header", "counter in header",
+                   "flame", "shelf", "bug fixes", "polish", "error states"]
     for kw in fe_keywords:
         if kw in title_lower:
             if "seller" in title_lower:
@@ -364,26 +429,6 @@ def _infer_scope(title: str, milestone: str) -> str:
     for kw in docs_keywords:
         if kw in title_lower:
             return "docs"
-
-    # Backend service detection
-    svc_keywords = {
-        "identity": ["auth", "регистрац", "jwt", "пароль", "верификац", "пользовател"],
-        "course": ["курс", "модул", "урок", "каталог", "категори", "curriculum"],
-        "enrollment": ["запис", "enrollment", "прогресс", "completion"],
-        "payment": ["оплат", "платёж", "платеж", "stripe", "подписк", "subscription"],
-        "notification": ["уведомлен", "email", "notification", "письм",
-                        "streak at risk", "напоминан"],
-        "ai": ["ai service", "ai credit", "gemini", "llm", "генерац",
-               "quiz generate", "summary generate", "/ai/"],
-        "learning": ["quiz", "flashcard", "xp", "streak", "badge", "leaderboard",
-                     "gamif", "балл", "достижен", "очки", "ачивк", "геймиф",
-                     "spaced repetition", "concept", "knowledge graph",
-                     "discussion", "comment", "upvote", "certificate"],
-    }
-    for svc, keywords in svc_keywords.items():
-        for kw in keywords:
-            if kw in title_lower:
-                return f"backend:{svc}"
 
     # Default by milestone
     phase_major = milestone.split(".")[0]
@@ -405,14 +450,10 @@ def _infer_test_command(scope: str) -> str | None:
 
 def _build_prompt(phase: str, title: str, scope: str, milestone_section: str) -> str:
     """Build a detailed Claude Code prompt for a task."""
-    # Read CLAUDE.md rules excerpt for the prompt
-    claude_md = ROOT / "CLAUDE.md"
-    rules_excerpt = ""
-    if claude_md.exists():
-        rules_excerpt = (
-            "Следуй правилам из CLAUDE.md: Clean Architecture, TDD (red→green→refactor), "
-            "type hints, async, YAGNI. Коммит формат: <type>(<scope>): <description>."
-        )
+    rules_excerpt = (
+        "Следуй правилам из CLAUDE.md: Clean Architecture, TDD (red→green→refactor), "
+        "type hints, async, YAGNI. Коммит формат: <type>(<scope>): <description>."
+    )
 
     test_note = ""
     test_cmd = _infer_test_command(scope)
@@ -433,8 +474,12 @@ SCOPE: {scope}
 3. Используй существующие паттерны (посмотри аналогичные сервисы/компоненты)
 4. {rules_excerpt}
 5. После реализации создай атомарный git commit
-
 {test_note}
+
+КРИТИЧЕСКОЕ ТРЕБОВАНИЕ:
+- Ты ОБЯЗАН написать код и создать коммит. НЕ задавай вопросов. НЕ предлагай варианты.
+- Если есть несколько подходов — выбери самый простой и реализуй его.
+- Если задача требует межсервисного взаимодействия — реализуй в рамках текущего scope.
 
 ВАЖНО:
 - НЕ создавай файлы "на будущее" (YAGNI)
@@ -482,8 +527,60 @@ class BudgetTracker:
 # Claude Code executor
 # ---------------------------------------------------------------------------
 
+def _stream_process(
+    cmd: list[str] | str,
+    cwd: str,
+    timeout: int,
+    *,
+    shell: bool = False,
+    prefix: str = "  │ ",
+) -> tuple[int, str]:
+    """Run a subprocess with real-time output streaming.
+
+    Shows output line-by-line with prefix while also capturing it.
+    Returns (exit_code, full_output).
+    """
+    collected: list[str] = []
+    start = time.time()
+
+    try:
+        proc = subprocess.Popen(
+            cmd,
+            cwd=cwd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            shell=shell,
+            bufsize=1,  # line-buffered
+        )
+
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            line_stripped = line.rstrip("\n")
+            collected.append(line)
+            # Show abbreviated output in real-time
+            display = line_stripped[:200]
+            print(f"{prefix}{display}", flush=True)
+
+        proc.wait(timeout=timeout)
+        elapsed = time.time() - start
+        output = "".join(collected)
+        print(f"{prefix}--- Done in {elapsed:.0f}s (exit={proc.returncode}, {len(output)} chars) ---",
+              flush=True)
+        return proc.returncode, output
+
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        output = "".join(collected)
+        return 1, output + f"\nTIMEOUT after {timeout}s"
+
+    except FileNotFoundError:
+        return 1, f"Command not found: {cmd[0] if isinstance(cmd, list) else cmd}"
+
+
 def run_claude_code(prompt: str, cwd: Path | None = None) -> tuple[int, str]:
-    """Execute a task via Claude Code CLI."""
+    """Execute a task via Claude Code CLI with real-time output."""
     work_dir = str(cwd or ROOT)
     cmd = [
         "claude",
@@ -492,49 +589,21 @@ def run_claude_code(prompt: str, cwd: Path | None = None) -> tuple[int, str]:
         prompt,
     ]
 
-    log.info("Running Claude Code in %s", work_dir)
-    start = time.time()
-
-    try:
-        result = subprocess.run(
-            cmd,
-            cwd=work_dir,
-            capture_output=True,
-            text=True,
-            timeout=CLAUDE_TIMEOUT,
-        )
-        elapsed = time.time() - start
-        output = result.stdout
-        if result.stderr:
-            output += "\n--- STDERR ---\n" + result.stderr
-        log.info("Claude Code finished in %.0fs (exit=%d, %d chars)",
-                 elapsed, result.returncode, len(output))
-        return result.returncode, output
-
-    except subprocess.TimeoutExpired:
-        log.error("Claude Code timed out after %ds", CLAUDE_TIMEOUT)
-        return 1, f"TIMEOUT after {CLAUDE_TIMEOUT}s"
-
-    except FileNotFoundError:
-        log.error("'claude' CLI not found. Install: npm install -g @anthropic-ai/claude-code")
-        return 1, "claude CLI not found"
+    print(f"  ┌── Claude Code starting...", flush=True)
+    exit_code, output = _stream_process(cmd, work_dir, CLAUDE_TIMEOUT, prefix="  │ ")
+    print(f"  └── Claude Code done (exit={exit_code})", flush=True)
+    return exit_code, output
 
 
 def run_test_command(command: str) -> tuple[int, str]:
-    """Run a test/build verification command."""
-    log.info("Running: %s", command)
-    try:
-        result = subprocess.run(
-            command,
-            shell=True,
-            cwd=str(ROOT),
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-        return result.returncode, result.stdout + result.stderr
-    except subprocess.TimeoutExpired:
-        return 1, "Test command timed out after 300s"
+    """Run a test/build verification command with real-time output."""
+    print(f"  ┌── Tests: {command}", flush=True)
+    exit_code, output = _stream_process(
+        command, str(ROOT), 300, shell=True, prefix="  │ "
+    )
+    status = "PASSED ✓" if exit_code == 0 else "FAILED ✗"
+    print(f"  └── Tests {status}", flush=True)
+    return exit_code, output
 
 
 def run_git_commit(task: Task) -> tuple[int, str]:
@@ -575,57 +644,50 @@ def run_git_commit(task: Task) -> tuple[int, str]:
 # Orchestration loop
 # ---------------------------------------------------------------------------
 
-def execute(state: OrchestratorState, dry_run: bool = False, budget_limit: int = TOKEN_BUDGET_CHARS) -> None:
-    """Main loop: iterate phases → tasks, execute, test, commit."""
-    budget = BudgetTracker(state, limit=budget_limit)
+def _execute_phase(
+    phase: str,
+    tasks: list[Task],
+    state: OrchestratorState,
+    budget: BudgetTracker,
+    dry_run: bool,
+) -> bool:
+    """Execute all tasks in a phase with multi-pass for dependencies.
 
-    # Find phases to process
-    phases_to_run = [p for p in PHASE_ORDER if p in state.phases]
-    if state.current_phase:
-        # Skip completed phases
-        try:
-            start_idx = phases_to_run.index(state.current_phase)
-            phases_to_run = phases_to_run[start_idx:]
-        except ValueError:
-            pass
+    Returns True if we should continue to next phase, False if stopped.
+    """
+    _p(f"\n{'#'*60}")
+    _p(f"  PHASE {phase} — {len(tasks)} tasks")
+    _p(f"  Budget remaining: {budget.remaining_pct:.0f}%")
+    _p(f"{'#'*60}")
 
-    for phase in phases_to_run:
-        tasks = state.phases[phase]
-        state.current_phase = phase
+    # Multi-pass: keep running until no more progress
+    max_passes = len(tasks) + 1  # safety limit
+    for pass_num in range(1, max_passes + 1):
+        made_progress = False
 
-        # Skip to current task if resuming
-        start_task = state.current_task_idx if phase == phases_to_run[0] else 0
-
-        print(f"\n{'#'*60}")
-        print(f"  PHASE {phase} — {len(tasks)} tasks")
-        print(f"  Budget remaining: {budget.remaining_pct:.0f}%")
-        print(f"{'#'*60}")
-
-        for i in range(start_task, len(tasks)):
-            task = tasks[i]
+        for i, task in enumerate(tasks):
             state.current_task_idx = i
 
             # --- Pre-checks ---
             if _should_stop():
-                print("\n  STOP requested. Saving state...")
+                _p("\n  STOP requested. Saving state...")
                 state.paused_at = _now()
                 state.save()
                 _print_report(state)
-                return
+                return False
 
             if budget.should_pause():
-                print(f"\n  BUDGET PAUSE — used {budget.used_chars:,} chars ({budget.remaining_pct:.0f}% left)")
-                print(f"  Sleeping {BUDGET_PAUSE_HOURS}h. Resume with: ./run.sh --resume")
+                _p(f"\n  BUDGET PAUSE — used {budget.used_chars:,} chars ({budget.remaining_pct:.0f}% left)")
+                _p(f"  Sleeping {BUDGET_PAUSE_HOURS}h. Resume with: ./run.sh --resume")
                 state.paused_at = _now()
                 state.save()
                 _print_report(state)
-
-                # Sleep and then reset budget window
                 time.sleep(BUDGET_PAUSE_HOURS * 3600)
                 budget.reset_window()
-                print(f"\n  Waking up! Budget reset. Continuing...")
+                _p("\n  Waking up! Budget reset. Continuing...")
 
-            if task.status == "passed":
+            # Skip already completed
+            if task.status in ("passed", "failed"):
                 continue
 
             # Check dependencies
@@ -633,23 +695,24 @@ def execute(state: OrchestratorState, dry_run: bool = False, budget_limit: int =
             for dep_id in task.depends_on:
                 dep = next((t for t in tasks if t.id == dep_id), None)
                 if dep and dep.status != "passed":
-                    log.warning("Task #%d blocked by #%d (%s)", task.id, dep_id, dep.status)
-                    task.status = "skipped"
-                    task.error = f"Blocked by #{dep_id}"
                     deps_ok = False
                     break
+
             if not deps_ok:
+                if pass_num == 1:
+                    _p(f"  ⏳ Task #{task.id} deferred (waiting for deps): {task.title}")
                 continue
 
             # --- Execute task ---
-            print(f"\n{'='*60}")
-            print(f"  [{i+1}/{len(tasks)}] Phase {phase} / Task #{task.id}: {task.title}")
-            print(f"  Scope: {task.scope} | Budget: {budget.remaining_pct:.0f}%")
-            print(f"{'='*60}")
+            made_progress = True
+            _p(f"\n{'='*60}")
+            _p(f"  ▶ [Pass {pass_num}] Phase {phase} / Task #{task.id}: {task.title}")
+            _p(f"  Scope: {task.scope} | Budget: {budget.remaining_pct:.0f}%")
+            _p(f"{'='*60}")
 
             if dry_run:
-                print(f"\n  [DRY RUN] prompt ({len(task.prompt)} chars):")
-                print(f"  {task.prompt[:300]}...")
+                _p(f"\n  [DRY RUN] prompt ({len(task.prompt)} chars):")
+                _p(f"  {task.prompt[:300]}...")
                 task.status = "passed"
                 continue
 
@@ -660,7 +723,7 @@ def execute(state: OrchestratorState, dry_run: bool = False, budget_limit: int =
                 task.status = "running"
                 state.save()
 
-                print(f"\n  Attempt {attempt}/{MAX_RETRIES}...")
+                _p(f"\n  Attempt {attempt}/{MAX_RETRIES}...")
 
                 # Run Claude Code
                 exit_code, output = run_claude_code(task.prompt)
@@ -671,18 +734,35 @@ def execute(state: OrchestratorState, dry_run: bool = False, budget_limit: int =
                 _save_task_log(phase, task, output)
 
                 if exit_code != 0 and "TIMEOUT" in output:
-                    print("  TIMEOUT — skipping")
+                    _p("  ✗ TIMEOUT — skipping")
                     task.status = "failed"
                     task.error = "Timeout"
                     break
 
+                # Verify actual code changes exist
+                has_changes = _has_git_changes()
+                if not has_changes:
+                    _p("  ✗ NO CODE CHANGES — Claude did not write any code")
+                    task.error = "No code changes produced"
+                    if attempt < MAX_RETRIES:
+                        _p("  Retrying with stronger instructions...")
+                        task.prompt += (
+                            "\n\nПРЕДЫДУЩАЯ ПОПЫТКА НЕ СОЗДАЛА НИКАКИХ ИЗМЕНЕНИЙ В КОДЕ."
+                            "\nТы ОБЯЗАН написать код. Не задавай вопросов. Просто реализуй задачу."
+                            "\nВыбери простейший подход и напиши код прямо сейчас."
+                        )
+                        continue
+                    else:
+                        task.status = "failed"
+                        task.finished_at = _now()
+                        state.save()
+                        break
+
                 # Run tests
                 test_ok = True
                 if task.test_command:
-                    print(f"  Testing: {task.test_command}")
                     test_exit, test_out = run_test_command(task.test_command)
                     test_ok = test_exit == 0
-                    print(f"  Tests: {'PASSED' if test_ok else 'FAILED'}")
                     if not test_ok:
                         task.error = test_out[-500:]
 
@@ -690,23 +770,56 @@ def execute(state: OrchestratorState, dry_run: bool = False, budget_limit: int =
                     # Commit
                     commit_exit, commit_out = run_git_commit(task)
                     if commit_exit == 0:
-                        print(f"  Committed: {commit_out.strip().splitlines()[-1] if commit_out.strip() else 'ok'}")
+                        _p(f"  ✓ Committed: {commit_out.strip().splitlines()[-1] if commit_out.strip() else 'ok'}")
                     task.status = "passed"
                     task.finished_at = _now()
                     state.save()
                     break
                 elif attempt < MAX_RETRIES:
-                    # Retry with error context
-                    print("  Retrying with error context...")
+                    _p("  Retrying with error context...")
                     task.prompt += f"\n\nПРЕДЫДУЩАЯ ПОПЫТКА ПРОВАЛИЛАСЬ. Ошибка:\n{task.error[:500]}\nИсправь и убедись что тесты проходят."
                 else:
-                    print("  Max retries. Marking FAILED.")
+                    _p("  ✗ Max retries. Marking FAILED.")
                     task.status = "failed"
                     task.finished_at = _now()
                     state.save()
 
-            # Progress report
-            _print_phase_progress(phase, tasks)
+        _print_phase_progress(phase, tasks)
+
+        if not made_progress:
+            # No tasks were executed this pass — check if any are still pending
+            pending = [t for t in tasks if t.status == "pending"]
+            if pending:
+                blocked_ids = [t.id for t in pending]
+                _p(f"\n  WARNING: {len(pending)} tasks permanently blocked: {blocked_ids}")
+                for t in pending:
+                    t.status = "skipped"
+                    t.error = f"Dependencies never resolved: {t.depends_on}"
+            break
+
+    return True
+
+
+def execute(state: OrchestratorState, dry_run: bool = False, budget_limit: int = TOKEN_BUDGET_CHARS) -> None:
+    """Main loop: iterate phases → tasks, execute, test, commit."""
+    budget = BudgetTracker(state, limit=budget_limit)
+
+    # Find phases to process
+    phases_to_run = [p for p in PHASE_ORDER if p in state.phases]
+    if state.current_phase:
+        try:
+            start_idx = phases_to_run.index(state.current_phase)
+            phases_to_run = phases_to_run[start_idx:]
+        except ValueError:
+            pass
+
+    for phase in phases_to_run:
+        tasks = state.phases[phase]
+        state.current_phase = phase
+
+        should_continue = _execute_phase(phase, tasks, state, budget, dry_run)
+        if not should_continue:
+            return
 
         # Phase complete — move to next
         state.current_task_idx = 0
@@ -758,7 +871,7 @@ def _print_report(state: OrchestratorState) -> None:
                       "running": "🔄", "pending": "⏳"}.get(t.status, "?")
             extra = f" ({t.attempts} attempts)" if t.attempts > 1 else ""
             err = f" — {t.error[:60]}" if t.error else ""
-            print(f"    {t_icon} #{t.id} {t.title}{extra}{err}")
+            print(f"    {t_icon} #{t.id} [{t.scope}] {t.title}{extra}{err}")
 
     total_tasks = sum(len(t) for t in state.phases.values())
     total_passed = sum(1 for t in _all_tasks(state) if t.status == "passed")
@@ -792,6 +905,7 @@ Examples:
   ./run.sh --phase 2.4 --dry-run  Preview tasks without executing
   ./run.sh --resume               Resume after pause/crash
   ./run.sh --status               Show current status
+  ./run.sh --reset                Delete state and start fresh
 
 Stop gracefully:
   Ctrl+C                       Saves state after current task
@@ -802,6 +916,7 @@ Stop gracefully:
     parser.add_argument("--resume", action="store_true", help="Resume from saved state")
     parser.add_argument("--dry-run", action="store_true", help="Plan only, don't execute")
     parser.add_argument("--status", action="store_true", help="Show status and exit")
+    parser.add_argument("--reset", action="store_true", help="Delete state and start fresh")
     parser.add_argument("--budget", type=int, default=TOKEN_BUDGET_CHARS,
                         help=f"Token budget in chars (default: {TOKEN_BUDGET_CHARS:,})")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation prompt")
@@ -816,6 +931,16 @@ Stop gracefully:
     )
 
     budget_chars = args.budget
+
+    # Reset mode
+    if args.reset:
+        state_path = STATE_DIR / "state.json"
+        if state_path.exists():
+            state_path.unlink()
+            print("  State deleted. Starting fresh.")
+        else:
+            print("  No state to delete.")
+        return
 
     # Status mode
     if args.status:
@@ -832,6 +957,7 @@ Stop gracefully:
         if not state:
             print("  No saved state to resume from.")
             return
+        state.recover_crashed_tasks()
         print(f"\n  Resuming from Phase {state.current_phase}, task #{state.current_task_idx + 1}")
         print(f"  Previously paused at: {state.paused_at}")
         execute(state, dry_run=args.dry_run, budget_limit=budget_chars)

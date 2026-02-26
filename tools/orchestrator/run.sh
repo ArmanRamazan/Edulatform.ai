@@ -26,5 +26,5 @@ echo "  ║  Stop: Ctrl+C or touch .stop             ║"
 echo "  ╚══════════════════════════════════════════╝"
 echo ""
 
-# Run the orchestrator, passing all arguments through
-exec uv run --package orchestrator python "$SCRIPT_DIR/orchestrator.py" "$@"
+# Run the orchestrator with unbuffered output, passing all arguments through
+exec uv run --package orchestrator python -u "$SCRIPT_DIR/orchestrator.py" "$@"

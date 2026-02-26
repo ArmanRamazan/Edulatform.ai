@@ -251,6 +251,7 @@ services:
       ENROLLMENT_DB_URL: postgresql://enrollment:enrollment@enrollment-db:5432/enrollment
       PAYMENT_DB_URL: postgresql://payment:payment@payment-db:5432/payment
       NOTIFICATION_DB_URL: postgresql://notification:notification@notification-db:5432/notification
+      LEARNING_DB_URL: postgresql://learning:learning@learning-db:5432/learning
     depends_on:
       identity:
         condition: service_started
