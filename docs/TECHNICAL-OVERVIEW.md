@@ -19,7 +19,7 @@
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
-| Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews |
+| Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
 | Unit Tests | ✅ 285 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 30, learning 98 |
 
@@ -121,7 +121,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, knowledge graph, discussions
 ├── apps/buyer/              — Next.js frontend
 ├── deploy/docker/           — Dockerfiles, Prometheus, Grafana
-├── tools/seed/              — Data generation (50K users, 100K courses, 200K enrollments)
+├── tools/seed/              — Data generation (50K users, 100K courses, 200K enrollments, learning data)
 ├── tools/locust/            — Load test scenarios
 ├── tools/orchestrator/      — AI orchestrator: autonomous Claude Code executor for phase roadmap
 ├── docs/goals/              — Architecture decisions, domain specs
