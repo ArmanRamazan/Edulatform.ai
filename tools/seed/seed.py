@@ -704,17 +704,64 @@ async def seed_flashcards(
 
     print(f"Seeded {written} flashcards")
 
+    # Seed review_logs for flashcards that have been reviewed (state > 0)
+    print("Seeding review logs for flashcards...")
+    reviewed_rows = await pool.fetch(
+        "SELECT id, state FROM flashcards WHERE state > 0"
+    )
+    log_buf = io.BytesIO()
+    log_count = 0
+    for row in reviewed_rows:
+        card_id = str(row["id"])
+        # 1-3 reviews per card depending on state
+        num_reviews = min(row["state"] + 1, 3)
+        for _ in range(num_reviews):
+            rating = random.choices([1, 2, 3, 4], weights=[10, 20, 40, 30])[0]
+            duration_ms = random.randint(2000, 15000)
+            days_ago = random.randint(1, 14)
+            reviewed_at = (datetime.now(timezone.utc) - timedelta(days=days_ago)).isoformat()
+            log_buf.write(f"{card_id}\t{rating}\t{duration_ms}\t{reviewed_at}\n".encode())
+            log_count += 1
+
+        if log_count % BATCH_SIZE == 0 and log_count > 0:
+            log_buf.seek(0)
+            async with pool.acquire() as conn:
+                await conn.copy_to_table(
+                    "review_logs", source=log_buf,
+                    columns=["card_id", "rating", "review_duration_ms", "reviewed_at"],
+                    format="text",
+                )
+            log_buf = io.BytesIO()
+            print(f"  Review logs: {log_count}")
+
+    if log_buf.tell() > 0:
+        log_buf.seek(0)
+        async with pool.acquire() as conn:
+            await conn.copy_to_table(
+                "review_logs", source=log_buf,
+                columns=["card_id", "rating", "review_duration_ms", "reviewed_at"],
+                format="text",
+            )
+
+    print(f"Seeded {log_count} review logs")
+
 
 async def seed_xp_and_badges(
     pool: asyncpg.Pool,
     student_ids: list[str],
     quiz_attempts: list[tuple[str, str, float]],
+    enrollment_data: list[tuple[str, str]],
 ) -> None:
     """Seed XP events and badges."""
     print("Seeding XP events...")
     xp_rewards = {"lesson_complete": 10, "quiz_submit": 20, "flashcard_review": 5}
     actions = list(xp_rewards.keys())
     weights = [40, 35, 25]
+
+    # Build student -> enrolled courses map for realistic course_ids
+    student_courses: dict[str, list[str]] = {}
+    for sid, cid in enrollment_data:
+        student_courses.setdefault(sid, []).append(cid)
 
     buf = io.BytesIO()
     user_xp: dict[str, int] = {}
@@ -724,7 +771,8 @@ async def seed_xp_and_badges(
         student_id = random.choice(student_ids)
         action = random.choices(actions, weights=weights)[0]
         points = xp_rewards[action]
-        course_id = "\\N"
+        courses = student_courses.get(student_id)
+        course_id = random.choice(courses) if courses else "\\N"
         buf.write(f"{student_id}\t{action}\t{points}\t{course_id}\n".encode())
         user_xp[student_id] = user_xp.get(student_id, 0) + points
 
@@ -777,6 +825,18 @@ async def seed_xp_and_badges(
         if key not in seen_badges:
             seen_badges.add(key)
             badge_buf.write(f"{sid}\tstreak_7\n".encode())
+            badge_count += 1
+
+    # mastery_100 for students who achieved full mastery on any concept
+    mastery_rows = await pool.fetch(
+        "SELECT DISTINCT student_id FROM concept_mastery WHERE mastery >= 1.0"
+    )
+    for row in mastery_rows:
+        sid = str(row["student_id"])
+        key = (sid, "mastery_100")
+        if key not in seen_badges:
+            seen_badges.add(key)
+            badge_buf.write(f"{sid}\tmastery_100\n".encode())
             badge_count += 1
 
     if badge_count > 0:
@@ -987,7 +1047,7 @@ async def seed_learning(
     await seed_flashcards(learning_pool, concept_map, course_students)
 
     # 5. XP + badges
-    await seed_xp_and_badges(learning_pool, student_ids, quiz_attempts)
+    await seed_xp_and_badges(learning_pool, student_ids, quiz_attempts, enrollment_data)
 
     # 6. Streaks
     await seed_streaks(learning_pool, student_ids)
