@@ -52,9 +52,8 @@ docker compose -f docker-compose.dev.yml --profile seed up seed
 ### Фронтенд
 
 ```bash
-cd apps/buyer
-npm install
-npm run dev    # http://localhost:3001
+cd apps/buyer && pnpm install && pnpm dev    # http://localhost:3001
+cd apps/seller && pnpm install && pnpm dev   # http://localhost:3002
 ```
 
 ### Тесты
@@ -97,6 +96,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 | AI API | 8006 |
 | Learning API | 8007 |
 | Buyer Frontend | 3001 |
+| Seller Frontend | 3002 |
 | Grafana | 3000 |
 | Prometheus | 9090 |
 | Locust | 8089 |
@@ -119,7 +119,8 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ├── services/py/notification/— Notifications: in-app, mark as read
 ├── services/py/ai/          — AI: quiz gen, summary, Socratic tutor, Gemini Flash, Redis cache, credit tracking
 ├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, knowledge graph, discussions
-├── apps/buyer/              — Next.js frontend
+├── apps/buyer/              — Next.js student frontend
+├── apps/seller/             — Next.js teacher dashboard
 ├── deploy/docker/           — Dockerfiles, Prometheus, Grafana
 ├── tools/seed/              — Data generation (50K users, 100K courses, 200K enrollments, learning data)
 ├── tools/locust/            — Load test scenarios

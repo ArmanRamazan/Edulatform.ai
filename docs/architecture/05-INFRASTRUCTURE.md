@@ -275,16 +275,23 @@ Uvicorn обрабатывает SIGTERM: перестаёт принимать 
 
 ## Frontend (вне Docker)
 
-Buyer App запускается отдельно через npm:
+Frontend-приложения запускаются отдельно через pnpm:
 
 ```bash
-cd apps/buyer && npm run dev  # :3001
+cd apps/buyer && pnpm dev   # :3001
+cd apps/seller && pnpm dev  # :3002
 ```
 
-Проксирует API через Next.js rewrites:
+**Buyer App** проксирует API через Next.js rewrites:
 - `/api/identity/*` → `http://localhost:8001/*`
 - `/api/course/*` → `http://localhost:8002/*`
 - `/api/enrollment/*` → `http://localhost:8003/*`
 - `/api/payment/*` → `http://localhost:8004/*`
 - `/api/notification/*` → `http://localhost:8005/*`
 - `/api/learning/*` → `http://localhost:8007/*`
+
+**Seller App** проксирует API через Next.js rewrites:
+- `/api/identity/*` → `http://localhost:8001/*`
+- `/api/course/*` → `http://localhost:8002/*`
+- `/api/payment/*` → `http://localhost:8004/*`
+- `/api/notification/*` → `http://localhost:8005/*`
