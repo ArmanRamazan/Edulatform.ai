@@ -8,8 +8,8 @@ import { Header } from "@/components/Header";
 import { useAuth } from "@/hooks/use-auth";
 import { useCurriculum } from "@/hooks/use-courses";
 import { useCompletedLessons, useCompleteLesson } from "@/hooks/use-progress";
-import { useQuiz, useSubmitQuiz } from "@/hooks/use-quiz";
-import { useSummary } from "@/hooks/use-ai";
+import { useQuiz, useSubmitQuiz, useCreateQuiz } from "@/hooks/use-quiz";
+import { useSummary, useGenerateQuiz } from "@/hooks/use-ai";
 import { TutorDrawer } from "@/components/TutorDrawer";
 import { getErrorMessage } from "@/lib/errors";
 import type { QuizQuestionResult } from "@/lib/api";
@@ -20,7 +20,7 @@ export default function LessonPage({
   params: Promise<{ id: string; lessonId: string }>;
 }) {
   const { id: courseId, lessonId } = use(params);
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const { data: lesson, error } = useQuery({
@@ -49,6 +49,28 @@ export default function LessonPage({
   const [tutorOpen, setTutorOpen] = useState(false);
 
   const submitQuiz = useSubmitQuiz(token, quizData?.id ?? "");
+  const generateQuiz = useGenerateQuiz(token);
+  const createQuiz = useCreateQuiz(token, lessonId);
+
+  const isTeacher = !!user && !!curriculumData && user.id === curriculumData.course.teacher_id;
+
+  const handleGenerateQuiz = () => {
+    if (!lesson) return;
+    generateQuiz.mutate(
+      { lessonId, content: lesson.content },
+      {
+        onSuccess: (data) => {
+          createQuiz.mutate({
+            lesson_id: lessonId,
+            course_id: courseId,
+            questions: data.questions,
+          });
+        },
+      }
+    );
+  };
+
+  const isGenerating = generateQuiz.isPending || createQuiz.isPending;
 
   const allLessons = curriculum.flatMap((m) => m.lessons);
   const currentIdx = allLessons.findIndex((l) => l.id === lessonId);
@@ -156,6 +178,25 @@ export default function LessonPage({
                 <div className="mb-4 rounded-lg border border-blue-100 bg-blue-50 p-4">
                   <h3 className="mb-2 text-sm font-semibold text-blue-700">Краткое содержание</h3>
                   <p className="whitespace-pre-wrap text-sm text-gray-700">{summaryData.summary}</p>
+                </div>
+              )}
+
+              {/* Generate Quiz (teacher only) */}
+              {!quizData && isTeacher && (
+                <div className="mb-4 flex items-center gap-2 rounded-lg border border-purple-100 bg-purple-50 p-3">
+                  <span className="text-sm text-purple-700">Для этого урока ещё нет квиза.</span>
+                  <button
+                    onClick={handleGenerateQuiz}
+                    disabled={isGenerating}
+                    className="rounded bg-purple-600 px-3 py-1.5 text-sm text-white hover:bg-purple-700 disabled:opacity-50"
+                  >
+                    {isGenerating ? "Генерируем квиз..." : "Сгенерировать квиз"}
+                  </button>
+                  {(generateQuiz.isError || createQuiz.isError) && (
+                    <span className="text-sm text-red-600">
+                      {getErrorMessage(generateQuiz.error || createQuiz.error)}
+                    </span>
+                  )}
                 </div>
               )}
 

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { quizzes as quizzesApi } from "@/lib/api";
+import type { AiQuizQuestion } from "@/lib/api";
 
 export function useQuiz(token: string | null, lessonId: string) {
   return useQuery({
@@ -16,6 +17,17 @@ export function useSubmitQuiz(token: string | null, quizId: string) {
     mutationFn: (answers: number[]) => quizzesApi.submit(token!, quizId, answers),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["quizAttempts", quizId] });
+    },
+  });
+}
+
+export function useCreateQuiz(token: string | null, lessonId: string) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { lesson_id: string; course_id: string; questions: AiQuizQuestion[] }) =>
+      quizzesApi.create(token!, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["quiz", lessonId] });
     },
   });
 }
