@@ -1,0 +1,559 @@
+phase: "sprint-4"
+description: "Optimization — Paywall, Performance, DevOps, AI features"
+
+tasks:
+  # ──────────────────────────────────────────────
+  # FRONTEND: AI CREDIT INDICATOR
+  # ──────────────────────────────────────────────
+
+  - id: credit-indicator
+    title: "AI credit usage indicator in header"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add an AI credit usage indicator to the buyer app header, showing remaining credits for the logged-in user.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS)
+      - useAICredits hook available from hooks/use-subscriptions.ts
+      - Existing header/nav: look at apps/buyer/app/page.tsx and apps/buyer/components/ for existing nav components
+      - The header likely has XP counter, streak flame, badge shelf (added in Phase 2.4)
+      - useAuth hook: apps/buyer/hooks/use-auth.ts
+
+      WHAT TO BUILD:
+      1. apps/buyer/components/AICreditIndicator.tsx — "use client":
+         - Uses useAICredits(token) hook
+         - Shows: brain/sparkles icon + "{remaining} credits" or "Unlimited" for pro tier
+         - Color coding: green if remaining > limit * 0.5, yellow if > 0, red if 0
+         - For unlimited (limit=-1 or tier="pro"): show sparkles icon + "Unlimited" in blue
+         - On click: link to /pricing if credits exhausted (remaining === 0 and tier !== "pro")
+         - Tooltip on hover: "{used}/{limit} used today · Resets at {reset_at formatted as time}"
+         - No render if not logged in (token is null)
+
+      2. Add <AICreditIndicator token={token} /> to the existing header/nav component
+         Find the header component in apps/buyer/components/ or apps/buyer/app/layout.tsx
+         Place it alongside existing XP counter and streak components
+
+      RULES:
+      - "use client" on AICreditIndicator (uses hooks)
+      - If header is a Server Component, extract the credit indicator as a separate client island
+      - Radix UI Tooltip if available in packages/ui or direct import from @radix-ui/react-tooltip
+      - Named export only
+      - Commit: feat(buyer): add AI credit usage indicator to header
+    test: "cd apps/buyer && pnpm build"
+
+  # ──────────────────────────────────────────────
+  # FRONTEND: PAYWALL UI
+  # ──────────────────────────────────────────────
+
+  - id: paywall-ui
+    title: "Paywall UI: upgrade prompt when free tier AI credits exhausted"
+    scope: frontend:buyer
+    depends_on:
+      - credit-indicator
+    prompt: |
+      Task: Add a paywall overlay/prompt to the buyer app that appears when a free-tier user exhausts their AI credits.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS, Radix UI)
+      - useAICredits hook returns {used, limit, remaining, reset_at, tier}
+      - AI features used in: apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx (quiz, tutor, summary)
+      - Radix UI Dialog available: @radix-ui/react-dialog
+
+      WHAT TO BUILD:
+      1. apps/buyer/components/PaywallDialog.tsx — "use client":
+         - Props interface: { open: boolean; onClose: () => void; feature?: string }
+         - Renders Radix UI Dialog with:
+           - Title: "You've reached your daily AI limit"
+           - Body: "You've used all {limit} free AI interactions today. Upgrade to Student or Pro for more."
+           - Feature-specific message if feature prop provided ("Generate quizzes", "Chat with tutor", etc.)
+           - Two buttons: "Upgrade Now" → next/link to /pricing, "Maybe Later" → onClose()
+           - Reset time: "Your credits reset at {reset_at formatted as local time}"
+         - Export: named export PaywallDialog
+
+      2. apps/buyer/hooks/use-paywall.ts:
+         - usePaywall(token: string | null) hook
+         - Returns: { showPaywall: boolean; paywallOpen: boolean; openPaywall: () => void; closePaywall: () => void; creditStatus: AICreditStatus | undefined }
+         - showPaywall = creditStatus?.remaining === 0 && creditStatus?.tier !== "pro"
+
+      3. Integrate paywall into the lesson page AI features:
+         - In the lesson page (or lesson client component), use usePaywall hook
+         - Before calling AI actions (generate quiz, open tutor, generate summary):
+           if showPaywall: openPaywall() instead of calling the AI action
+         - Render <PaywallDialog open={paywallOpen} onClose={closePaywall} feature="..." />
+
+      RULES:
+      - PaywallDialog must be accessible (Radix UI Dialog handles focus trap, aria)
+      - No paywall shown to pro users (tier === "pro")
+      - Named exports only
+      - Dynamic import for PaywallDialog to avoid adding to initial bundle:
+        const PaywallDialog = dynamic(() => import("@/components/PaywallDialog").then(m => m.PaywallDialog))
+      - Commit: feat(buyer): add paywall UI for exhausted free tier AI credits
+    test: "cd apps/buyer && pnpm build"
+
+  # ──────────────────────────────────────────────
+  # FRONTEND: CORE WEB VITALS
+  # ──────────────────────────────────────────────
+
+  - id: cwv-audit
+    title: "Core Web Vitals audit + optimize"
+    scope: frontend:buyer
+    prompt: |
+      Task: Audit and optimize Core Web Vitals in the buyer app (LCP, CLS, INP).
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Key pages for CWV: home (/), catalog (/courses), course detail (/courses/[id])
+      - Known potential issues to address:
+        1. Images without explicit width/height causing layout shift (CLS)
+        2. Large client-side JS bundles delaying interactivity (INP)
+        3. Missing font-display swap causing layout shift (CLS)
+        4. Heavy components loaded eagerly that could be deferred
+
+      WHAT TO BUILD:
+      1. Audit all raw <img> usages — replace any with next/image where found
+      2. Add explicit width and height to all next/image usages that are missing them
+      3. Add priority prop to the hero/first above-fold image on each major page (LCP)
+      4. Dynamic import heavy client-only components: video player, rich text editor, charts
+         - Check apps/buyer/components/ for any such components
+         - Wrap with dynamic(() => import(...), { ssr: false }) where appropriate
+      5. Check apps/buyer/app/layout.tsx font loading — ensure next/font is used with display: 'swap'
+      6. Verify below-fold images use lazy loading (default in next/image — just confirm)
+
+      IMPLEMENTATION:
+      1. Search all .tsx files in apps/buyer/ for raw <img> tags — replace with next/image
+      2. Search for next/image usages missing width/height — add explicit dimensions
+      3. Find the first visible image on home, catalog, course detail pages — add priority prop
+      4. Check apps/buyer/components/ for VideoPlayer, RichTextEditor, or chart components
+      5. Verify font configuration in apps/buyer/app/layout.tsx
+
+      RULES:
+      - Do NOT refactor code unrelated to CWV
+      - Do NOT change business logic or visual design
+      - After all changes: cd apps/buyer && pnpm build
+      - Create atomic git commit: perf(buyer): optimize Core Web Vitals — images, fonts, dynamic imports
+    test: "cd apps/buyer && pnpm build"
+
+  # ──────────────────────────────────────────────
+  # FRONTEND: IMAGE OPTIMIZATION
+  # ──────────────────────────────────────────────
+
+  - id: image-optimization
+    title: "Image optimization (next/image)"
+    scope: frontend:buyer
+    depends_on:
+      - cwv-audit
+    prompt: |
+      Task: Comprehensive image optimization pass for the buyer app.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - next/image automatically serves WebP/AVIF, handles lazy loading, prevents CLS
+      - Course thumbnails come from external URLs (CDN) — need remotePatterns in next.config
+      - Avatar/profile images may also come from external URLs
+
+      WHAT TO BUILD:
+      1. Update apps/buyer/next.config.js (or next.config.ts) — add remotePatterns for external image domains
+         - Add a permissive pattern for dev: { protocol: 'https', hostname: '**' }
+         - In production, lock down to known CDN hostnames
+      2. Add sizes prop to responsive next/image usages in grid layouts:
+         - Course cards in a 4-column grid: sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+         - Hero images: sizes="100vw"
+      3. Ensure all avatar/user images have explicit size (width=40, height=40 or similar)
+      4. Verify CourseCard component(s) use next/image with correct layout (fill inside sized container, or explicit w/h)
+
+      IMPLEMENTATION:
+      1. Check apps/buyer/next.config.* for existing images config — add or update remotePatterns
+      2. Search for next/image usages in grid/card layouts missing sizes prop — add them
+      3. Check all avatar image usages — ensure explicit dimensions
+      4. Verify CourseCard thumbnail layout
+
+      RULES:
+      - Do NOT change visual design or styling beyond what is required for image optimization
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: perf(buyer): add next/image optimization — remotePatterns and sizes
+    test: "cd apps/buyer && pnpm build"
+
+  # ──────────────────────────────────────────────
+  # BACKEND: AUTO-GENERATE FLASHCARDS
+  # ──────────────────────────────────────────────
+
+  - id: auto-flashcards
+    title: "Auto-generate flashcards from quiz mistakes and key concepts"
+    scope: backend:learning
+    prompt: |
+      Task: Auto-generate flashcards when a student submits a quiz with mistakes.
+
+      CONTEXT:
+      - Learning service (port 8007) in services/py/learning/
+      - Clean Architecture: routes/ -> services/ -> domain/ <- repositories/
+      - Quiz submit endpoint: POST /quizzes/:id/submit returns score + per-question results
+      - Flashcard tables exist: flashcards (with FSRS fields), review_logs
+      - Flashcard schema: id, student_id, course_id, concept, answer, source_type, source_id, stability, difficulty, due, last_review, reps, lapses, state
+      - source_type can be: quiz_mistake, key_concept, manual
+      - Existing quiz submit in services/py/learning/app/services/quiz_service.py
+
+      WHAT TO BUILD:
+      1. After quiz submit, for each wrong answer create a flashcard
+      2. Flashcard front = question text, back = correct answer + explanation
+      3. source_type = "quiz_mistake", source_id = question.id
+      4. Skip if flashcard for this question already exists for this student
+      5. Only create for questions scored wrong (selected_index != correct_index)
+
+      TDD:
+      1. Write test: submit quiz with 2 wrong answers -> 2 flashcards created
+      2. Write test: submit quiz, same wrong answers again -> no duplicate flashcards
+      3. Write test: submit quiz with all correct -> no flashcards created
+      4. Implement in quiz_service.py submit method
+      5. Run: cd services/py/learning && uv run --package learning pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first, then implementation
+      - Async, type hints, Clean Architecture
+      - Don't modify flashcard domain/repository — use existing create method
+      - Create atomic git commit: feat(learning): auto-generate flashcards from quiz mistakes
+    test: "cd services/py/learning && uv run --package learning pytest tests/ -v"
+
+  # ──────────────────────────────────────────────
+  # BACKEND: FSRS REVIEW NOTIFICATIONS
+  # ──────────────────────────────────────────────
+
+  - id: fsrs-notifications
+    title: "Smart notifications for FSRS-scheduled reviews"
+    scope: backend:notification
+    prompt: |
+      Task: Add a notification trigger for flashcard reviews that are due.
+
+      CONTEXT:
+      - Notification service (port 8005) in services/py/notification/
+      - Learning service (port 8007) has GET /flashcards/due endpoint
+      - Notification service has POST /notifications and POST /streak-reminders/send
+      - Current notification types: enrollment, payment, streak_reminder
+      - Notifications table: id, user_id, type, title, message, is_read, created_at
+
+      WHAT TO BUILD:
+      1. New endpoint: POST /flashcard-reminders/send (admin only)
+      2. Similar pattern to POST /streak-reminders/send
+      3. Creates notifications for users who have due flashcards
+      4. Dedup: skip if user already has unread flashcard_reminder from today
+      5. Type: "flashcard_reminder", message: "You have N flashcards due for review!"
+
+      NOTE: This is a simple notification creation endpoint. The actual check for
+      due flashcards would be done by the caller (cron job or admin trigger).
+      For now, accept a list of user_ids + card_counts in the request body.
+
+      TDD:
+      1. Write test: POST /flashcard-reminders/send with user list -> notifications created
+      2. Write test: duplicate call same day -> no duplicate notifications
+      3. Implement endpoint
+      4. Run: cd services/py/notification && uv run --package notification pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - Follow existing streak-reminders pattern exactly
+      - Async, type hints, Clean Architecture
+      - Create atomic git commit: feat(notification): add flashcard review reminder notifications
+    test: "cd services/py/notification && uv run --package notification pytest tests/ -v"
+
+  # ──────────────────────────────────────────────
+  # INFRA: STAGING ENVIRONMENT
+  # ──────────────────────────────────────────────
+
+  - id: staging-env
+    title: "Staging environment — Docker Compose staging config"
+    scope: infra
+    prompt: |
+      Task: Create a docker-compose.staging.yml for a staging environment that mirrors production but uses staging DBs and config.
+
+      CONTEXT:
+      - Existing compose files: docker-compose.dev.yml (hot reload) and docker-compose.prod.yml (monitoring)
+      - Staging should be like prod but with:
+        - Staging-specific env vars (ENVIRONMENT=staging)
+        - Lower resource limits than prod
+        - No monitoring stack (Prometheus/Grafana) to reduce cost
+        - Seeded with demo data on first run
+      - All 7 Python services + api-gateway (Rust)
+      - DB ports offset by 10 from dev (5443-5449 for staging DBs)
+
+      WHAT TO BUILD:
+      1. docker-compose.staging.yml at repo root
+      2. All 7 Python services configured:
+         - image: ghcr.io/{owner}/{name}:latest (use image instead of build for staging)
+         - env_file: deploy/staging/.env.staging
+         - ENVIRONMENT=staging
+         - Separate DB containers with staging-specific volumes
+      3. A deploy/staging/.env.staging.example file with all required env var keys (no real values)
+      4. Staging DB containers:
+         - Same PostgreSQL image as prod
+         - Ports: identity-db on 5443, course-db on 5444, etc.
+         - Named volumes: identity-staging-data, course-staging-data, etc.
+      5. Health checks on all services (same as prod)
+
+      IMPLEMENTATION:
+      1. Read docker-compose.prod.yml to understand existing patterns
+      2. Create docker-compose.staging.yml based on prod but with image references instead of build
+      3. Create deploy/staging/ directory
+      4. Create deploy/staging/.env.staging.example with all required keys as placeholder comments
+
+      RULES:
+      - No real credentials in any committed file
+      - Use .env.staging.example — never commit an actual .env.staging
+      - Create atomic git commit: feat(infra): add staging environment Docker Compose config
+    test: null
+
+  # ──────────────────────────────────────────────
+  # BACKEND: STRUCTURED LOGGING
+  # ──────────────────────────────────────────────
+
+  - id: structured-logging
+    title: "Structured JSON logging with structlog across all Python services"
+    scope: backend:identity
+    prompt: |
+      Task: Replace print/logging stdlib usage with structlog structured JSON logging in all 7 Python services.
+
+      CONTEXT:
+      - Python services: services/py/{identity,course,enrollment,payment,notification,ai,learning}/
+      - Common library: libs/py/common/ (shared across all services)
+      - Current logging: likely uses Python's stdlib logging or print statements
+      - structlog provides structured JSON logging with context binding
+      - Target: every log line is valid JSON with fields: timestamp, level, service, message, plus context fields
+
+      WHAT TO BUILD:
+      1. Add structlog to libs/py/common/pyproject.toml dependencies
+      2. Create libs/py/common/app/logging.py:
+         - configure_logging(service_name: str, log_level: str = "INFO") -> None
+         - Sets up structlog with JSON renderer for production, console renderer for dev (based on ENVIRONMENT env var)
+         - Adds service name to every log event via bind_contextvars
+         - Standard processors: add_log_level, add_timestamp (ISO format), format_exc_info
+      3. Update each service's main.py / lifespan to call configure_logging(service_name="identity") on startup
+      4. Replace any print() or logger = logging.getLogger() usage with:
+         import structlog; logger = structlog.get_logger()
+      5. Key log events to ensure are structured:
+         - Service startup: logger.info("service_started", port=8001)
+         - Request errors: logger.error("request_failed", error=str(e), path=request.url.path)
+         - DB errors: logger.error("db_error", error=str(e))
+
+      TDD:
+      1. Write test in libs/py/common/tests/ verifying configure_logging does not raise
+      2. Write test verifying log output is valid JSON when ENVIRONMENT=production
+      3. Implement configure_logging
+      4. Update all 7 services to use it
+      5. Run tests for each service to ensure no regressions:
+         cd services/py/identity    && uv run --package identity pytest tests/ -v
+         cd services/py/notification && uv run --package notification pytest tests/ -v
+         (spot check 2 services, then run all if those pass)
+
+      RULES:
+      - TDD: failing test first, then implementation
+      - Do NOT add structlog calls to every function — only meaningful events
+      - Do NOT log PII (email, name, card numbers) — use user_id only
+      - ENVIRONMENT=production uses JSON renderer; ENVIRONMENT=development uses colored ConsoleRenderer
+      - After implementation run all 7 service test suites
+      - Create atomic git commit: feat(infra): add structlog structured JSON logging to all services
+    test: "cd services/py/identity && uv run --package identity pytest tests/ -v && cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+
+  # ──────────────────────────────────────────────
+  # INFRA: DATABASE BACKUP SCRIPTS
+  # ──────────────────────────────────────────────
+
+  - id: db-backup
+    title: "Database backup and restore scripts"
+    scope: infra
+    prompt: |
+      Task: Create shell scripts for backing up and restoring all 7 PostgreSQL databases.
+
+      CONTEXT:
+      - 7 PostgreSQL databases, one per service
+      - Dev ports: identity-db:5433, course-db:5434, enrollment-db:5435, payment-db:5436, notification-db:5437, learning-db:5438
+      - Docker container names follow pattern: {service}-db (e.g. identity-db, course-db)
+      - Backups should be pg_dump compressed format (.sql.gz)
+      - Scripts go in deploy/scripts/
+
+      WHAT TO BUILD:
+      1. deploy/scripts/backup-all-dbs.sh:
+         - Loops over all 7 services
+         - Runs pg_dump via docker exec on each DB container
+         - Saves to deploy/backups/{service}-{YYYY-MM-DD-HHMMSS}.sql.gz
+         - Creates deploy/backups/ if not exists
+         - Prints success/failure per service
+         - Exit code 0 only if all backups succeed
+
+      2. deploy/scripts/restore-db.sh SERVICE BACKUP_FILE:
+         - Takes service name and backup file path as arguments
+         - Validates arguments (usage message if missing)
+         - Runs psql via docker exec to restore
+         - Warns user that this will drop and recreate the DB
+         - Requires --confirm flag to actually run (safety check)
+
+      3. deploy/scripts/list-backups.sh:
+         - Lists all backups in deploy/backups/ sorted by date
+         - Shows file size, service name, timestamp
+
+      IMPLEMENTATION:
+      1. Create deploy/scripts/ directory if not exists
+      2. Create the three shell scripts
+      3. Make them executable (chmod +x)
+      4. Add deploy/backups/ to .gitignore
+
+      RULES:
+      - No credentials hardcoded — read from environment or .env file
+      - Scripts must work in bash (#!/bin/bash)
+      - Add error handling: exit on failure for backup script
+      - Create atomic git commit: feat(infra): add database backup and restore scripts
+    test: null
+
+  # ──────────────────────────────────────────────
+  # INFRA: DOCKER CD
+  # ──────────────────────────────────────────────
+
+  - id: docker-cd
+    title: "GitHub Actions CD — Docker build and push"
+    scope: infra
+    depends_on:
+      - staging-env
+    prompt: |
+      Task: Add a Docker build and push job to GitHub Actions, triggered only on push to main after CI passes.
+
+      CONTEXT:
+      - Monorepo has Dockerfiles for each service (check deploy/ and each service directory)
+      - Docker images pushed to GitHub Container Registry (ghcr.io)
+      - Existing CI workflow: .github/workflows/ci.yml (from previous task)
+      - Python services: services/py/{name}/Dockerfile
+      - Frontend: apps/buyer/Dockerfile (if exists, otherwise skip buyer Docker build for now)
+      - Repository owner and name available as github.repository_owner and github.repository
+
+      WHAT TO BUILD:
+      1. .github/workflows/docker-build.yml — triggered on: push to main (after ci workflow passes)
+         Use workflow_run trigger: { workflows: ["CI"], types: [completed], branches: [main] }
+         Only run if the triggering workflow succeeded: if: github.event.workflow_run.conclusion == 'success'
+      2. Matrix build for Python services: [identity, course, enrollment, payment, notification, ai, learning]
+      3. Each job:
+         - Login to ghcr.io using GITHUB_TOKEN (no secrets needed — github.token works)
+         - Build Docker image from services/py/{name}/Dockerfile
+         - Tag as ghcr.io/${{ github.repository_owner }}/{name}:latest and ghcr.io/.../:{sha}
+         - Push both tags
+      4. Use docker/build-push-action@v5 and docker/login-action@v3
+
+      IMPLEMENTATION:
+      1. Create .github/workflows/docker-build.yml
+      2. Use strategy.matrix.service for the 7 Python services
+      3. Context for each build: services/py/${{ matrix.service }}
+      4. Use docker/metadata-action@v5 for tag generation
+
+      RULES:
+      - GITHUB_TOKEN only — no custom secrets needed for ghcr.io
+      - Pinned action versions
+      - Create atomic git commit: feat(infra): add GitHub Actions Docker build and push workflow
+    test: null
+
+  # ──────────────────────────────────────────────
+  # BACKEND: SEED QUIZZES
+  # ──────────────────────────────────────────────
+
+  - id: seed-quizzes
+    title: "Seed quizzes for demo courses"
+    scope: backend:learning
+    prompt: |
+      Task: Add quiz seed data to the existing seed script.
+
+      CONTEXT:
+      - Seed script is in tools/seed/ directory
+      - Learning service DB (port 5438) has tables: quizzes, questions, quiz_attempts
+      - Schema:
+        quizzes: id, lesson_id (UNIQUE), course_id, teacher_id, created_at
+        questions: id, quiz_id (FK), text, options (JSONB), correct_index, explanation, "order"
+        NOTE: "order" is a SQL reserved word — must be quoted in queries
+      - Existing seed data creates courses with modules and lessons
+
+      WHAT TO BUILD:
+      1. Add quiz data to the seed script for demo courses
+      2. Each quiz should have 3-5 questions with realistic educational content
+      3. Create quiz_attempts for some students with realistic scores
+      4. Use COPY or batch INSERT for performance
+
+      IMPLEMENTATION:
+      1. Look at existing seed script in tools/seed/
+      2. Add quizzes for the first 5-10 lessons of demo courses
+      3. Questions should be realistic MCQ about programming/tech topics
+      4. Add 10-20 quiz attempts with varied scores (0.4 to 1.0)
+      5. Ensure lesson_ids match existing seeded lessons
+
+      RULES:
+      - Follow existing seed script patterns
+      - Use asyncpg for DB access
+      - Realistic educational content (not placeholder text)
+      - Create atomic git commit: feat(learning): seed quiz data for demo courses
+    test: null
+
+  # ──────────────────────────────────────────────
+  # FRONTEND: API TYPES SUBSCRIPTIONS
+  # ──────────────────────────────────────────────
+
+  - id: api-types-subscriptions
+    title: "Add subscription + credit TypeScript types and API client methods"
+    scope: frontend:buyer
+    prompt: |
+      Task: Extend apps/buyer/lib/api.ts with subscription and AI credit types and API client methods.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS)
+      - API client: apps/buyer/lib/api.ts — typed namespace objects, uses fetch with bearer token
+      - Existing pattern: namespaced objects like `payments`, `notifications`, each with typed methods
+      - PAYMENT_URL = "/api/payment", AI_URL = "/api/ai"
+      - Token always passed as first argument to auth-required methods
+
+      WHAT TO BUILD:
+      1. New TypeScript interfaces in apps/buyer/lib/api.ts:
+         interface SubscriptionPlan {
+           id: string;
+           name: "free" | "student" | "pro";
+           stripe_price_id: string | null;
+           price_monthly: number;
+           price_yearly: number | null;
+           ai_credits_daily: number;  // -1 = unlimited
+           features: Record<string, unknown>;
+           created_at: string;
+         }
+         interface UserSubscription {
+           id: string;
+           user_id: string;
+           plan_id: string;
+           plan_name: "free" | "student" | "pro";
+           stripe_subscription_id: string | null;
+           stripe_customer_id: string | null;
+           status: "active" | "canceled" | "past_due";
+           current_period_start: string | null;
+           current_period_end: string | null;
+           cancel_at_period_end: boolean;
+           created_at: string;
+           updated_at: string;
+         }
+         interface AICreditStatus {
+           used: number;
+           limit: number;
+           remaining: number;
+           reset_at: string;
+           tier: "free" | "student" | "pro";
+         }
+
+      2. New API namespace `subscriptions` (at PAYMENT_URL):
+         - plans(): Promise<SubscriptionPlan[]>  — no auth
+         - me(token: string): Promise<UserSubscription>
+         - create(token: string, body: { plan_id: string; payment_method_id: string }): Promise<UserSubscription>
+         - cancel(token: string): Promise<UserSubscription>
+
+      3. Extend existing `ai` namespace with:
+         - credits(token: string): Promise<AICreditStatus>  — GET /ai/credits/me
+
+      4. New TanStack Query hooks in apps/buyer/hooks/use-subscriptions.ts:
+         - useSubscriptionPlans() — no token needed, enabled: true always
+         - useMySubscription(token: string | null)
+         - useCreateSubscription() — useMutation
+         - useCancelSubscription() — useMutation, invalidates ["subscription", "me"] on success
+         - useAICredits(token: string | null) — queryKey: ["ai", "credits"]
+
+      RULES:
+      - Only named exports. No default exports. No index.tsx barrels.
+      - TypeScript strict — no `any`, no `!` non-null assertions where avoidable
+      - All fetch calls must handle non-ok responses by throwing an Error
+      - Commit: feat(buyer): add subscription and AI credit API types and hooks
+    test: "cd apps/buyer && pnpm build"

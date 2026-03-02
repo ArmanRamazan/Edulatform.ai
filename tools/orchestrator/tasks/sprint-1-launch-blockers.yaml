@@ -1,0 +1,592 @@
+phase: "sprint-1"
+description: "Launch Blockers — minimum for public release"
+
+tasks:
+  - id: onboarding-flow
+    title: "Onboarding: guided first course experience"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build a guided onboarding flow for new users after first registration.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS, TanStack Query, Radix UI)
+      - Auth hook: apps/buyer/hooks/use-auth.ts — exposes { user, token, loading, login, register, logout }
+        The register() function stores the JWT in localStorage and sets user state.
+      - Existing register page: apps/buyer/app/register/page.tsx — after successful registration
+        it sets `registered = true` and shows a success message. This is where we redirect instead.
+      - API client: apps/buyer/lib/api.ts — namespace objects: identity, courses, enrollments, etc.
+      - Existing hooks: hooks/use-courses.ts (useCourseList, useCategories), hooks/use-enrollments.ts (useEnroll)
+      - After registration the user.email_verified = false, user.role = "student"
+      - Course service (via /api/course/courses) returns: id, title, description, is_free, price,
+        level, duration_minutes, avg_rating, review_count, category_id
+      - Enrollment service: POST /api/enrollment/enrollments { course_id, total_lessons? }
+
+      WHAT TO BUILD:
+      Build a multi-step onboarding wizard at apps/buyer/app/onboarding/page.tsx with 3 steps:
+
+      Step 1 — Welcome (shown immediately after registration):
+        - Headline: "Добро пожаловать в EduPlatform!"
+        - Short value proposition: 3 bullet points with icons (emoji is fine):
+          * "Сотни курсов по программированию, дизайну и бизнесу"
+          * "AI-тьютор, тесты и флеш-карточки для эффективного обучения"
+          * "XP, серии и значки — учиться интересно"
+        - "Начать" button → go to Step 2
+
+      Step 2 — Pick your first course:
+        - Headline: "Выберите первый курс"
+        - Show a grid of up to 6 free courses (is_free=true, sort_by=avg_rating) from the course list API
+        - Each course card shows: title, level badge, duration, avg_rating (if set), "Бесплатно" tag
+        - User clicks one course to select it (highlight with blue border)
+        - "Пропустить" link → go to Step 3 without enrolling
+        - "Записаться и начать" button → enroll then go to Step 3
+
+      Step 3 — You're all set:
+        - Headline: "Готово! Начните учиться прямо сейчас"
+        - Show 3 feature highlights with icons:
+          * "Уроки с AI-объяснениями" → link to /courses (or enrolled course if step 2 was completed)
+          * "Повторение через флеш-карточки" → link to /flashcards
+          * "Отслеживайте прогресс и зарабатывайте XP" → link to /badges
+        - "Перейти к курсам" button → href="/"
+
+      IMPLEMENTATION APPROACH:
+      1. Create apps/buyer/app/onboarding/page.tsx as a "use client" component.
+         Use useState for step (1|2|3), selectedCourseId, enrolling, error.
+      2. In Step 2 fetch courses: useCourseList({ is_free: true, sort_by: "avg_rating", limit: 6 })
+         This hook is already in apps/buyer/hooks/use-courses.ts.
+      3. Enroll via useEnroll(token) from apps/buyer/hooks/use-enrollments.ts.
+         Call enroll.mutateAsync({ course_id: selectedCourseId }) — no payment needed for free courses.
+         On success, redirect to Step 3 (and store enrolledCourseId in state to use as the link target).
+      4. After successful registration in apps/buyer/app/register/page.tsx, redirect to /onboarding
+         instead of showing the static "success" message. Replace the `registered` state block with:
+           import { useRouter } from "next/navigation"
+           const router = useRouter()
+           // in handleSubmit after register():
+           router.push("/onboarding")
+      5. The onboarding page is accessible without login (to handle edge cases), but if !user && !loading,
+         show a redirect link to /register. If user is already enrolled in 5+ courses, redirect to /.
+      6. Progress indicator at the top: three dots / step counter "Шаг X из 3".
+
+      RULES:
+      - "use client" at top of onboarding/page.tsx (uses hooks, state, router)
+      - Named exports ONLY — but since Next.js page routes require default export, the page component
+        must be a default export (this is a Next.js App Router requirement, not a violation)
+      - No default exports for non-page components; if you extract sub-components put them in the same file
+        or as named exports in apps/buyer/components/
+      - Tailwind CSS only, no inline styles
+      - next/link for all navigation (not <a>)
+      - No new dependencies — use only what is already in package.json
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add multi-step onboarding flow for new users
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: landing-page
+    title: "Landing page: value proposition, screenshots/demo"
+    scope: frontend:buyer
+    prompt: |
+      Task: Redesign the homepage (apps/buyer/app/page.tsx) to serve as both a compelling
+      marketing landing page AND the course catalog for logged-in users.
+
+      CONTEXT:
+      - Current homepage (apps/buyer/app/page.tsx) is a plain "use client" component showing
+        a search bar and course grid. It imports Header, CourseCard, useCourseList, useCategories.
+      - Auth hook: apps/buyer/hooks/use-auth.ts — { user, token, loading }
+      - CourseCard component: apps/buyer/components/CourseCard.tsx
+      - Header component: apps/buyer/components/Header.tsx (already has nav, login/logout, XP, streak)
+      - API: courses.list({ is_free, sort_by, limit }) via /api/course/courses
+      - Existing hooks: useCourseList, useCategories from apps/buyer/hooks/use-courses.ts
+      - The onboarding flow was just added at /onboarding — link to it from the CTA button
+        for logged-out users.
+
+      WHAT TO BUILD:
+      Transform page.tsx into a landing page with sections:
+
+      SECTION 1 — Hero (shown to ALL users, logged-in and logged-out):
+        - Large headline: "Учитесь быстрее с AI-тьютором"
+        - Subheading: "Курсы, адаптивные тесты, флеш-карточки и Socratic-тьютор в одном месте"
+        - Two CTA buttons:
+          * If NOT logged in: "Начать бесплатно" → href="/register" and "Смотреть курсы" → scrolls to catalog section
+          * If logged in: "Мои курсы" → href="/enrollments" and "Найти курс" → scrolls to catalog section
+        - Feature highlights row (3 columns, icon + title + short description):
+          * "AI-тьютор" — задаёт вопросы в сократовском стиле, помогает понять, а не запомнить
+          * "Адаптивные повторения" — флеш-карточки с алгоритмом FSRS, повторяйте только то, что забыли
+          * "Геймификация" — XP, серии активности, значки за достижения
+
+      SECTION 2 — Social proof (static, hardcoded):
+        - "Уже учатся тысячи студентов" with 3 stat boxes:
+          * "7 сервисов" / "Микросервисная архитектура"
+          * "AI + FSRS" / "Умные повторения"
+          * "298 тестов" / "Надёжная платформа"
+        - Keep this section minimal — just numbers and labels, Tailwind styling
+
+      SECTION 3 — Course catalog (existing functionality, preserved):
+        - Add id="catalog" to this section's wrapping div so the "Найти курс" / "Смотреть курсы"
+          button can scroll to it with href="#catalog"
+        - Keep the existing search bar, category/level/price/sort filters
+        - Keep the course grid with CourseCard components
+        - Keep loading/error/empty states
+
+      IMPLEMENTATION APPROACH:
+      1. The page remains "use client" (it already is, due to useState for search/filters).
+      2. Add useAuth() import to detect if user is logged in.
+      3. The Hero section renders above the existing search/filter/grid code.
+      4. The social proof section renders between Hero and catalog.
+      5. For the "scroll to catalog" buttons use href="#catalog" on an <a> tag wrapped in next/link
+         — actually, since it's a same-page anchor, a plain <a href="#catalog"> is acceptable here
+         as next/link does not handle fragment-only hrefs well. Add a comment explaining this exception.
+      6. Use Tailwind gradient for hero background: bg-gradient-to-br from-blue-600 to-indigo-700
+         with white text for the hero section. The rest of the page keeps the existing bg-gray-50.
+
+      RULES:
+      - Keep ALL existing filter/search/course-grid functionality — do not break it
+      - "use client" stays at top (already there, keep it)
+      - Tailwind CSS only
+      - next/link for all navigation except the same-page anchor scroll
+      - No new npm dependencies
+      - Named exports for any extracted sub-components
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): redesign homepage as landing page with hero and social proof sections
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [onboarding-flow]
+
+  - id: responsive-mobile
+    title: "Responsive mobile web"
+    scope: frontend:buyer
+    prompt: |
+      Task: Audit and fix mobile responsiveness across the entire buyer app so that all pages
+      render correctly on screens from 320px wide.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS)
+      - All pages use max-w-6xl or max-w-4xl or max-w-3xl containers with px-4 — this is good.
+      - Problem areas that need fixing (audit each file and fix if broken):
+
+        1. apps/buyer/components/Header.tsx
+           - The nav has many items in a single flex row: links, XP badge, flame badge, username,
+             role badge, logout button. On mobile (<640px) this will overflow.
+           - Fix: On mobile hide secondary nav items (XP, flame, role badge, username) or use a
+             hamburger menu. At minimum, wrap the nav to prevent overflow:
+             * Make the header div flex-col on mobile, flex-row on sm:
+               className="border-b ... flex flex-col sm:flex-row ..."
+             * Or hide non-critical items on xs: add hidden sm:flex to the gamification badges group,
+               hide username and role badge on mobile (sm:inline-block pattern)
+             * Keep: Logo, primary nav links, Login/Register buttons must always be visible
+             * Acceptable approach: on mobile show only Logo + "Войти"/"Регистрация" or
+               Logo + username + logout. Everything else hidden sm:hidden on mobile.
+
+        2. apps/buyer/app/page.tsx (homepage/landing)
+           - Hero section (just added): ensure headline is text-2xl sm:text-4xl, subheading
+             text-base sm:text-xl, CTA buttons stack vertically on mobile (flex-col sm:flex-row)
+           - Feature highlights: grid-cols-1 sm:grid-cols-3
+           - Social proof stats: grid-cols-1 sm:grid-cols-3
+           - Filter row: flex-wrap is already there, verify it on mobile
+           - Course grid: grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 — already set, verify
+
+        3. apps/buyer/app/badges/page.tsx
+           - Stats grid: grid-cols-3 → grid-cols-1 sm:grid-cols-3
+           - Badge shelf: grid-cols-2 sm:grid-cols-4 (already correct, verify)
+
+        4. apps/buyer/app/enrollments/page.tsx
+           - The enrollment card has flex items-center justify-between — on very small screens
+             the course ID + status badge might be tight. Ensure wrapping: flex-wrap or flex-col.
+
+        5. apps/buyer/app/courses/[id]/page.tsx
+           - Course header meta row (level, price, duration, enrollments, rating): flex-wrap is there.
+           - Review form and curriculum: check for any horizontal overflow.
+           - The progress bar: ok (w-full).
+
+        6. apps/buyer/app/onboarding/page.tsx (just created)
+           - Step 2 course grid: should be grid-cols-1 sm:grid-cols-2 lg:grid-cols-3
+           - Step 3 feature highlights: grid-cols-1 sm:grid-cols-3
+           - Ensure max-w-2xl mx-auto with px-4 for the wizard container
+
+      IMPLEMENTATION APPROACH:
+      1. Read each file listed above.
+      2. Apply Tailwind responsive prefixes (sm:, md:, lg:) to fix layout issues.
+      3. For the Header mobile nav: the simplest correct fix is to make the nav items wrap and
+         hide non-critical items. Do NOT add a hamburger menu with JavaScript state — keep it simple.
+         Use: nav className="flex flex-wrap items-center gap-2 sm:gap-4"
+         And hide gamification row on mobile: className="hidden sm:flex items-center gap-3"
+         Hide username + role badge on mobile: className="hidden sm:inline ..."
+         This keeps the header functional on all screens without new complexity.
+      4. Do not introduce any new components or abstractions — edit existing files in place.
+      5. Do not change any functionality — only layout/spacing/visibility classes.
+
+      RULES:
+      - Only Tailwind responsive utility classes — no custom CSS, no media query styles
+      - Do not add new components or JavaScript logic
+      - Do not change any text content, routing, or business logic
+      - All changes are purely in className strings
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): fix mobile responsive layout across all pages
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [landing-page]
+
+  - id: pricing-page
+    title: "Pricing page: 3 tiers with feature comparison, monthly/yearly toggle"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build a pricing page at /pricing in the buyer Next.js app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS, Radix UI)
+      - Existing pages: apps/buyer/app/page.tsx (home), courses/[id]/page.tsx (course detail)
+      - useSubscriptionPlans hook available from apps/buyer/hooks/use-subscriptions.ts
+      - Route: apps/buyer/app/pricing/page.tsx
+      - Server Components by default; "use client" only for interactive elements
+      - No CSS modules, no styled-components — Tailwind only
+
+      WHAT TO BUILD:
+      1. apps/buyer/app/pricing/page.tsx — Server Component (static metadata, Suspense wrapper):
+         - export const metadata with title="Pricing — EduPlatform"
+         - Renders <PricingContent /> wrapped in <Suspense fallback={<PricingLoading />}>
+
+      2. apps/buyer/components/pricing/PricingContent.tsx — "use client":
+         - Uses useSubscriptionPlans() hook to fetch plans
+         - Annual/monthly toggle (local state)
+         - Three pricing cards side by side (responsive grid)
+         - Each card: plan name, price (monthly or yearly/12), ai_credits_daily ("10/day", "100/day", "Unlimited")
+         - Feature list from plan.features JSONB (render as bullet list)
+         - CTA button: "Get Started" → links to /checkout?plan={plan.id} for paid plans, /register for free
+         - "Most Popular" badge on student plan
+         - Current plan highlighted if user is logged in (read token from localStorage via useAuth hook)
+
+      3. apps/buyer/components/pricing/PricingLoading.tsx:
+         - Three skeleton cards matching the layout
+
+      RULES:
+      - "use client" only on PricingContent (it uses hooks and state)
+      - next/link for all navigation, never <a>
+      - next/image not needed here (no images)
+      - Named exports only
+      - Tailwind classes only
+      - Commit: feat(buyer): add pricing page with plan comparison and annual/monthly toggle
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [landing-page]
+
+  - id: checkout-flow
+    title: "Checkout flow: Stripe Elements card input, plan selection, confirmation"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build a checkout page at /checkout in the buyer app that integrates Stripe Elements for card input.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS)
+      - useCreateSubscription() mutation hook available from hooks/use-subscriptions.ts
+      - Stripe Elements: use @stripe/react-stripe-js and @stripe/stripe-js
+        Install: pnpm add @stripe/react-stripe-js @stripe/stripe-js (in apps/buyer)
+      - Route: apps/buyer/app/checkout/page.tsx
+      - Auth: use useAuth hook (apps/buyer/hooks/use-auth.ts) — redirect to /login if not authenticated
+      - URL param: ?plan=<plan_id> pre-selects the plan
+
+      WHAT TO BUILD:
+      1. apps/buyer/app/checkout/page.tsx — Server Component:
+         - export const metadata with title="Checkout — EduPlatform"
+         - Renders <CheckoutContent /> with Suspense wrapper
+
+      2. apps/buyer/components/checkout/CheckoutContent.tsx — "use client":
+         - Reads ?plan from useSearchParams (wrapped in Suspense per Next.js requirement)
+         - Shows selected plan summary (name, price) from useSubscriptionPlans()
+         - For free plan: no card input, just a "Activate Free Plan" button calling createSubscription({plan_id, payment_method_id: ""})
+         - For paid plans: renders Stripe Elements CardElement inside Elements provider
+           NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY from env
+         - On submit: creates PaymentMethod via stripe.createPaymentMethod(), then calls createSubscription mutation
+         - Loading state during submission, error display on failure
+         - On success: redirect to /account/subscription with router.push()
+
+      3. apps/buyer/app/checkout/loading.tsx — skeleton for the checkout form
+
+      RULES:
+      - Dynamic import for Stripe Elements to keep initial bundle light:
+        const Elements = dynamic(() => import("@stripe/react-stripe-js").then(m => m.Elements), { ssr: false })
+      - Redirect unauthenticated users to /login?redirect=/checkout (use router.push)
+      - Show spinner/disabled state on submit button while mutation is pending
+      - Named exports only, no default exports
+      - Commit: feat(buyer): add Stripe Elements checkout flow for subscription purchase
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [pricing-page]
+
+  - id: account-subscription
+    title: "Account settings: current plan, billing history, cancel/upgrade buttons"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build an account subscription settings page at /account/subscription in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS)
+      - Hooks: useMySubscription, useCancelSubscription from hooks/use-subscriptions.ts
+      - Existing patterns: apps/buyer/app/notifications/page.tsx, apps/buyer/app/enrollments/page.tsx
+      - Auth: useAuth hook; redirect to /login if not authenticated
+
+      WHAT TO BUILD:
+      1. apps/buyer/app/account/subscription/page.tsx — Server Component wrapper with metadata
+
+      2. apps/buyer/components/account/SubscriptionSettings.tsx — "use client":
+         - Shows current plan card: plan name, status badge (active=green, canceled=orange, past_due=red)
+         - If active paid plan: "Next billing: {current_period_end formatted}" or "Cancels on: {date}" if cancel_at_period_end
+         - Cancel button (only if status=active and plan != free): calls useCancelSubscription mutation
+           Confirm dialog via window.confirm before canceling
+         - Upgrade button (if plan=free or plan=student): next/link to /pricing
+         - Billing history section: uses useMyPayments hook (existing) to list past payments
+           Each row: date, amount, course or "Subscription", status badge
+
+      3. apps/buyer/app/account/subscription/loading.tsx — skeleton for the settings form
+
+      RULES:
+      - Do not show Cancel button for free plan (nothing to cancel)
+      - Format dates with Intl.DateTimeFormat("en-US", {dateStyle: "medium"})
+      - Named exports only
+      - Tailwind only
+      - Commit: feat(buyer): add account subscription settings with cancel and upgrade actions
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [checkout-flow]
+
+  - id: email-delivery
+    title: "Email delivery via Resend API in notification service"
+    scope: backend:notification
+    prompt: |
+      Task: Integrate Resend API for actual email delivery in the notification service.
+
+      CONTEXT:
+      - Notification service (port 8005) in services/py/notification/
+      - Clean Architecture: routes/ -> services/ -> domain/ <- repositories/
+      - Current behavior: notifications are stored in DB and logged to stdout only
+      - Resend API: https://resend.com/docs/api-reference/emails/send-email
+        - POST https://api.resend.com/emails
+        - Headers: Authorization: Bearer {RESEND_API_KEY}
+        - Body: { from, to, subject, html }
+      - RESEND_API_KEY in environment variables
+      - Email should be sent for notification types: enrollment, payment, streak_reminder
+      - From address: "EduPlatform <noreply@eduplatform.com>" (configurable via env)
+      - Use httpx (already in deps) for HTTP calls
+
+      WHAT TO BUILD:
+      1. Domain interface: services/py/notification/app/domain/email_sender.py
+         - Abstract class EmailSender with async method: send(to: str, subject: str, html: str) -> bool
+      2. Implementation: services/py/notification/app/repositories/resend_email_sender.py
+         - ResendEmailSender(api_key: str, from_address: str) implements EmailSender
+         - POST to Resend API using httpx.AsyncClient
+         - Returns True on success (2xx), False on failure
+         - Logs errors but does not raise (email failure should not fail the notification creation)
+      3. Mock implementation: services/py/notification/app/repositories/stub_email_sender.py
+         - StubEmailSender: logs to stdout, always returns True
+         - Used in tests and when RESEND_API_KEY is not set
+      4. Notification service (services/py/notification/app/services/notification_service.py):
+         - Accept EmailSender via dependency injection
+         - After saving notification to DB, call email_sender.send() for relevant notification types
+         - Email subject and HTML body templates per notification type:
+           - enrollment: "You're enrolled in {course_name}!" / simple HTML with course name
+           - payment: "Payment confirmed — {course_name}" / receipt HTML
+           - streak_reminder: "Don't lose your streak!" / motivational HTML
+      5. Dependency wiring in main.py / lifespan:
+         - If RESEND_API_KEY env var present: use ResendEmailSender
+         - Otherwise: use StubEmailSender
+
+      TDD:
+      1. Write test: create notification of type enrollment -> email_sender.send() called once with correct subject
+      2. Write test: email_sender.send() raises exception -> notification still created successfully (no re-raise)
+      3. Write test: StubEmailSender.send() always returns True without making HTTP calls
+      4. Write test: ResendEmailSender.send() makes POST to Resend API with correct headers (mock httpx)
+      5. Implement all of the above
+      6. Run: cd services/py/notification && uv run --package notification pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - EmailSender is an ABC in domain/ — no httpx import in domain/
+      - ResendEmailSender uses httpx.AsyncClient as context manager
+      - HTML emails are minimal but valid — no external CSS frameworks
+      - RESEND_API_KEY must never be logged
+      - After all tests pass: create atomic git commit: feat(notification): add email delivery via Resend API
+    test: "cd services/py/notification && uv run --package notification pytest tests/ -v"
+    depends_on: []
+
+  - id: email-templates
+    title: "HTML email templates for all notification types"
+    scope: backend:notification
+    prompt: |
+      Task: Create proper HTML email templates for all notification types in the notification service.
+
+      CONTEXT:
+      - Notification service (port 8005) in services/py/notification/
+      - Email sending infrastructure added in previous task (email-delivery-resend)
+      - Notification types: enrollment, payment, streak_reminder, flashcard_reminder
+      - Existing notification_service.py now calls email_sender.send(to, subject, html)
+      - HTML emails must render correctly in Gmail, Outlook (table-based layout for Outlook compat)
+      - Brand colors: indigo (#6366f1) primary, white background
+
+      WHAT TO BUILD:
+      1. services/py/notification/app/domain/email_templates.py:
+         - Pure functions (no I/O) generating HTML strings for each notification type
+         - enrollment_email(student_name: str, course_name: str, course_url: str) -> tuple[str, str]
+           Returns (subject, html_body)
+         - payment_email(student_name: str, course_name: str, amount: float, transaction_id: str) -> tuple[str, str]
+         - streak_reminder_email(student_name: str, streak_days: int) -> tuple[str, str]
+         - flashcard_reminder_email(student_name: str, cards_due: int) -> tuple[str, str]
+      2. HTML structure for each email:
+         - Outer table 600px wide, centered
+         - Header: EduPlatform logo text in brand color
+         - Body: clean white section with relevant message
+         - CTA button: brand-colored link button
+         - Footer: "You received this because you have an account at EduPlatform. Unsubscribe."
+      3. Update notification_service.py to use templates when calling email_sender.send()
+
+      TDD:
+      1. Write test: enrollment_email returns subject containing course name and valid HTML containing student name
+      2. Write test: payment_email returns HTML containing transaction_id
+      3. Write test: streak_reminder_email for streak_days=7 contains "7" in subject or body
+      4. Implement email_templates.py
+      5. Run: cd services/py/notification && uv run --package notification pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - Pure functions in domain/ — no imports from routes/, services/, repositories/
+      - Table-based HTML for email client compatibility
+      - No external template engine (jinja2 etc.) — keep it simple with f-strings
+      - Create atomic git commit: feat(notification): add HTML email templates for all notification types
+    test: "cd services/py/notification && uv run --package notification pytest tests/ -v"
+    depends_on: [email-delivery]
+
+  - id: ci-pipeline
+    title: "GitHub Actions CI — lint, test, build"
+    scope: infra
+    prompt: |
+      Task: Set up GitHub Actions CI pipeline that runs linting, tests, and frontend build on every PR and push to main.
+
+      CONTEXT:
+      - Monorepo root at /
+      - Python services in services/py/ (7 services: identity, course, enrollment, payment, notification, ai, learning)
+      - Rust services in services/rs/ (api-gateway, search, video-processor, payment-engine)
+      - Frontend apps in apps/buyer/ and apps/seller/ (Next.js, pnpm)
+      - Package manager: uv (Python), pnpm (Node.js)
+      - Test commands per service:
+        cd services/py/identity    && uv run --package identity pytest tests/ -v
+        cd services/py/course      && uv run --package course pytest tests/ -v
+        cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v
+        cd services/py/payment     && uv run --package payment pytest tests/ -v
+        cd services/py/notification && uv run --package notification pytest tests/ -v
+        cd services/py/ai          && uv run --package ai pytest tests/ -v
+        cd services/py/learning    && uv run --package learning pytest tests/ -v
+      - Python lint: ruff check + ruff format --check + mypy
+      - Frontend build: cd apps/buyer && pnpm build
+      - Rust: cargo test + cargo clippy -- -D warnings
+
+      WHAT TO BUILD:
+      1. .github/workflows/ci.yml — triggered on: push to main, pull_request to main
+      2. Jobs (run in parallel where possible):
+         a. python-lint: checkout, install uv, uv sync --all-packages, run ruff + mypy on services/py/
+         b. python-tests: matrix strategy over all 7 Python services, run pytest per service
+            - Services that need a DB use testcontainers (already in test deps) — no external DB needed
+         c. frontend-build: checkout, install pnpm, pnpm install, cd apps/buyer && pnpm build
+         d. rust-check: checkout, install stable toolchain, cargo clippy + cargo test in each Rust service
+      3. Use GitHub-hosted runners: ubuntu-latest
+      4. Cache: uv cache, pnpm store, cargo registry
+
+      IMPLEMENTATION:
+      1. Create .github/workflows/ directory if it does not exist
+      2. Create .github/workflows/ci.yml
+      3. For Python matrix job, use strategy.matrix.service: [identity, course, enrollment, payment, notification, ai, learning]
+      4. Working directory for each matrix job: services/py/${{ matrix.service }}
+      5. Use actions/cache for pnpm with key based on pnpm-lock.yaml hash
+      6. Use actions/cache for uv with key based on uv.lock hash
+      7. Use actions/cache for cargo with key based on Cargo.lock hash
+
+      RULES:
+      - No secrets or credentials in the workflow file
+      - Use pinned action versions (e.g. actions/checkout@v4)
+      - Fail fast: false for matrix jobs (one service failure does not cancel others)
+      - No test command needed — this is infra config, verify by reading the generated file
+      - Create atomic git commit: feat(infra): add GitHub Actions CI pipeline
+    test: null
+    depends_on: []
+
+  - id: bug-fixes
+    title: "Bug fixes, UI polish, error states"
+    scope: frontend:buyer
+    prompt: |
+      Task: Audit and polish the buyer app — fix missing error states, improve empty states,
+      add consistent loading skeletons, and fix any remaining UI rough edges.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS, TanStack Query)
+      - Existing skeleton component: apps/buyer/components/CourseCardSkeleton.tsx
+      - Error utility: apps/buyer/lib/errors.ts — getErrorMessage(err, fallback?)
+      - All pages currently exist: /, /courses/[id], /courses/[id]/lessons/[lessonId],
+        /enrollments, /badges, /flashcards, /notifications, /onboarding, /register, /login,
+        /forgot-password, /reset-password, /verify-email, /admin/teachers, /my-courses
+
+      AREAS TO POLISH (read each file, apply fixes):
+
+      1. apps/buyer/app/enrollments/page.tsx
+         CURRENT ISSUE: Enrollment cards show course_id.slice(0,8)... instead of course title.
+         The enrollment object only has course_id, not the title. To fix this properly would
+         require fetching each course — instead, display a better empty/loading state and
+         improve the card to at minimum show "Курс" + a short ID in a more user-friendly way,
+         and add a clear "Перейти к курсу" label on the Link. Also add an error state:
+         if the enrollments query has an error, show it using getErrorMessage.
+
+      2. apps/buyer/app/notifications/page.tsx
+         Read the file. Check: is there an error state if the notifications query fails?
+         Is there a proper empty state? Is there a loading skeleton? Add missing states.
+         The mark-as-read action should show a visual "read" state (already may exist — verify).
+
+      3. apps/buyer/app/flashcards/page.tsx
+         Read the file. Check: error state if due cards query fails? Empty state when no cards
+         are due (e.g., "Нет карточек для повторения сегодня. Хорошая работа!")? Loading state?
+
+      4. apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx
+         Read the file. Check:
+         - If lesson fails to load (error state) — is it shown?
+         - The summary section: if summaryLoading is true for a long time, is there a proper
+           skeleton or spinner? If summaryData has no summary text, what is shown?
+         - Quiz section: if quiz submission fails, is the error shown?
+         Add any missing error/loading/empty states using the existing patterns.
+
+      5. apps/buyer/components/Header.tsx
+         CURRENT ISSUE: When loading=true the nav shows "..." which is fine, but the whole header
+         should not cause layout shift. Verify the header height is stable during load.
+         Also: the email verification banner (yellow bar) — make sure it has aria-live="polite"
+         for accessibility.
+
+      6. Global: apps/buyer/app/error.tsx and apps/buyer/app/loading.tsx
+         Read both files. If loading.tsx just shows a blank spinner with no context, improve it
+         to show "EduPlatform" branding + a centered spinner. If error.tsx is basic, make sure
+         it has a "На главную" link so users are never stuck.
+
+      7. apps/buyer/app/courses/[id]/page.tsx
+         The "Начать обучение" button (shown when enrolled) links to the first lesson. If the
+         student has already completed some lessons, it would be better UX to link to the NEXT
+         incomplete lesson instead of always the first. Fix this:
+         - Find the first lesson NOT in completedLessonIds from the flattened curriculum
+         - If all lessons are complete, show "Курс завершён!" instead of "Начать обучение"
+         - If no lessons completed yet, keep current behavior (link to first lesson)
+
+      IMPLEMENTATION APPROACH:
+      1. Read each file listed above before editing.
+      2. Apply targeted fixes — do not refactor or reorganize files.
+      3. For error states use the pattern already in pages: check if `error` from useQuery
+         is truthy, then show: <div className="rounded bg-red-50 p-3 text-sm text-red-600">
+           {getErrorMessage(error, "Ошибка загрузки")}
+         </div>
+      4. For empty states use: <p className="text-center text-gray-400">...</p>
+      5. For the "next incomplete lesson" fix in courses/[id]/page.tsx:
+         const nextIncompleteLesson = allLessons.find(l => !completedLessonIds.has(l.id))
+         where allLessons = curriculum.flatMap(m => m.lessons)
+         Use nextIncompleteLesson?.id ?? curriculum[0]?.lessons[0]?.id for the link target.
+
+      RULES:
+      - Edit existing files only — do not create new components
+      - Keep all existing functionality intact
+      - Tailwind CSS only for any new styling
+      - Do not change routing or API calls
+      - After ALL fixes: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): polish UI — fix error states, empty states, and next-lesson navigation
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [responsive-mobile, account-subscription, email-templates]
