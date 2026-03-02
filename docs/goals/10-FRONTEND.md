@@ -109,6 +109,7 @@ packages/
 | **Страница урока** | Client-side (auth) | — | ✅ |
 | **Прогресс обучения** (прогресс-бар) | Client-side | INP < 200ms | ✅ |
 | **Регистрация / Логин** | Client-side | TTI < 1.5s | ✅ |
+| **Onboarding** (3-step wizard) | Client-side (auth required) | TTI < 1.5s | ✅ |
 | **Создание курса** | Client-side (auth protected) | FCP < 1s | ✅ |
 | **Редактирование курса** | Client-side (auth protected) | FCP < 1s | ✅ |
 | **Мои курсы** (enrollments) | Client-side (auth protected) | FCP < 1s | ✅ |
