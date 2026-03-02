@@ -178,6 +178,12 @@ export const identity = {
 };
 
 export const courses = {
+  my(token: string) {
+    return request<CourseList>(`${COURSE_URL}/courses/my`, {
+      headers: authHeaders(token),
+    });
+  },
+
   list(token: string, params?: Record<string, string | undefined>) {
     const qs = new URLSearchParams();
     if (params) {
