@@ -11,7 +11,7 @@
 | Identity Service | ✅ Готов | Регистрация, логин, JWT refresh tokens, роли, admin, email verification, forgot password |
 | Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization |
 | Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
-| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, подписки, GET /me, GET /:id |
+| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts, GET /me, GET /:id |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers) |
 | Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards (auto-generated from quiz mistakes), spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, 22 endpoints |
@@ -21,7 +21,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 293 тестов | identity 48, course 59, enrollment 25, payment 21, notification 12, ai 30, learning 98 |
+| Unit Tests | ✅ 330 тестов | identity 48, course 59, enrollment 25, payment 58, notification 12, ai 30, learning 98 |
 
 ## Стек
 
@@ -63,7 +63,7 @@ npm run dev    # http://localhost:3001
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 7 сервисов (224 теста)
+# Все 7 сервисов (330 тестов)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
@@ -115,7 +115,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ├── services/py/identity/    — Auth: register, login, JWT refresh tokens, roles, admin, email verification
 ├── services/py/course/      — Courses: CRUD, search, modules, lessons, reviews, categories, filtering
 ├── services/py/enrollment/  — Enrollment: запись на курс, прогресс, lesson completion, auto-completion
-├── services/py/payment/     — Payment: mock-оплата
+├── services/py/payment/     — Payment: mock-оплата, teacher earnings, payouts
 ├── services/py/notification/— Notifications: in-app, mark as read
 ├── services/py/ai/          — AI: quiz gen, summary, Socratic tutor, Gemini Flash, Redis cache, credit tracking
 ├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, knowledge graph, discussions

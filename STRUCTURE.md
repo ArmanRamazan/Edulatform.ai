@@ -28,7 +28,7 @@ eduplatform/
 │   │   ├── identity/              #   Auth, JWT refresh tokens, roles, admin, email verification, forgot password
 │   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization
 │   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion
-│   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки
+│   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts
 │   │   ├── notification/          #   In-app уведомления
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
 │   │   └── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions

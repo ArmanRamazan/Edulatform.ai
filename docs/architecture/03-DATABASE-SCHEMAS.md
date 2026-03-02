@@ -32,7 +32,9 @@ enrollment-db (PostgreSQL 16 Alpine, :5435)
 
 payment-db (PostgreSQL 16 Alpine, :5436)
   └── database: payment
-       └── table: payments
+       ├── table: payments
+       ├── table: teacher_earnings
+       └── table: payouts
 
 notification-db (PostgreSQL 16 Alpine, :5437)
   └── database: notification
@@ -375,6 +377,63 @@ CREATE TABLE payments (
 
 **Миграции:**
 - `001_payments.sql` — создание ENUM payment_status и таблицы payments
+- `004_earnings_payouts.sql` — создание таблиц teacher_earnings и payouts
+
+### Table: `teacher_earnings`
+
+```sql
+CREATE TABLE IF NOT EXISTS teacher_earnings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id UUID NOT NULL,
+    course_id UUID NOT NULL,
+    payment_id UUID NOT NULL UNIQUE,
+    gross_amount DECIMAL(10,2) NOT NULL,
+    commission_rate DECIMAL(5,4) NOT NULL DEFAULT 0.3000,
+    net_amount DECIMAL(10,2) NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMPTZ DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `teacher_id` | UUID | NOT NULL | ID преподавателя (из Identity) |
+| `course_id` | UUID | NOT NULL | ID курса (из Course) |
+| `payment_id` | UUID | UNIQUE, NOT NULL | ID оплаты (из payments); один earning на оплату |
+| `gross_amount` | DECIMAL(10,2) | NOT NULL | Полная сумма оплаты |
+| `commission_rate` | DECIMAL(5,4) | NOT NULL, DEFAULT 0.3000 | Комиссия платформы (30%) |
+| `net_amount` | DECIMAL(10,2) | NOT NULL | Сумма после вычета комиссии |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Статус: pending, paid |
+| `created_at` | TIMESTAMPTZ | DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + UNIQUE (payment_id) + idx_teacher_earnings_teacher_id.
+
+### Table: `payouts`
+
+```sql
+CREATE TABLE IF NOT EXISTS payouts (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id UUID NOT NULL,
+    amount DECIMAL(10,2) NOT NULL,
+    stripe_transfer_id VARCHAR(255),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    requested_at TIMESTAMPTZ DEFAULT now(),
+    completed_at TIMESTAMPTZ
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `teacher_id` | UUID | NOT NULL | ID преподавателя (из Identity) |
+| `amount` | DECIMAL(10,2) | NOT NULL | Сумма выплаты |
+| `stripe_transfer_id` | VARCHAR(255) | nullable | ID трансфера в Stripe |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Статус: pending, completed, failed |
+| `requested_at` | TIMESTAMPTZ | DEFAULT now() | Дата запроса |
+| `completed_at` | TIMESTAMPTZ | nullable | Дата завершения |
+
+**Индексы:** PK (id) + idx_payouts_teacher_id.
 
 ---
 

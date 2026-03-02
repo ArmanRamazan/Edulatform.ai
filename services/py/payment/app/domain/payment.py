@@ -43,3 +43,82 @@ class PaymentResponse(BaseModel):
 class PaymentListResponse(BaseModel):
     items: list[PaymentResponse]
     total: int
+
+
+class EarningStatus(StrEnum):
+    PENDING = "pending"
+    PAID = "paid"
+
+
+class PayoutStatus(StrEnum):
+    PENDING = "pending"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+@dataclass(frozen=True)
+class TeacherEarning:
+    id: UUID
+    teacher_id: UUID
+    course_id: UUID
+    payment_id: UUID
+    gross_amount: Decimal
+    commission_rate: Decimal
+    net_amount: Decimal
+    status: EarningStatus
+    created_at: datetime
+
+
+@dataclass(frozen=True)
+class Payout:
+    id: UUID
+    teacher_id: UUID
+    amount: Decimal
+    stripe_transfer_id: str | None
+    status: PayoutStatus
+    requested_at: datetime
+    completed_at: datetime | None
+
+
+class EarningResponse(BaseModel):
+    id: UUID
+    teacher_id: UUID
+    course_id: UUID
+    payment_id: UUID
+    gross_amount: Decimal
+    commission_rate: Decimal
+    net_amount: Decimal
+    status: EarningStatus
+    created_at: datetime
+
+
+class EarningsSummary(BaseModel):
+    total_gross: Decimal
+    total_net: Decimal
+    total_pending: Decimal
+    total_paid: Decimal
+    earnings: list[EarningResponse]
+
+
+class EarningListResponse(BaseModel):
+    items: list[EarningResponse]
+    total: int
+
+
+class PayoutResponse(BaseModel):
+    id: UUID
+    teacher_id: UUID
+    amount: Decimal
+    stripe_transfer_id: str | None
+    status: PayoutStatus
+    requested_at: datetime
+    completed_at: datetime | None
+
+
+class PayoutListResponse(BaseModel):
+    items: list[PayoutResponse]
+    total: int
+
+
+class PayoutCreate(BaseModel):
+    amount: Decimal = Field(gt=0)

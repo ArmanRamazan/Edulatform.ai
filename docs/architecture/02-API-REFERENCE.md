@@ -818,6 +818,146 @@ Mock оплата курса. Всегда возвращает `status=complete
 }
 ```
 
+### GET /earnings/me/summary
+
+Сводка доходов преподавателя. Только для `role=teacher`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "total_gross": "1000.00",
+  "total_net": "700.00",
+  "total_pending": "200.00",
+  "total_paid": "500.00",
+  "earnings": [
+    {
+      "id": "...",
+      "teacher_id": "...",
+      "course_id": "...",
+      "payment_id": "...",
+      "gross_amount": "49.99",
+      "commission_rate": "0.3000",
+      "net_amount": "34.99",
+      "status": "pending",
+      "created_at": "2026-03-01T12:00:00+00:00"
+    }
+  ]
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != teacher` — "Only teachers can view earnings" |
+
+---
+
+### GET /earnings/me
+
+Список доходов преподавателя (пагинация). Только для `role=teacher`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query params:** `limit` (1–100, default 20), `offset` (default 0).
+
+**Response `200`:**
+```json
+{
+  "items": [
+    {
+      "id": "...",
+      "teacher_id": "...",
+      "course_id": "...",
+      "payment_id": "...",
+      "gross_amount": "49.99",
+      "commission_rate": "0.3000",
+      "net_amount": "34.99",
+      "status": "pending",
+      "created_at": "2026-03-01T12:00:00+00:00"
+    }
+  ],
+  "total": 15
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != teacher` — "Only teachers can view earnings" |
+
+---
+
+### POST /earnings/payouts
+
+Запрос на выплату. Только для `role=teacher`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "amount": 100.00
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "...",
+  "teacher_id": "...",
+  "amount": "100.00",
+  "stripe_transfer_id": null,
+  "status": "pending",
+  "requested_at": "2026-03-01T12:00:00+00:00",
+  "completed_at": null
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != teacher` — "Only teachers can request payouts" |
+| 422 | Невалидные данные (amount <= 0) |
+
+---
+
+### GET /earnings/payouts
+
+Список выплат преподавателя (пагинация). Только для `role=teacher`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query params:** `limit` (1–100, default 20), `offset` (default 0).
+
+**Response `200`:**
+```json
+{
+  "items": [
+    {
+      "id": "...",
+      "teacher_id": "...",
+      "amount": "100.00",
+      "stripe_transfer_id": null,
+      "status": "pending",
+      "requested_at": "2026-03-01T12:00:00+00:00",
+      "completed_at": null
+    }
+  ],
+  "total": 5
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != teacher` — "Only teachers can view payouts" |
+
 ---
 
 ## Notification Service (`:8005`)
