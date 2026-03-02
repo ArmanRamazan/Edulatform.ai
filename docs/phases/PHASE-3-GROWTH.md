@@ -28,16 +28,16 @@
 |---|--------|-------|--------|
 | **Backend: Payment Service** | | | |
 | 3.1.1 | Stripe SDK integration: create customer, payment intent, confirm | backend:payment | 🔴 |
-| 3.1.2 | Subscription model: plans table (free/student/pro), user_subscriptions table + migration | backend:payment | 🔴 |
+| 3.1.2 | Subscription model: plans table (free/student/pro), user_subscriptions table + migration | backend:payment | ✅ |
 | 3.1.3 | POST /subscriptions/create {plan_id, payment_method_id} → create Stripe subscription | backend:payment | 🔴 |
 | 3.1.4 | GET /subscriptions/me → current plan, status, next billing date | backend:payment | 🔴 |
 | 3.1.5 | POST /subscriptions/cancel → cancel at period end | backend:payment | 🔴 |
 | 3.1.6 | POST /webhooks/stripe → handle invoice.paid, invoice.payment_failed, customer.subscription.deleted | backend:payment | 🔴 |
 | 3.1.7 | Upgrade POST /payments to use Stripe payment intents (backward compatible with free courses) | backend:payment | 🔴 |
 | **Backend: AI Service** | | | |
-| 3.1.8 | AI credit system: credits per plan (free=10/day, student=100/day, pro=unlimited) | backend:ai | 🔴 |
-| 3.1.9 | GET /ai/credits/me → remaining credits, plan tier, reset time | backend:ai | 🔴 |
-| 3.1.10 | Enforce credit limits on /ai/quiz/generate, /ai/tutor/chat, /ai/summary/generate | backend:ai | 🔴 |
+| 3.1.8 | AI credit system: credits per plan (free=10/day, student=100/day, pro=unlimited) | backend:ai | ✅ |
+| 3.1.9 | GET /ai/credits/me → remaining credits, plan tier, reset time | backend:ai | ✅ |
+| 3.1.10 | Enforce credit limits on /ai/quiz/generate, /ai/tutor/chat, /ai/summary/generate | backend:ai | ✅ |
 | **Frontend** | | | |
 | 3.1.11 | Pricing page: 3 tiers with feature comparison, annual/monthly toggle | frontend:buyer | 🔴 |
 | 3.1.12 | Checkout flow: Stripe Elements (card input), plan selection, confirmation | frontend:buyer | 🔴 |
@@ -88,12 +88,12 @@ CREATE INDEX idx_user_subscriptions_stripe ON user_subscriptions(stripe_subscrip
 | # | Задача | Scope | Статус |
 |---|--------|-------|--------|
 | **Backend: Course Service** | | | |
-| 3.2.1 | GET /courses/{course_id}/analytics → students_count, completion_rate, avg_rating, revenue | backend:course | 🔴 |
+| 3.2.1 | GET /courses/{course_id}/analytics → students_count, completion_rate, avg_rating, revenue | backend:course | ✅ |
 | 3.2.2 | GET /courses/my/stats → aggregate stats across all teacher courses | backend:course | 🔴 |
 | **Backend: Payment Service** | | | |
-| 3.2.3 | Teacher earnings model: earnings table, commission_rate (platform takes 30%) | backend:payment | 🔴 |
-| 3.2.4 | GET /earnings/me → total earned, pending payout, paid out | backend:payment | 🔴 |
-| 3.2.5 | POST /payouts/request → request payout (min $50, Stripe Connect) | backend:payment | 🔴 |
+| 3.2.3 | Teacher earnings model: earnings table, commission_rate (platform takes 30%) | backend:payment | ✅ |
+| 3.2.4 | GET /earnings/me → total earned, pending payout, paid out | backend:payment | ✅ |
+| 3.2.5 | POST /payouts/request → request payout (min $50, Stripe Connect) | backend:payment | ✅ |
 | **Frontend: Seller App** | | | |
 | 3.2.6 | Seller App scaffold: Next.js App Router, Tailwind, shared packages | frontend:seller | 🔴 |
 | 3.2.7 | Dashboard page: total students, revenue, completion rate, charts (recharts) | frontend:seller | 🔴 |
@@ -102,8 +102,8 @@ CREATE INDEX idx_user_subscriptions_stripe ON user_subscriptions(stripe_subscrip
 | 3.2.10 | Earnings page: balance, payout history, request payout button | frontend:seller | 🔴 |
 | 3.2.11 | Teacher onboarding wizard: profile, first course, publish checklist | frontend:seller | 🔴 |
 | **Tests** | | | |
-| 3.2.12 | Course analytics tests: stats aggregation, permission checks | backend:course | 🔴 |
-| 3.2.13 | Earnings tests: commission calculation, payout request, min threshold | backend:payment | 🔴 |
+| 3.2.12 | Course analytics tests: stats aggregation, permission checks | backend:course | ✅ |
+| 3.2.13 | Earnings tests: commission calculation, payout request, min threshold | backend:payment | ✅ |
 
 **DB Schema (payment-db — расширение):**
 ```sql

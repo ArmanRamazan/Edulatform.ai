@@ -59,7 +59,7 @@
 | 2.0.14 | "Generate quiz" button for teacher (triggers AI) | 🔴 |
 | **Infra** | | |
 | 2.0.15 | Docker compose: ai-service + learning-engine + DBs | ✅ |
-| 2.0.16 | Seed: quizzes for demo courses | 🔴 |
+| 2.0.16 | Seed: quizzes for demo courses | ✅ |
 | **Tests** | | |
 | 2.0.17 | AI Service tests: router, quiz gen, summary gen, cache | ✅ (21 тестов) |
 | 2.0.18 | Learning Engine tests: quiz CRUD, submit, scoring | ✅ (12 тестов) |
@@ -111,7 +111,7 @@ CREATE INDEX idx_quiz_attempts_quiz_student ON quiz_attempts(quiz_id, student_id
 | 2.1.3 | Auto-generate cards from quiz mistakes + key concepts | 🔴 |
 | 2.1.4 | POST /flashcards/:id/review {rating} → next_review | ✅ |
 | 2.1.5 | GET /flashcards/due → cards due for review today | ✅ |
-| 2.1.6 | Smart notifications: "Time to review!" (FSRS-scheduled) | 🔴 |
+| 2.1.6 | Smart notifications: "Time to review!" (FSRS-scheduled) | ✅ |
 | 2.1.7 | Frontend: flashcard review page (flip card, rate: Again/Hard/Good/Easy) | ✅ |
 | 2.1.8 | "Review due" badge in header | ✅ |
 | 2.1.9 | Tests: FSRS scheduling, card CRUD, review flow | ✅ (11 тестов) |

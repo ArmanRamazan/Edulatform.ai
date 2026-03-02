@@ -4,24 +4,24 @@
 
 ## Текущий статус
 
-**Стадия:** Phase 2.3 (Knowledge Graph + Concept Mastery) ✅ — 157 RPS, p99 51ms
+**Стадия:** Phase 2.4 ✅ (Gamification) — Phase 2.5 в процессе — Phase 3.1–3.2 backend ✅ — 157 RPS, p99 51ms
 
 | Компонент | Статус | Описание |
 |-----------|--------|----------|
 | Identity Service | ✅ Готов | Регистрация, логин, JWT refresh tokens, роли, admin, email verification, forgot password |
 | Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization |
 | Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
-| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts, GET /me, GET /:id |
-| Notification Service | ✅ Готов | In-app уведомления, mark as read |
-| AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers) |
-| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards (auto-generated from quiz mistakes), spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, 22 endpoints |
+| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
+| Notification Service | ✅ Готов | In-app уведомления, mark as read, streak-at-risk reminders, flashcard-due reminders |
+| AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), GET /ai/credits/me |
+| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, 29 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 330 тестов | identity 48, course 59, enrollment 25, payment 58, notification 12, ai 30, learning 98 |
+| Unit Tests | ✅ 336 тестов | identity 48, course 59, enrollment 25, payment 58, notification 20, ai 30, learning 96 |
 
 ## Стек
 
@@ -63,7 +63,7 @@ npm run dev    # http://localhost:3001
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 7 сервисов (330 тестов)
+# Все 7 сервисов (336 тестов)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
@@ -136,8 +136,8 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 | Стадия | Пользователи | Ключевые изменения | Статус |
 |--------|-------------|-------------------|--------|
 | **Foundation** | до 10K | 7 Python сервисов, Next.js, Postgres, Locust | ✅ Готово |
-| **Learning Intelligence** | 10K → 100K | AI-тьютор, квизы, spaced repetition, knowledge graph | 🟡 2.0–2.3 ✅, 2.4–2.5 🔴 |
-| **Growth** | 100K → 1M | Реальные платежи, seller dashboard, SEO, mobile, CI/CD | 🔴 Не начато |
+| **Learning Intelligence** | 10K → 100K | AI-тьютор, квизы, spaced repetition, knowledge graph, gamification | 🟡 2.0–2.4 ✅, 2.5 🔴 в процессе |
+| **Growth** | 100K → 1M | Реальные платежи, seller dashboard, SEO, mobile, CI/CD | 🟡 3.1–3.2 backend ✅, frontend 🔴 |
 | **Scale** | 1M → 10M | Rust gateway, event bus, video platform, multi-region | 🔴 Не начато |
 
 ## Документация
