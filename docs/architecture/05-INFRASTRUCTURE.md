@@ -130,6 +130,13 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 - `POST /login` — 10 req/min per IP
 - `POST /register` — 5 req/min per IP
 
+### Payment-specific
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `STRIPE_SECRET_KEY` | `""` (empty) | Stripe API secret key |
+| `STRIPE_WEBHOOK_SECRET` | `""` (empty) | Stripe webhook signing secret |
+
 ### Dev compose values
 
 | Service | DATABASE_URL | JWT_SECRET |

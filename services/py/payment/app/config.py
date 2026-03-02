@@ -2,4 +2,5 @@ from common.config import BaseAppSettings
 
 
 class Settings(BaseAppSettings):
-    pass
+    stripe_secret_key: str = ""
+    stripe_webhook_secret: str = ""

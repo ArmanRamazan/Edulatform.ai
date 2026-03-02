@@ -11,7 +11,7 @@
 | Identity Service | ✅ Готов | Регистрация, логин, JWT refresh tokens, роли, admin, email verification, forgot password |
 | Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization |
 | Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
-| Payment Service | ✅ Готов | Mock-оплата, GET /me, GET /:id |
+| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, подписки, GET /me, GET /:id |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, credit tracking |
 | Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards (auto-generated from quiz mistakes), spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, 22 endpoints |
@@ -21,7 +21,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 285 тестов | identity 48, course 59, enrollment 25, payment 13, notification 12, ai 30, learning 98 |
+| Unit Tests | ✅ 293 тестов | identity 48, course 59, enrollment 25, payment 21, notification 12, ai 30, learning 98 |
 
 ## Стек
 
