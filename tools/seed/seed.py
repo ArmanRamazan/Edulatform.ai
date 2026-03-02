@@ -382,14 +382,111 @@ CONCEPT_NAMES_BY_SUBJECT = {
     "Algorithms": ["Big O", "Sorting", "Searching", "Recursion", "Dynamic Programming", "Graphs", "Trees", "Hash Tables"],
 }
 
-QUESTION_TEMPLATES = [
-    ("What is the primary purpose of {concept}?", ["To {a}", "To {b}", "To {c}", "To {d}"]),
-    ("Which statement about {concept} is correct?", ["{concept} is used for {a}", "{concept} requires {b}", "{concept} prevents {c}", "{concept} enables {d}"]),
-    ("What is a key benefit of {concept}?", ["Improved {a}", "Better {b}", "Enhanced {c}", "Simplified {d}"]),
-    ("When should you use {concept}?", ["When you need {a}", "When you want {b}", "When dealing with {c}", "When optimizing {d}"]),
-]
-
-BENEFITS = ["performance", "security", "readability", "scalability", "maintainability", "reliability", "efficiency", "flexibility"]
+# Realistic question banks per subject: list of (question, [4 options], correct_index, explanation)
+QUESTION_BANK: dict[str, list[tuple[str, list[str], int, str]]] = {
+    "Python": [
+        ("What is the output of `len([1, [2, 3], 4])`?", ["2", "3", "4", "5"], 1, "The list has three elements: 1, [2, 3], and 4. Nested lists count as one element."),
+        ("Which keyword is used to define a generator function in Python?", ["generate", "yield", "return", "async"], 1, "The yield keyword makes a function a generator, producing values lazily one at a time."),
+        ("What does `*args` do in a function definition?", ["Unpacks keyword arguments", "Creates a tuple of positional arguments", "Defines default parameters", "Raises a TypeError"], 1, "The *args syntax collects extra positional arguments into a tuple."),
+        ("What is the difference between a list and a tuple?", ["Tuples are faster to iterate", "Lists are immutable", "Tuples are immutable", "There is no difference"], 2, "Tuples are immutable sequences. Once created, their elements cannot be changed."),
+        ("What does `@staticmethod` decorator do?", ["Makes a method async", "Binds method to the class instance", "Defines a method that does not receive self or cls", "Caches the method result"], 2, "A static method does not receive an implicit first argument (self or cls)."),
+        ("Which built-in function returns an iterator of tuples pairing elements from two lists?", ["map()", "filter()", "zip()", "enumerate()"], 2, "zip() pairs elements from multiple iterables into tuples."),
+        ("What is a list comprehension?", ["A way to sort a list", "A concise syntax for creating lists from iterables", "A method to flatten nested lists", "A debugging tool"], 1, "List comprehensions provide a compact syntax like [x*2 for x in range(5)]."),
+        ("What is the purpose of `__init__` in a Python class?", ["To delete an object", "To initialize object attributes", "To define class methods", "To import modules"], 1, "The __init__ method is called when creating a new instance to set up initial state."),
+        ("How do you handle exceptions in Python?", ["if/else blocks", "try/except blocks", "for/while loops", "with statements"], 1, "try/except blocks catch and handle exceptions that occur during execution."),
+        ("What does `pip install` do?", ["Compiles Python source code", "Installs Python packages from PyPI", "Creates a virtual environment", "Updates Python itself"], 1, "pip is the package installer that downloads and installs packages from PyPI."),
+        ("What is the output of `bool([])`?", ["True", "False", "None", "Error"], 1, "Empty sequences like [], '', and {} are falsy in Python."),
+        ("Which module is used for regular expressions in Python?", ["regex", "re", "match", "pattern"], 1, "The re module provides regular expression matching operations."),
+    ],
+    "JavaScript": [
+        ("What is the difference between `==` and `===` in JavaScript?", ["`==` checks type, `===` checks value", "`===` checks type and value, `==` does type coercion", "They are identical", "`===` is slower"], 1, "Triple equals checks both type and value without coercion, while == performs type coercion."),
+        ("What does `Array.prototype.map()` return?", ["The original array modified in place", "A new array with transformed elements", "A single accumulated value", "undefined"], 1, "map() creates a new array by applying a function to each element of the original array."),
+        ("What is a closure in JavaScript?", ["A way to close browser tabs", "A function that retains access to its outer scope variables", "A method to end a loop", "An error handling mechanism"], 1, "A closure is a function bundled with its lexical environment, retaining access to outer variables."),
+        ("What does `async/await` simplify?", ["DOM manipulation", "Working with Promises", "Array operations", "String formatting"], 1, "async/await provides syntactic sugar for working with Promises, making async code look synchronous."),
+        ("What is the output of `typeof null`?", ["'null'", "'undefined'", "'object'", "'boolean'"], 2, "This is a well-known JavaScript quirk: typeof null returns 'object' due to a legacy bug."),
+        ("What is the event loop responsible for?", ["Rendering the DOM", "Managing asynchronous callbacks and task scheduling", "Compiling JavaScript code", "Garbage collection"], 1, "The event loop processes the callback queue after the call stack is empty, enabling async behavior."),
+        ("Which method converts a JSON string to a JavaScript object?", ["JSON.stringify()", "JSON.parse()", "JSON.convert()", "JSON.decode()"], 1, "JSON.parse() deserializes a JSON string into a JavaScript value."),
+        ("What does `const` prevent?", ["Reassignment of the variable binding", "Mutation of the assigned object", "Declaration of the variable", "Use in loops"], 0, "const prevents reassignment of the variable itself, but does not make objects immutable."),
+        ("What is prototypal inheritance?", ["Classes inheriting from interfaces", "Objects inheriting directly from other objects", "Functions inheriting from classes", "Variables inheriting types"], 1, "In JavaScript, objects can inherit properties directly from other objects via the prototype chain."),
+        ("What does `Array.prototype.reduce()` do?", ["Removes elements from an array", "Accumulates array elements into a single value", "Creates a smaller array", "Sorts array elements"], 1, "reduce() applies a function against an accumulator to reduce an array to a single output value."),
+        ("What is `NaN` in JavaScript?", ["A string value", "A special numeric value meaning Not-a-Number", "An error type", "A null reference"], 1, "NaN is a numeric value indicating the result of an invalid mathematical operation."),
+        ("How do you create a Promise?", ["new Promise(callback)", "new Promise((resolve, reject) => {})", "Promise.new()", "async function()"], 1, "A Promise is constructed with an executor function that receives resolve and reject callbacks."),
+    ],
+    "Machine Learning": [
+        ("What is overfitting?", ["The model performs poorly on training data", "The model memorizes training data and fails on new data", "The model is too simple", "The model trains too slowly"], 1, "Overfitting occurs when a model learns noise in training data, leading to poor generalization."),
+        ("What is the purpose of a validation set?", ["To train the model", "To tune hyperparameters and evaluate model selection", "To generate final metrics", "To clean the data"], 1, "The validation set helps tune hyperparameters without biasing the final test evaluation."),
+        ("Which algorithm is used for binary classification?", ["Linear Regression", "Logistic Regression", "K-means Clustering", "PCA"], 1, "Logistic Regression predicts probabilities for binary outcomes using a sigmoid function."),
+        ("What does gradient descent optimize?", ["Data quality", "The loss function by adjusting model parameters", "Feature selection", "Training speed"], 1, "Gradient descent iteratively adjusts parameters in the direction that minimizes the loss function."),
+        ("What is a feature in machine learning?", ["The model output", "An individual measurable property of the data", "The training algorithm", "The loss function"], 1, "Features are the input variables that the model uses to make predictions."),
+        ("What is cross-validation?", ["Training on all data at once", "Splitting data into k folds to evaluate model performance", "Validating data types", "Testing on training data"], 1, "K-fold cross-validation trains and evaluates the model k times on different data splits."),
+        ("What is the bias-variance tradeoff?", ["Choosing between accuracy and speed", "Balancing underfitting (bias) and overfitting (variance)", "Selecting features vs. samples", "Trading precision for recall"], 1, "High bias means underfitting; high variance means overfitting. Good models balance both."),
+        ("What is regularization?", ["Adding more training data", "Adding a penalty term to prevent overfitting", "Normalizing input features", "Removing outliers"], 1, "Regularization (L1/L2) adds a penalty to large weights, discouraging complex models."),
+        ("What does a confusion matrix show?", ["Feature correlations", "True positives, false positives, true negatives, false negatives", "Training loss over time", "Hyperparameter values"], 1, "A confusion matrix summarizes classification results by comparing predicted vs. actual labels."),
+        ("What is the difference between supervised and unsupervised learning?", ["Supervised uses GPUs, unsupervised does not", "Supervised uses labeled data, unsupervised finds patterns in unlabeled data", "There is no difference", "Unsupervised is always better"], 1, "Supervised learning trains on labeled examples; unsupervised learning discovers structure in unlabeled data."),
+    ],
+    "Data Science": [
+        ("What does `pandas.DataFrame.groupby()` do?", ["Sorts the DataFrame", "Groups rows by column values for aggregation", "Merges two DataFrames", "Reshapes the DataFrame"], 1, "groupby() splits data into groups based on column values, enabling aggregate operations."),
+        ("What is the purpose of data normalization?", ["To delete duplicates", "To scale features to a common range", "To increase data size", "To remove missing values"], 1, "Normalization scales features to a similar range (e.g., 0-1) to prevent dominance by large-valued features."),
+        ("What is a p-value in hypothesis testing?", ["The probability of the data being correct", "The probability of observing results as extreme as the data under the null hypothesis", "The percentage of correct predictions", "The population parameter"], 1, "A p-value measures how likely the observed data would occur if the null hypothesis were true."),
+        ("Which NumPy function creates an array of zeros?", ["np.empty()", "np.zeros()", "np.null()", "np.clear()"], 1, "np.zeros(shape) creates an array filled with zeros of the specified shape."),
+        ("What is the difference between correlation and causation?", ["They are the same thing", "Correlation measures association; causation implies one causes the other", "Causation is weaker than correlation", "Correlation requires an experiment"], 1, "Correlation shows two variables move together; causation means one directly affects the other."),
+        ("What is a box plot used for?", ["Showing time series", "Displaying the distribution of data through quartiles", "Plotting geographic data", "Creating network graphs"], 1, "Box plots show median, quartiles, and outliers, summarizing data distribution at a glance."),
+        ("What does `DataFrame.fillna()` do?", ["Deletes rows with missing data", "Replaces missing values with a specified value", "Finds null values", "Counts missing values"], 1, "fillna() replaces NaN values with a given value, mean, median, or method like forward fill."),
+        ("What is the Central Limit Theorem?", ["Large samples are always normal", "The sampling distribution of the mean approaches normal as sample size increases", "All data follows a bell curve", "Variance decreases with more features"], 1, "The CLT states that sample means tend toward a normal distribution regardless of the population shape."),
+        ("What type of chart best shows the relationship between two continuous variables?", ["Bar chart", "Scatter plot", "Pie chart", "Histogram"], 1, "Scatter plots reveal patterns, trends, and correlations between two numerical variables."),
+        ("What does `pandas.merge()` do?", ["Concatenates DataFrames vertically", "Joins DataFrames on common columns like SQL JOIN", "Sorts DataFrames", "Splits DataFrames into groups"], 1, "merge() combines DataFrames on shared keys, similar to SQL JOINs."),
+    ],
+    "Web Development": [
+        ("What does the HTTP status code 404 mean?", ["Server error", "Resource not found", "Unauthorized", "Success"], 1, "404 means the server cannot find the requested resource at the given URL."),
+        ("What is the purpose of a REST API?", ["To style web pages", "To enable communication between client and server using HTTP methods", "To compile JavaScript", "To manage databases directly"], 1, "REST APIs use HTTP methods (GET, POST, PUT, DELETE) for client-server communication."),
+        ("What is CORS?", ["A JavaScript framework", "A browser security mechanism for cross-origin requests", "A CSS property", "A database query language"], 1, "CORS (Cross-Origin Resource Sharing) controls which domains can make requests to your server."),
+        ("What does CSS `flexbox` solve?", ["Database queries", "One-dimensional layout alignment and distribution", "Server-side rendering", "API authentication"], 1, "Flexbox provides efficient layout, alignment, and space distribution in a single dimension."),
+        ("What is the difference between GET and POST requests?", ["GET sends data in the body, POST in the URL", "GET retrieves data, POST submits data", "They are identical", "POST is faster than GET"], 1, "GET requests retrieve resources; POST requests submit data to be processed by the server."),
+        ("What is responsive design?", ["Fast-loading pages", "Design that adapts to different screen sizes", "Server-side rendering", "A JavaScript framework"], 1, "Responsive design uses flexible layouts, media queries, and fluid images to adapt to any screen size."),
+        ("What does HTTPS provide over HTTP?", ["Faster page loads", "Encrypted communication between client and server", "Better SEO only", "Larger file uploads"], 1, "HTTPS encrypts data in transit using TLS, protecting against eavesdropping and tampering."),
+        ("What is a cookie used for in web development?", ["Styling elements", "Storing small data on the client for session management", "Compiling code", "Database backup"], 1, "Cookies store small pieces of data in the browser, commonly used for sessions and preferences."),
+        ("What is the DOM?", ["A CSS framework", "The Document Object Model, a tree representation of HTML", "A database", "A server protocol"], 1, "The DOM is a programming interface representing HTML as a tree of objects that JavaScript can manipulate."),
+        ("What is caching in web development?", ["Deleting old data", "Storing frequently accessed data for faster retrieval", "Encrypting API responses", "Minifying JavaScript"], 1, "Caching stores copies of data (in browser, CDN, or server memory) to reduce latency and load."),
+    ],
+    "Mobile Development": [
+        ("What is the purpose of a RecyclerView/FlatList?", ["To display a single image", "To efficiently render large scrollable lists", "To handle API calls", "To manage app permissions"], 1, "RecyclerView/FlatList reuses off-screen views to efficiently render long lists with minimal memory."),
+        ("What is deep linking in mobile apps?", ["Downloading files", "Opening a specific screen in the app via a URL", "Creating nested navigation", "Database connections"], 1, "Deep links allow URLs to navigate directly to specific content within a mobile app."),
+        ("What is the difference between local and remote push notifications?", ["No difference", "Local are scheduled by the app; remote are sent from a server", "Remote are faster", "Local need internet"], 1, "Local notifications are triggered by the app itself; remote notifications originate from a backend server."),
+        ("What is state management in mobile development?", ["Managing server databases", "Handling and synchronizing app data across UI components", "Version control", "Memory allocation"], 1, "State management ensures consistent data flow and UI updates across components."),
+        ("What is an APK?", ["A programming language", "Android application package for distribution", "An API protocol", "A design tool"], 1, "APK (Android Package Kit) is the file format used to distribute Android applications."),
+    ],
+    "DevOps": [
+        ("What is CI/CD?", ["A programming language", "Continuous Integration and Continuous Delivery/Deployment", "A cloud provider", "A testing framework"], 1, "CI/CD automates building, testing, and deploying code changes to production."),
+        ("What is a Docker container?", ["A virtual machine", "A lightweight isolated environment for running applications", "A database server", "A code editor"], 1, "Containers package applications with dependencies, running in isolated but lightweight environments."),
+        ("What does Kubernetes orchestrate?", ["Source code", "Container deployment, scaling, and management", "Database queries", "Frontend components"], 1, "Kubernetes automates deploying, scaling, and managing containerized applications across clusters."),
+        ("What is Infrastructure as Code (IaC)?", ["Writing code inside infrastructure", "Managing infrastructure through declarative configuration files", "A monitoring tool", "A container format"], 1, "IaC tools like Terraform define infrastructure in code, enabling version control and reproducibility."),
+        ("What is the purpose of a load balancer?", ["Compressing files", "Distributing incoming traffic across multiple servers", "Managing databases", "Encrypting data"], 1, "Load balancers distribute requests across servers to ensure no single server is overwhelmed."),
+    ],
+    "Cloud Computing": [
+        ("What is serverless computing?", ["Computing without any servers", "A model where the cloud provider manages server infrastructure", "Peer-to-peer computing", "Edge computing"], 1, "Serverless lets developers run code without managing servers; the provider handles scaling and infrastructure."),
+        ("What is auto-scaling?", ["Manual server provisioning", "Automatically adjusting compute resources based on demand", "A storage format", "A networking protocol"], 1, "Auto-scaling adds or removes instances based on load metrics to maintain performance and cost efficiency."),
+        ("What does a CDN do?", ["Compiles code", "Caches and serves content from geographically distributed servers", "Creates databases", "Manages containers"], 1, "CDNs reduce latency by serving static content from edge locations closer to the user."),
+        ("What is IAM in cloud services?", ["An encryption algorithm", "Identity and Access Management for controlling resource access", "A monitoring dashboard", "A storage service"], 1, "IAM defines who (identity) can do what (access) on which cloud resources."),
+        ("What is the difference between IaaS, PaaS, and SaaS?", ["They are the same", "IaaS provides infrastructure, PaaS provides platform, SaaS provides software", "Only SaaS is cloud-based", "PaaS is the cheapest"], 1, "IaaS gives raw compute/storage, PaaS adds runtime/tools, SaaS delivers complete applications."),
+    ],
+    "Cybersecurity": [
+        ("What is SQL injection?", ["A database optimization technique", "An attack that inserts malicious SQL through user input", "A query caching method", "A stored procedure"], 1, "SQL injection exploits unsanitized user input to execute unauthorized SQL commands."),
+        ("What does HTTPS encryption protect against?", ["Slow connections", "Eavesdropping and man-in-the-middle attacks", "Server crashes", "Disk failures"], 1, "HTTPS uses TLS to encrypt traffic, preventing interception and modification of data in transit."),
+        ("What is multi-factor authentication (MFA)?", ["Using a strong password", "Requiring two or more verification methods to prove identity", "Encrypting passwords", "Rate limiting login attempts"], 1, "MFA combines something you know (password), have (phone), or are (biometrics) for stronger security."),
+        ("What is the principle of least privilege?", ["Give everyone admin access", "Grant users only the minimum permissions needed for their role", "Use the simplest password possible", "Disable all security features"], 1, "Least privilege limits access rights to the bare minimum needed, reducing attack surface."),
+        ("What is a firewall?", ["A type of malware", "A network security system that monitors and controls traffic", "A password manager", "A backup tool"], 1, "Firewalls filter incoming and outgoing network traffic based on predefined security rules."),
+    ],
+    "Algorithms": [
+        ("What is the time complexity of binary search?", ["O(n)", "O(log n)", "O(n log n)", "O(1)"], 1, "Binary search halves the search space each step, resulting in O(log n) time complexity."),
+        ("What data structure uses FIFO ordering?", ["Stack", "Queue", "Heap", "Tree"], 1, "A Queue follows First-In-First-Out: the first element added is the first one removed."),
+        ("What is dynamic programming?", ["Writing code dynamically", "Solving problems by breaking them into overlapping subproblems", "Real-time code generation", "Automatic memory management"], 1, "Dynamic programming solves complex problems by caching results of overlapping subproblems."),
+        ("What is the worst-case time complexity of quicksort?", ["O(n)", "O(n log n)", "O(n^2)", "O(log n)"], 2, "Quicksort degrades to O(n^2) when the pivot consistently results in unbalanced partitions."),
+        ("What is a hash table?", ["A sorted array", "A data structure mapping keys to values using a hash function", "A binary tree", "A linked list"], 1, "Hash tables use hash functions to compute indices, enabling O(1) average-case lookups."),
+        ("What is BFS (Breadth-First Search)?", ["Searching the deepest node first", "Exploring all neighbors at the current depth before going deeper", "A sorting algorithm", "A compression technique"], 1, "BFS explores a graph level by level, visiting all neighbors before moving to the next depth."),
+        ("What is the space complexity of merge sort?", ["O(1)", "O(log n)", "O(n)", "O(n^2)"], 2, "Merge sort requires O(n) additional space for the temporary arrays used during merging."),
+        ("What is a balanced binary search tree?", ["A tree with equal values in all nodes", "A BST where the height difference between subtrees is at most 1", "A tree with only leaf nodes", "A tree with no children"], 1, "Balanced BSTs (like AVL, Red-Black) maintain height balance for O(log n) operations."),
+    ],
+}
 
 COMMENT_TEMPLATES = [
     "Great explanation of this topic! Very helpful.",
@@ -405,15 +502,11 @@ COMMENT_TEMPLATES = [
 ]
 
 
-def _generate_question(concept_name: str, order: int) -> tuple[str, str, int, str, int]:
-    """Generate a quiz question for a concept. Returns (text, options_json, correct_index, explanation, order)."""
-    template_text, template_opts = random.choice(QUESTION_TEMPLATES)
-    benefits = random.sample(BENEFITS, 4)
-    text = template_text.format(concept=concept_name)
-    options = [t.format(a=benefits[0], b=benefits[1], c=benefits[2], d=benefits[3]) for t in template_opts]
-    correct_index = random.randint(0, 3)
-    explanation = f"The correct answer relates to {concept_name} and {benefits[correct_index]}."
-    return text, json.dumps(options), correct_index, explanation, order
+def _generate_question(subject: str, order: int) -> tuple[str, str, int, str, int]:
+    """Generate a quiz question from the realistic question bank. Returns (text, options_json, correct_index, explanation, order)."""
+    bank = QUESTION_BANK.get(subject, QUESTION_BANK["Python"])
+    q_text, options, correct_index, explanation = random.choice(bank)
+    return q_text, json.dumps(options), correct_index, explanation, order
 
 
 async def seed_quizzes_and_questions(
@@ -444,15 +537,13 @@ async def seed_quizzes_and_questions(
             if course_id not in course_subjects:
                 course_subjects[course_id] = random.choice(subjects)
             subj = course_subjects[course_id]
-            concept_names = CONCEPT_NAMES_BY_SUBJECT[subj]
 
-            num_questions = random.randint(3, 4)
+            num_questions = random.randint(3, 5)
             q_ids = []
             for q_order in range(num_questions):
                 q_id = str(uuid.uuid4())
                 q_ids.append(q_id)
-                concept = random.choice(concept_names)
-                text, options_json, correct_idx, explanation, _ = _generate_question(concept, q_order)
+                text, options_json, correct_idx, explanation, _ = _generate_question(subj, q_order)
                 # Escape tabs and newlines in text fields for COPY format
                 text_safe = text.replace("\t", " ").replace("\n", " ")
                 explanation_safe = explanation.replace("\t", " ").replace("\n", " ")
