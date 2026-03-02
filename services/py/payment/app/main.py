@@ -43,6 +43,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/002_indexes.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/003_subscriptions.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
