@@ -14,7 +14,7 @@
 | Payment Service | ✅ Готов | Mock-оплата, GET /me, GET /:id |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, credit tracking |
-| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, 22 endpoints |
+| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards (auto-generated from quiz mistakes), spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, 22 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |

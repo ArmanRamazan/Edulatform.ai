@@ -42,7 +42,7 @@ EduPlatform — не очередной видеохостинг с прогре
 Монорепа: **Python** (бизнес-логика, 7 микросервисов) + **Next.js** (frontend) + **Rust** (performance-critical, Phase 4).
 
 - **7 сервисов**: Identity, Course, Enrollment, Payment, Notification, AI, Learning
-- **298 unit-тестов**, нагрузочное тестирование через Locust
+- **301 unit-тестов**, нагрузочное тестирование через Locust
 - **157 RPS, p99 = 51ms** на текущей стадии
 - **AI**: Quiz generation, Summary, Socratic Tutor (Gemini Flash), FSRS spaced repetition
 - **Knowledge Graph**: concepts, prerequisites, concept mastery tracking
@@ -58,7 +58,7 @@ docker compose -f docker-compose.dev.yml up
 # Фронтенд
 cd apps/buyer && npm install && npm run dev
 
-# Тесты (298 тестов, 7 сервисов)
+# Тесты (301 тестов, 7 сервисов)
 uv sync --all-packages
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v

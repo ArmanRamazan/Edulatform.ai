@@ -125,9 +125,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _concept_service = ConceptService(concept_repo)
 
     quiz_repo = QuizRepository(_pool)
-    _quiz_service = QuizService(quiz_repo, concept_service=_concept_service)
-
     flashcard_repo = FlashcardRepository(_pool)
+    _quiz_service = QuizService(
+        quiz_repo, concept_service=_concept_service, flashcard_repo=flashcard_repo,
+    )
+
     _flashcard_service = FlashcardService(flashcard_repo)
 
     streak_repo = StreakRepository(_pool)

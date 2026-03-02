@@ -68,6 +68,11 @@ def quiz_service(mock_repo):
     return QuizService(repo=mock_repo)
 
 
+@pytest.fixture
+def quiz_service_with_flashcards(mock_repo, mock_flashcard_repo):
+    return QuizService(repo=mock_repo, flashcard_repo=mock_flashcard_repo)
+
+
 from app.domain.flashcard import Flashcard, ReviewLog
 from app.repositories.flashcard_repo import FlashcardRepository
 from app.services.flashcard_service import FlashcardService

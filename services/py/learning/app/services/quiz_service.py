@@ -10,6 +10,8 @@ from common.errors import ConflictError, ForbiddenError, NotFoundError
 from app.domain.quiz import Quiz, Question, QuizAttempt, QuestionResult
 from app.repositories.quiz_repo import QuizRepository
 
+from app.repositories.flashcard_repo import FlashcardRepository
+
 if TYPE_CHECKING:
     from app.services.concept_service import ConceptService
 
@@ -18,10 +20,14 @@ logger = logging.getLogger(__name__)
 
 class QuizService:
     def __init__(
-        self, repo: QuizRepository, concept_service: ConceptService | None = None
+        self,
+        repo: QuizRepository,
+        concept_service: ConceptService | None = None,
+        flashcard_repo: FlashcardRepository | None = None,
     ) -> None:
         self._repo = repo
         self._concept_service = concept_service
+        self._flashcard_repo = flashcard_repo
 
     async def create_quiz(
         self,
@@ -101,7 +107,51 @@ class QuizService:
             except Exception:
                 logger.warning("Failed to update mastery for quiz %s", quiz_id)
 
+        if self._flashcard_repo is not None:
+            await self._generate_flashcards_for_mistakes(
+                student_id=student_id,
+                course_id=quiz.course_id,
+                questions=questions,
+                results=results,
+            )
+
         return attempt, results
+
+    async def _generate_flashcards_for_mistakes(
+        self,
+        student_id: UUID,
+        course_id: UUID,
+        questions: list[Question],
+        results: list[QuestionResult],
+    ) -> None:
+        assert self._flashcard_repo is not None
+        for q, r in zip(questions, results):
+            if r.is_correct:
+                continue
+            try:
+                exists = await self._flashcard_repo.exists_by_source(
+                    student_id=student_id,
+                    source_type="quiz_mistake",
+                    source_id=q.id,
+                )
+                if exists:
+                    continue
+                correct_answer = q.options[q.correct_index]
+                answer = correct_answer
+                if q.explanation:
+                    answer = f"{correct_answer}. {q.explanation}"
+                await self._flashcard_repo.create(
+                    student_id=student_id,
+                    course_id=course_id,
+                    concept=q.text,
+                    answer=answer,
+                    source_type="quiz_mistake",
+                    source_id=q.id,
+                )
+            except Exception:
+                logger.warning(
+                    "Failed to create flashcard for question %s", q.id
+                )
 
     async def list_my_attempts(
         self, quiz_id: UUID, student_id: UUID, limit: int = 20, offset: int = 0

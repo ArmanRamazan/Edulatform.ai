@@ -101,6 +101,16 @@ class FlashcardRepository:
         )
         return self._to_review_log(row)
 
+    async def exists_by_source(
+        self, student_id: UUID, source_type: str, source_id: UUID
+    ) -> bool:
+        val = await self._pool.fetchval(
+            "SELECT EXISTS(SELECT 1 FROM flashcards "
+            "WHERE student_id = $1 AND source_type = $2 AND source_id = $3)",
+            student_id, source_type, source_id,
+        )
+        return val
+
     async def count_by_student(self, student_id: UUID) -> int:
         return await self._pool.fetchval(
             "SELECT count(*) FROM flashcards WHERE student_id = $1",
