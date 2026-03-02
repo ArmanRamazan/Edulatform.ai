@@ -51,6 +51,28 @@ class NotificationService:
             sent += 1
         return sent
 
+    async def send_flashcard_reminders(
+        self, items: list[dict],
+    ) -> int:
+        sent = 0
+        for item in items:
+            uid = item["user_id"]
+            card_count = item["card_count"]
+            has_existing = await self._repo.has_unread_by_type(
+                uid, NotificationType.FLASHCARD_REMINDER,
+            )
+            if has_existing:
+                continue
+            await self._repo.create(
+                uid,
+                NotificationType.FLASHCARD_REMINDER,
+                "Flashcards due for review!",
+                f"You have {card_count} flashcards due for review!",
+            )
+            logger.info("[FLASHCARD_REMINDER] user=%s cards=%d", uid, card_count)
+            sent += 1
+        return sent
+
     async def mark_as_read(self, notification_id: UUID, user_id: UUID) -> Notification:
         notification = await self._repo.get_by_id(notification_id)
         if not notification:

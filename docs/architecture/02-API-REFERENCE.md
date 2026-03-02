@@ -910,6 +910,34 @@ Mock оплата курса. Всегда возвращает `status=complete
 |------|---------|
 | 403 | Не админ |
 
+### POST /notifications/flashcard-reminders/send
+
+Отправить flashcard-reminder уведомления пользователям, у которых есть карточки для повторения. Требует JWT с ролью `admin`. Пропускает пользователей, у которых уже есть непрочитанный flashcard_reminder.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Request:**
+```json
+{
+  "items": [
+    {"user_id": "uuid1", "card_count": 5},
+    {"user_id": "uuid2", "card_count": 3}
+  ]
+}
+```
+
+**Response `200`:**
+```json
+{
+  "sent_count": 2
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Не админ |
+
 ---
 
 ## AI Service (`:8006`)

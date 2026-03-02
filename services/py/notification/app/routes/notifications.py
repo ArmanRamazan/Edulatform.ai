@@ -11,6 +11,8 @@ from app.domain.notification import (
     NotificationListResponse,
     StreakReminderRequest,
     StreakReminderResponse,
+    FlashcardReminderRequest,
+    BulkReminderResponse,
 )
 from app.services.notification_service import NotificationService
 
@@ -103,3 +105,17 @@ async def send_streak_reminders(
         raise ForbiddenError("Only admins can send streak reminders")
     sent_count = await service.send_streak_reminders(body.user_ids)
     return StreakReminderResponse(sent_count=sent_count)
+
+
+@router.post("/flashcard-reminders/send", response_model=BulkReminderResponse)
+async def send_flashcard_reminders(
+    body: FlashcardReminderRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[NotificationService, Depends(_get_notification_service)],
+) -> BulkReminderResponse:
+    if claims["role"] != "admin":
+        raise ForbiddenError("Only admins can send flashcard reminders")
+    sent_count = await service.send_flashcard_reminders(
+        [{"user_id": item.user_id, "card_count": item.card_count} for item in body.items]
+    )
+    return BulkReminderResponse(sent_count=sent_count)

@@ -13,13 +13,27 @@ class NotificationType(StrEnum):
     ENROLLMENT = "enrollment"
     PAYMENT = "payment"
     STREAK_REMINDER = "streak_reminder"
+    FLASHCARD_REMINDER = "flashcard_reminder"
 
 
 class StreakReminderRequest(BaseModel):
     user_ids: list[UUID]
 
 
+class FlashcardReminderItem(BaseModel):
+    user_id: UUID
+    card_count: int
+
+
+class FlashcardReminderRequest(BaseModel):
+    items: list[FlashcardReminderItem]
+
+
 class StreakReminderResponse(BaseModel):
+    sent_count: int
+
+
+class BulkReminderResponse(BaseModel):
     sent_count: int
 
 
