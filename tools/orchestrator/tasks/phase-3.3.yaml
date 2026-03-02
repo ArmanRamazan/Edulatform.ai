@@ -1,0 +1,345 @@
+phase: "3.3"
+description: "SEO + Marketing — dynamic meta, structured data, sitemap, CWV, landing page"
+
+tasks:
+  - id: dynamic-meta-tags
+    title: "Dynamic meta tags per page"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add dynamic <title> and <meta name="description"> to every page in the buyer app.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Next.js App Router uses generateMetadata() export or static metadata export per layout/page
+      - Course service (port 8002): GET /courses/:id returns title, description, instructor name
+      - Key pages to cover:
+        - apps/buyer/app/page.tsx (home/landing)
+        - apps/buyer/app/courses/page.tsx (catalog)
+        - apps/buyer/app/courses/[id]/page.tsx (course detail)
+        - apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx (lesson)
+        - apps/buyer/app/profile/page.tsx (profile)
+        - apps/buyer/app/login/page.tsx and apps/buyer/app/register/page.tsx
+
+      WHAT TO BUILD:
+      1. Root layout (apps/buyer/app/layout.tsx): default metadata with site name and fallback description
+      2. Home page: static metadata — "Learn anything | EduPlatform" with value-prop description
+      3. Catalog page: static metadata — "Browse Courses | EduPlatform"
+      4. Course detail page: generateMetadata() fetching course by id — title = course.title, description = first 155 chars of course.description
+      5. Lesson page: generateMetadata() — title = lesson title + course name
+      6. Auth pages (login, register): static metadata
+      7. Profile page: noindex meta tag (private page)
+
+      IMPLEMENTATION:
+      1. In root layout export const metadata: Metadata = { title: { template: '%s | EduPlatform', default: 'EduPlatform' }, description: '...' }
+      2. Each page exports either static `metadata` or async `generateMetadata({ params })`
+      3. For dynamic pages call the course API directly (server component, no auth needed for public data)
+      4. Use Next.js Metadata API — no manual <Head> tags
+      5. Add metadataBase to root layout: new URL(process.env.NEXT_PUBLIC_BASE_URL ?? 'https://eduplatform.com')
+
+      RULES:
+      - Named exports only, no default exports (page.tsx and layout.tsx are Next.js convention exceptions)
+      - generateMetadata must handle fetch errors gracefully (return fallback metadata on error)
+      - Do not add "use client" to pages that only need metadata
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add dynamic meta tags per page
+    test: "cd apps/buyer && pnpm build"
+
+  - id: json-ld-course-schema
+    title: "JSON-LD Course schema (schema.org/Course)"
+    scope: frontend:buyer
+    depends_on: [dynamic-meta-tags]
+    prompt: |
+      Task: Add schema.org/Course JSON-LD structured data to the course detail page.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Course detail page: apps/buyer/app/courses/[id]/page.tsx (Server Component)
+      - Course API: GET /courses/:id returns { id, title, description, price, teacher_name, rating, total_reviews, thumbnail_url, created_at }
+      - Next.js App Router: inject JSON-LD via a <script type="application/ld+json"> tag in the page JSX
+      - schema.org/Course: https://schema.org/Course
+
+      WHAT TO BUILD:
+      1. A reusable server component: apps/buyer/components/seo/CourseJsonLd.tsx
+      2. Props interface: { course: CourseDetail } where CourseDetail matches the API shape
+      3. Renders a <script> tag with type="application/ld+json" containing the serialized schema
+      4. Schema fields to include:
+         - "@context": "https://schema.org"
+         - "@type": "Course"
+         - name: course.title
+         - description: course.description
+         - provider: { "@type": "Organization", name: "EduPlatform" }
+         - instructor: { "@type": "Person", name: course.teacher_name }
+         - aggregateRating (if rating > 0): { "@type": "AggregateRating", ratingValue, reviewCount }
+         - offers: { "@type": "Offer", price: course.price, priceCurrency: "USD", availability: "https://schema.org/InStock" }
+         - image: course.thumbnail_url (if present)
+      5. Import and render <CourseJsonLd course={course} /> in the course detail page
+
+      IMPLEMENTATION:
+      1. Create apps/buyer/components/seo/ directory
+      2. Create CourseJsonLd.tsx as a Server Component (no "use client")
+      3. Use TypeScript interface for props
+      4. Serialize the schema object with JSON.stringify and inject into a script tag
+      5. Add to course detail page after existing content
+
+      RULES:
+      - Named exports only
+      - Server Component — no hooks
+      - Do not expose internal user UUIDs in the schema
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add JSON-LD Course schema for SEO
+    test: "cd apps/buyer && pnpm build"
+
+  - id: open-graph-twitter-meta
+    title: "Open Graph + Twitter Card meta tags"
+    scope: frontend:buyer
+    depends_on: [dynamic-meta-tags]
+    prompt: |
+      Task: Add Open Graph and Twitter Card meta tags to course detail and home pages.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Next.js Metadata API supports openGraph and twitter fields in the Metadata object
+      - Course detail page: apps/buyer/app/courses/[id]/page.tsx
+      - Home page: apps/buyer/app/page.tsx
+      - Course API returns thumbnail_url for OG image
+      - metadataBase should already be set in root layout from task dynamic-meta-tags
+
+      WHAT TO BUILD:
+      1. Root layout: add default openGraph and twitter card metadata
+         - openGraph: { type: "website", siteName: "EduPlatform", images: [default OG image] }
+         - twitter: { card: "summary_large_image", site: "@EduPlatform" }
+      2. Course detail generateMetadata(): extend with openGraph fields
+         - openGraph.type: "website"
+         - openGraph.title: course.title
+         - openGraph.description: first 200 chars of course.description
+         - openGraph.images: [{ url: course.thumbnail_url, width: 1200, height: 630, alt: course.title }]
+         - twitter: { card: "summary_large_image", title: course.title, description: ..., images: [course.thumbnail_url] }
+      3. Home page: add static openGraph with a default hero image path (/og-home.jpg placeholder)
+
+      IMPLEMENTATION:
+      1. Edit apps/buyer/app/layout.tsx — add openGraph + twitter to default metadata
+      2. Edit apps/buyer/app/courses/[id]/page.tsx — extend generateMetadata() return value
+      3. Edit apps/buyer/app/page.tsx — add openGraph to static metadata export
+      4. Create a 1x1 placeholder image at apps/buyer/public/og-home.jpg if no OG image exists yet
+
+      RULES:
+      - All within Next.js Metadata API — no manual <meta> tags
+      - Graceful fallback when thumbnail_url is null/undefined
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add Open Graph and Twitter Card meta tags
+    test: "cd apps/buyer && pnpm build"
+
+  - id: dynamic-sitemap
+    title: "Dynamic sitemap.xml generation"
+    scope: frontend:buyer
+    prompt: |
+      Task: Generate a dynamic sitemap.xml for the buyer app using Next.js App Router conventions.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict)
+      - Next.js App Router supports sitemap.ts at apps/buyer/app/sitemap.ts
+      - Course service (port 8002): GET /courses?page=1&page_size=1000 returns list of courses with ids and updated_at
+      - Public pages: / , /courses, /courses/[id], /login, /register
+      - Base URL from env: NEXT_PUBLIC_BASE_URL (default: https://eduplatform.com)
+
+      WHAT TO BUILD:
+      1. apps/buyer/app/sitemap.ts — default export async function sitemap() returning MetadataRoute.Sitemap
+      2. Static routes: home (/), catalog (/courses), login (/login), register (/register)
+         - home: priority 1.0, changeFrequency: "daily"
+         - catalog: priority 0.9, changeFrequency: "hourly"
+         - auth pages: priority 0.3, changeFrequency: "yearly"
+      3. Dynamic routes: fetch all course IDs from course service
+         - Each course: /courses/[id], priority 0.8, changeFrequency: "weekly", lastModified from course.updated_at
+      4. Handle fetch errors gracefully — return only static routes if course service is unavailable
+
+      IMPLEMENTATION:
+      1. Create apps/buyer/app/sitemap.ts
+      2. Use Next.js MetadataRoute.Sitemap type from "next"
+      3. Fetch courses server-side (runs at build time for SSG or on-demand for ISR)
+      4. Use the internal service URL: process.env.INTERNAL_COURSE_SERVICE_URL ?? 'http://localhost:8002'
+      5. Set export const revalidate = 3600 for hourly regeneration
+
+      RULES:
+      - Default export required (Next.js sitemap.ts convention — exception to the no-default-export rule)
+      - TypeScript strict — use MetadataRoute.Sitemap return type
+      - Graceful error handling with try/catch
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add dynamic sitemap.xml generation
+    test: "cd apps/buyer && pnpm build"
+
+  - id: robots-txt
+    title: "robots.txt"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add robots.txt to the buyer app using Next.js App Router conventions.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict)
+      - Next.js App Router supports robots.ts at apps/buyer/app/robots.ts
+      - Pages that should be blocked from indexing: /profile, /checkout, /api
+      - Sitemap URL will be at /sitemap.xml
+
+      WHAT TO BUILD:
+      1. apps/buyer/app/robots.ts — default export function robots() returning MetadataRoute.Robots
+      2. Allow all user agents to crawl public content
+      3. Disallow: /profile, /checkout, /api, /dashboard
+      4. Reference sitemap in the return value
+
+      IMPLEMENTATION:
+      1. Create apps/buyer/app/robots.ts
+      2. Use Next.js MetadataRoute.Robots type from "next"
+      3. baseUrl from process.env.NEXT_PUBLIC_BASE_URL ?? 'https://eduplatform.com'
+      4. Return object with rules array and sitemap string
+
+      RULES:
+      - Default export required (Next.js robots.ts convention — exception to no-default-export rule)
+      - TypeScript strict
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add robots.txt via Next.js App Router
+    test: "cd apps/buyer && pnpm build"
+
+  - id: core-web-vitals-audit
+    title: "Core Web Vitals audit + optimize"
+    scope: frontend:buyer
+    prompt: |
+      Task: Audit and optimize Core Web Vitals in the buyer app (LCP, CLS, INP).
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Key pages for CWV: home (/), catalog (/courses), course detail (/courses/[id])
+      - Known potential issues to address:
+        1. Images without explicit width/height causing layout shift (CLS)
+        2. Large client-side JS bundles delaying interactivity (INP)
+        3. Missing font-display swap causing layout shift (CLS)
+        4. Heavy components loaded eagerly that could be deferred
+
+      WHAT TO BUILD:
+      1. Audit all raw <img> usages — replace any with next/image where found
+      2. Add explicit width and height to all next/image usages that are missing them
+      3. Add priority prop to the hero/first above-fold image on each major page (LCP)
+      4. Dynamic import heavy client-only components: video player, rich text editor, charts
+         - Check apps/buyer/components/ for any such components
+         - Wrap with dynamic(() => import(...), { ssr: false }) where appropriate
+      5. Check apps/buyer/app/layout.tsx font loading — ensure next/font is used with display: 'swap'
+      6. Verify below-fold images use lazy loading (default in next/image — just confirm)
+
+      IMPLEMENTATION:
+      1. Search all .tsx files in apps/buyer/ for raw <img> tags — replace with next/image
+      2. Search for next/image usages missing width/height — add explicit dimensions
+      3. Find the first visible image on home, catalog, course detail pages — add priority prop
+      4. Check apps/buyer/components/ for VideoPlayer, RichTextEditor, or chart components
+      5. Verify font configuration in apps/buyer/app/layout.tsx
+
+      RULES:
+      - Do NOT refactor code unrelated to CWV
+      - Do NOT change business logic or visual design
+      - After all changes: cd apps/buyer && pnpm build
+      - Create atomic git commit: perf(buyer): optimize Core Web Vitals — images, fonts, dynamic imports
+    test: "cd apps/buyer && pnpm build"
+
+  - id: image-optimization
+    title: "Image optimization (next/image)"
+    scope: frontend:buyer
+    depends_on: [core-web-vitals-audit]
+    prompt: |
+      Task: Comprehensive image optimization pass for the buyer app.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - next/image automatically serves WebP/AVIF, handles lazy loading, prevents CLS
+      - Course thumbnails come from external URLs (CDN) — need remotePatterns in next.config
+      - Avatar/profile images may also come from external URLs
+
+      WHAT TO BUILD:
+      1. Update apps/buyer/next.config.js (or next.config.ts) — add remotePatterns for external image domains
+         - Add a permissive pattern for dev: { protocol: 'https', hostname: '**' }
+         - In production, lock down to known CDN hostnames
+      2. Add sizes prop to responsive next/image usages in grid layouts:
+         - Course cards in a 4-column grid: sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+         - Hero images: sizes="100vw"
+      3. Ensure all avatar/user images have explicit size (width=40, height=40 or similar)
+      4. Verify CourseCard component(s) use next/image with correct layout (fill inside sized container, or explicit w/h)
+
+      IMPLEMENTATION:
+      1. Check apps/buyer/next.config.* for existing images config — add or update remotePatterns
+      2. Search for next/image usages in grid/card layouts missing sizes prop — add them
+      3. Check all avatar image usages — ensure explicit dimensions
+      4. Verify CourseCard thumbnail layout
+
+      RULES:
+      - Do NOT change visual design or styling beyond what is required for image optimization
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: perf(buyer): add next/image optimization — remotePatterns and sizes
+    test: "cd apps/buyer && pnpm build"
+
+  - id: landing-page
+    title: "Landing page (hero, value props, social proof, CTA)"
+    scope: frontend:buyer
+    depends_on: [dynamic-meta-tags, open-graph-twitter-meta]
+    prompt: |
+      Task: Build a compelling landing page (home page) for the buyer app.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Current home page: apps/buyer/app/page.tsx — likely shows course catalog directly
+      - Course service (port 8002): GET /courses?page=1&page_size=8&sort=rating returns featured courses
+      - Enrollment service (port 8003): no public stats endpoint — use hardcoded realistic numbers for social proof
+      - Auth routes: /login, /register
+      - Existing UI components in apps/buyer/components/ or packages/ui/
+
+      WHAT TO BUILD:
+      1. Hero section:
+         - Headline: "Master new skills with expert-led courses"
+         - Subheadline: "Join thousands of learners advancing their careers"
+         - Two CTA buttons: "Browse Courses" -> /courses, "Start Learning Free" -> /register
+         - Background: Tailwind gradient (bg-gradient-to-br from-indigo-600 to-purple-700)
+         - No external images in hero — CSS/SVG only
+
+      2. Stats bar (hardcoded social proof numbers):
+         - "10,000+ Students", "500+ Courses", "50+ Expert Instructors", "4.8 star Average Rating"
+         - Horizontal strip with dividers, subtle background
+
+      3. Featured courses section:
+         - Heading: "Top-Rated Courses"
+         - Fetch top 8 courses from course service (server component fetch)
+         - Responsive grid: 1 col mobile, 2 cols sm, 3 cols md, 4 cols lg
+         - Each card: thumbnail (next/image), title, instructor, rating, price
+         - "View All Courses" link -> /courses
+
+      4. Value proposition section (3 columns):
+         - "Learn at Your Pace" — study anytime, anywhere
+         - "Expert Instructors" — industry professionals
+         - "Earn Certificates" — recognized credentials
+         - Use simple inline SVG icons (no external icon library)
+
+      5. CTA banner at bottom:
+         - "Ready to start learning?" with "Get Started Today" button -> /register
+         - Dark background for contrast
+
+      IMPLEMENTATION:
+      1. Refactor apps/buyer/app/page.tsx to be the landing page (Server Component)
+      2. Create sub-components in apps/buyer/components/landing/:
+         - HeroSection.tsx
+         - StatsBar.tsx
+         - FeaturedCourses.tsx (receives courses as props from page)
+         - ValueProps.tsx
+         - CtaBanner.tsx
+      3. Fetch courses in apps/buyer/app/page.tsx, pass as props to FeaturedCourses
+      4. Use next/link for all navigation
+      5. Fully responsive with Tailwind breakpoints (sm, md, lg)
+
+      SEO:
+      - Ensure H1 tag is in HeroSection (the main headline)
+      - Use H2 for section headings ("Top-Rated Courses", "Why EduPlatform?", etc.)
+
+      RULES:
+      - Server Components for all landing sections — no "use client" needed
+      - Named exports for all sub-components (HeroSection, StatsBar, etc.)
+      - page.tsx uses default export (Next.js requirement)
+      - next/image for course thumbnails in FeaturedCourses
+      - next/link for all links — no raw <a> tags
+      - Tailwind only — no inline styles
+      - Do NOT break existing /courses page or navigation
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add marketing landing page with hero, stats, value props
+    test: "cd apps/buyer && pnpm build"

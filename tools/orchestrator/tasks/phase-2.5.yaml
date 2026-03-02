@@ -1,0 +1,314 @@
+phase: "2.5"
+description: "MVP Polish + Demo Ready"
+
+tasks:
+  - id: onboarding-flow
+    title: "Onboarding: guided first course experience"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build a guided onboarding flow for new users after first registration.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS, TanStack Query, Radix UI)
+      - Auth hook: apps/buyer/hooks/use-auth.ts — exposes { user, token, loading, login, register, logout }
+        The register() function stores the JWT in localStorage and sets user state.
+      - Existing register page: apps/buyer/app/register/page.tsx — after successful registration
+        it sets `registered = true` and shows a success message. This is where we redirect instead.
+      - API client: apps/buyer/lib/api.ts — namespace objects: identity, courses, enrollments, etc.
+      - Existing hooks: hooks/use-courses.ts (useCourseList, useCategories), hooks/use-enrollments.ts (useEnroll)
+      - After registration the user.email_verified = false, user.role = "student"
+      - Course service (via /api/course/courses) returns: id, title, description, is_free, price,
+        level, duration_minutes, avg_rating, review_count, category_id
+      - Enrollment service: POST /api/enrollment/enrollments { course_id, total_lessons? }
+
+      WHAT TO BUILD:
+      Build a multi-step onboarding wizard at apps/buyer/app/onboarding/page.tsx with 3 steps:
+
+      Step 1 — Welcome (shown immediately after registration):
+        - Headline: "Добро пожаловать в EduPlatform!"
+        - Short value proposition: 3 bullet points with icons (emoji is fine):
+          * "Сотни курсов по программированию, дизайну и бизнесу"
+          * "AI-тьютор, тесты и флеш-карточки для эффективного обучения"
+          * "XP, серии и значки — учиться интересно"
+        - "Начать" button → go to Step 2
+
+      Step 2 — Pick your first course:
+        - Headline: "Выберите первый курс"
+        - Show a grid of up to 6 free courses (is_free=true, sort_by=avg_rating) from the course list API
+        - Each course card shows: title, level badge, duration, avg_rating (if set), "Бесплатно" tag
+        - User clicks one course to select it (highlight with blue border)
+        - "Пропустить" link → go to Step 3 without enrolling
+        - "Записаться и начать" button → enroll then go to Step 3
+
+      Step 3 — You're all set:
+        - Headline: "Готово! Начните учиться прямо сейчас"
+        - Show 3 feature highlights with icons:
+          * "Уроки с AI-объяснениями" → link to /courses (or enrolled course if step 2 was completed)
+          * "Повторение через флеш-карточки" → link to /flashcards
+          * "Отслеживайте прогресс и зарабатывайте XP" → link to /badges
+        - "Перейти к курсам" button → href="/"
+
+      IMPLEMENTATION APPROACH:
+      1. Create apps/buyer/app/onboarding/page.tsx as a "use client" component.
+         Use useState for step (1|2|3), selectedCourseId, enrolling, error.
+      2. In Step 2 fetch courses: useCourseList({ is_free: true, sort_by: "avg_rating", limit: 6 })
+         This hook is already in apps/buyer/hooks/use-courses.ts.
+      3. Enroll via useEnroll(token) from apps/buyer/hooks/use-enrollments.ts.
+         Call enroll.mutateAsync({ course_id: selectedCourseId }) — no payment needed for free courses.
+         On success, redirect to Step 3 (and store enrolledCourseId in state to use as the link target).
+      4. After successful registration in apps/buyer/app/register/page.tsx, redirect to /onboarding
+         instead of showing the static "success" message. Replace the `registered` state block with:
+           import { useRouter } from "next/navigation"
+           const router = useRouter()
+           // in handleSubmit after register():
+           router.push("/onboarding")
+      5. The onboarding page is accessible without login (to handle edge cases), but if !user && !loading,
+         show a redirect link to /register. If user is already enrolled in 5+ courses, redirect to /.
+      6. Progress indicator at the top: three dots / step counter "Шаг X из 3".
+
+      RULES:
+      - "use client" at top of onboarding/page.tsx (uses hooks, state, router)
+      - Named exports ONLY — but since Next.js page routes require default export, the page component
+        must be a default export (this is a Next.js App Router requirement, not a violation)
+      - No default exports for non-page components; if you extract sub-components put them in the same file
+        or as named exports in apps/buyer/components/
+      - Tailwind CSS only, no inline styles
+      - next/link for all navigation (not <a>)
+      - No new dependencies — use only what is already in package.json
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add multi-step onboarding flow for new users
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+
+  - id: landing-page
+    title: "Landing page: value proposition, screenshots/demo"
+    scope: frontend:buyer
+    depends_on: [onboarding-flow]
+    prompt: |
+      Task: Redesign the homepage (apps/buyer/app/page.tsx) to serve as both a compelling
+      marketing landing page AND the course catalog for logged-in users.
+
+      CONTEXT:
+      - Current homepage (apps/buyer/app/page.tsx) is a plain "use client" component showing
+        a search bar and course grid. It imports Header, CourseCard, useCourseList, useCategories.
+      - Auth hook: apps/buyer/hooks/use-auth.ts — { user, token, loading }
+      - CourseCard component: apps/buyer/components/CourseCard.tsx
+      - Header component: apps/buyer/components/Header.tsx (already has nav, login/logout, XP, streak)
+      - API: courses.list({ is_free, sort_by, limit }) via /api/course/courses
+      - Existing hooks: useCourseList, useCategories from apps/buyer/hooks/use-courses.ts
+      - The onboarding flow was just added at /onboarding — link to it from the CTA button
+        for logged-out users.
+
+      WHAT TO BUILD:
+      Transform page.tsx into a landing page with sections:
+
+      SECTION 1 — Hero (shown to ALL users, logged-in and logged-out):
+        - Large headline: "Учитесь быстрее с AI-тьютором"
+        - Subheading: "Курсы, адаптивные тесты, флеш-карточки и Socratic-тьютор в одном месте"
+        - Two CTA buttons:
+          * If NOT logged in: "Начать бесплатно" → href="/register" and "Смотреть курсы" → scrolls to catalog section
+          * If logged in: "Мои курсы" → href="/enrollments" and "Найти курс" → scrolls to catalog section
+        - Feature highlights row (3 columns, icon + title + short description):
+          * "AI-тьютор" — задаёт вопросы в сократовском стиле, помогает понять, а не запомнить
+          * "Адаптивные повторения" — флеш-карточки с алгоритмом FSRS, повторяйте только то, что забыли
+          * "Геймификация" — XP, серии активности, значки за достижения
+
+      SECTION 2 — Social proof (static, hardcoded):
+        - "Уже учатся тысячи студентов" with 3 stat boxes:
+          * "7 сервисов" / "Микросервисная архитектура"
+          * "AI + FSRS" / "Умные повторения"
+          * "298 тестов" / "Надёжная платформа"
+        - Keep this section minimal — just numbers and labels, Tailwind styling
+
+      SECTION 3 — Course catalog (existing functionality, preserved):
+        - Add id="catalog" to this section's wrapping div so the "Найти курс" / "Смотреть курсы"
+          button can scroll to it with href="#catalog"
+        - Keep the existing search bar, category/level/price/sort filters
+        - Keep the course grid with CourseCard components
+        - Keep loading/error/empty states
+
+      IMPLEMENTATION APPROACH:
+      1. The page remains "use client" (it already is, due to useState for search/filters).
+      2. Add useAuth() import to detect if user is logged in.
+      3. The Hero section renders above the existing search/filter/grid code.
+      4. The social proof section renders between Hero and catalog.
+      5. For the "scroll to catalog" buttons use href="#catalog" on an <a> tag wrapped in next/link
+         — actually, since it's a same-page anchor, a plain <a href="#catalog"> is acceptable here
+         as next/link does not handle fragment-only hrefs well. Add a comment explaining this exception.
+      6. Use Tailwind gradient for hero background: bg-gradient-to-br from-blue-600 to-indigo-700
+         with white text for the hero section. The rest of the page keeps the existing bg-gray-50.
+
+      RULES:
+      - Keep ALL existing filter/search/course-grid functionality — do not break it
+      - "use client" stays at top (already there, keep it)
+      - Tailwind CSS only
+      - next/link for all navigation except the same-page anchor scroll
+      - No new npm dependencies
+      - Named exports for any extracted sub-components
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): redesign homepage as landing page with hero and social proof sections
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+
+  - id: responsive-mobile
+    title: "Responsive mobile web"
+    scope: frontend:buyer
+    depends_on: [landing-page]
+    prompt: |
+      Task: Audit and fix mobile responsiveness across the entire buyer app so that all pages
+      render correctly on screens from 320px wide.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS)
+      - All pages use max-w-6xl or max-w-4xl or max-w-3xl containers with px-4 — this is good.
+      - Problem areas that need fixing (audit each file and fix if broken):
+
+        1. apps/buyer/components/Header.tsx
+           - The nav has many items in a single flex row: links, XP badge, flame badge, username,
+             role badge, logout button. On mobile (<640px) this will overflow.
+           - Fix: On mobile hide secondary nav items (XP, flame, role badge, username) or use a
+             hamburger menu. At minimum, wrap the nav to prevent overflow:
+             * Make the header div flex-col on mobile, flex-row on sm:
+               className="border-b ... flex flex-col sm:flex-row ..."
+             * Or hide non-critical items on xs: add hidden sm:flex to the gamification badges group,
+               hide username and role badge on mobile (sm:inline-block pattern)
+             * Keep: Logo, primary nav links, Login/Register buttons must always be visible
+             * Acceptable approach: on mobile show only Logo + "Войти"/"Регистрация" or
+               Logo + username + logout. Everything else hidden sm:hidden on mobile.
+
+        2. apps/buyer/app/page.tsx (homepage/landing)
+           - Hero section (just added): ensure headline is text-2xl sm:text-4xl, subheading
+             text-base sm:text-xl, CTA buttons stack vertically on mobile (flex-col sm:flex-row)
+           - Feature highlights: grid-cols-1 sm:grid-cols-3
+           - Social proof stats: grid-cols-1 sm:grid-cols-3
+           - Filter row: flex-wrap is already there, verify it on mobile
+           - Course grid: grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 — already set, verify
+
+        3. apps/buyer/app/badges/page.tsx
+           - Stats grid: grid-cols-3 → grid-cols-1 sm:grid-cols-3
+           - Badge shelf: grid-cols-2 sm:grid-cols-4 (already correct, verify)
+
+        4. apps/buyer/app/enrollments/page.tsx
+           - The enrollment card has flex items-center justify-between — on very small screens
+             the course ID + status badge might be tight. Ensure wrapping: flex-wrap or flex-col.
+
+        5. apps/buyer/app/courses/[id]/page.tsx
+           - Course header meta row (level, price, duration, enrollments, rating): flex-wrap is there.
+           - Review form and curriculum: check for any horizontal overflow.
+           - The progress bar: ok (w-full).
+
+        6. apps/buyer/app/onboarding/page.tsx (just created)
+           - Step 2 course grid: should be grid-cols-1 sm:grid-cols-2 lg:grid-cols-3
+           - Step 3 feature highlights: grid-cols-1 sm:grid-cols-3
+           - Ensure max-w-2xl mx-auto with px-4 for the wizard container
+
+      IMPLEMENTATION APPROACH:
+      1. Read each file listed above.
+      2. Apply Tailwind responsive prefixes (sm:, md:, lg:) to fix layout issues.
+      3. For the Header mobile nav: the simplest correct fix is to make the nav items wrap and
+         hide non-critical items. Do NOT add a hamburger menu with JavaScript state — keep it simple.
+         Use: nav className="flex flex-wrap items-center gap-2 sm:gap-4"
+         And hide gamification row on mobile: className="hidden sm:flex items-center gap-3"
+         Hide username + role badge on mobile: className="hidden sm:inline ..."
+         This keeps the header functional on all screens without new complexity.
+      4. Do not introduce any new components or abstractions — edit existing files in place.
+      5. Do not change any functionality — only layout/spacing/visibility classes.
+
+      RULES:
+      - Only Tailwind responsive utility classes — no custom CSS, no media query styles
+      - Do not add new components or JavaScript logic
+      - Do not change any text content, routing, or business logic
+      - All changes are purely in className strings
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): fix mobile responsive layout across all pages
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+
+  - id: bug-fixes-ui-polish
+    title: "Bug fixes, UI polish, error states"
+    scope: frontend:buyer
+    depends_on: [onboarding-flow, landing-page, responsive-mobile]
+    prompt: |
+      Task: Audit and polish the buyer app — fix missing error states, improve empty states,
+      add consistent loading skeletons, and fix any remaining UI rough edges.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS, TanStack Query)
+      - Existing skeleton component: apps/buyer/components/CourseCardSkeleton.tsx
+      - Error utility: apps/buyer/lib/errors.ts — getErrorMessage(err, fallback?)
+      - All pages currently exist: /, /courses/[id], /courses/[id]/lessons/[lessonId],
+        /enrollments, /badges, /flashcards, /notifications, /onboarding, /register, /login,
+        /forgot-password, /reset-password, /verify-email, /admin/teachers, /my-courses
+
+      AREAS TO POLISH (read each file, apply fixes):
+
+      1. apps/buyer/app/enrollments/page.tsx
+         CURRENT ISSUE: Enrollment cards show course_id.slice(0,8)... instead of course title.
+         The enrollment object only has course_id, not the title. To fix this properly would
+         require fetching each course — instead, display a better empty/loading state and
+         improve the card to at minimum show "Курс" + a short ID in a more user-friendly way,
+         and add a clear "Перейти к курсу" label on the Link. Also add an error state:
+         if the enrollments query has an error, show it using getErrorMessage.
+
+      2. apps/buyer/app/notifications/page.tsx
+         Read the file. Check: is there an error state if the notifications query fails?
+         Is there a proper empty state? Is there a loading skeleton? Add missing states.
+         The mark-as-read action should show a visual "read" state (already may exist — verify).
+
+      3. apps/buyer/app/flashcards/page.tsx
+         Read the file. Check: error state if due cards query fails? Empty state when no cards
+         are due (e.g., "Нет карточек для повторения сегодня. Хорошая работа!")? Loading state?
+
+      4. apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx
+         Read the file. Check:
+         - If lesson fails to load (error state) — is it shown?
+         - The summary section: if summaryLoading is true for a long time, is there a proper
+           skeleton or spinner? If summaryData has no summary text, what is shown?
+         - Quiz section: if quiz submission fails, is the error shown?
+         Add any missing error/loading/empty states using the existing patterns.
+
+      5. apps/buyer/components/Header.tsx
+         CURRENT ISSUE: When loading=true the nav shows "..." which is fine, but the whole header
+         should not cause layout shift. Verify the header height is stable during load.
+         Also: the email verification banner (yellow bar) — make sure it has aria-live="polite"
+         for accessibility.
+
+      6. Global: apps/buyer/app/error.tsx and apps/buyer/app/loading.tsx
+         Read both files. If loading.tsx just shows a blank spinner with no context, improve it
+         to show "EduPlatform" branding + a centered spinner. If error.tsx is basic, make sure
+         it has a "На главную" link so users are never stuck.
+
+      7. apps/buyer/app/courses/[id]/page.tsx
+         The "Начать обучение" button (shown when enrolled) links to the first lesson. If the
+         student has already completed some lessons, it would be better UX to link to the NEXT
+         incomplete lesson instead of always the first. Fix this:
+         - Find the first lesson NOT in completedLessonIds from the flattened curriculum
+         - If all lessons are complete, show "Курс завершён!" instead of "Начать обучение"
+         - If no lessons completed yet, keep current behavior (link to first lesson)
+
+      IMPLEMENTATION APPROACH:
+      1. Read each file listed above before editing.
+      2. Apply targeted fixes — do not refactor or reorganize files.
+      3. For error states use the pattern already in pages: check if `error` from useQuery
+         is truthy, then show: <div className="rounded bg-red-50 p-3 text-sm text-red-600">
+           {getErrorMessage(error, "Ошибка загрузки")}
+         </div>
+      4. For empty states use: <p className="text-center text-gray-400">...</p>
+      5. For the "next incomplete lesson" fix in courses/[id]/page.tsx:
+         const nextIncompleteLesson = allLessons.find(l => !completedLessonIds.has(l.id))
+         where allLessons = curriculum.flatMap(m => m.lessons)
+         Use nextIncompleteLesson?.id ?? curriculum[0]?.lessons[0]?.id for the link target.
+
+      RULES:
+      - Edit existing files only — do not create new components
+      - Keep all existing functionality intact
+      - Tailwind CSS only for any new styling
+      - Do not change routing or API calls
+      - After ALL fixes: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): polish UI — fix error states, empty states, and next-lesson navigation
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"

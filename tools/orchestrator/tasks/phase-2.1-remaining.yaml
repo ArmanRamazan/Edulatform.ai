@@ -1,0 +1,76 @@
+phase: "2.1"
+description: "Spaced Repetition + Flashcards — remaining tasks"
+
+tasks:
+  - id: auto-generate-flashcards
+    title: "Auto-generate flashcards from quiz mistakes and key concepts"
+    scope: backend:learning
+    prompt: |
+      Task: Auto-generate flashcards when a student submits a quiz with mistakes.
+
+      CONTEXT:
+      - Learning service (port 8007) in services/py/learning/
+      - Clean Architecture: routes/ -> services/ -> domain/ <- repositories/
+      - Quiz submit endpoint: POST /quizzes/:id/submit returns score + per-question results
+      - Flashcard tables exist: flashcards (with FSRS fields), review_logs
+      - Flashcard schema: id, student_id, course_id, concept, answer, source_type, source_id, stability, difficulty, due, last_review, reps, lapses, state
+      - source_type can be: quiz_mistake, key_concept, manual
+      - Existing quiz submit in services/py/learning/app/services/quiz_service.py
+
+      WHAT TO BUILD:
+      1. After quiz submit, for each wrong answer create a flashcard
+      2. Flashcard front = question text, back = correct answer + explanation
+      3. source_type = "quiz_mistake", source_id = question.id
+      4. Skip if flashcard for this question already exists for this student
+      5. Only create for questions scored wrong (selected_index != correct_index)
+
+      TDD:
+      1. Write test: submit quiz with 2 wrong answers -> 2 flashcards created
+      2. Write test: submit quiz, same wrong answers again -> no duplicate flashcards
+      3. Write test: submit quiz with all correct -> no flashcards created
+      4. Implement in quiz_service.py submit method
+      5. Run: cd services/py/learning && uv run --package learning pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first, then implementation
+      - Async, type hints, Clean Architecture
+      - Don't modify flashcard domain/repository — use existing create method
+      - Create atomic git commit: feat(learning): auto-generate flashcards from quiz mistakes
+    test: "cd services/py/learning && uv run --package learning pytest tests/ -v"
+
+  - id: fsrs-review-notifications
+    title: "Smart notifications for FSRS-scheduled reviews"
+    scope: backend:notification
+    prompt: |
+      Task: Add a notification trigger for flashcard reviews that are due.
+
+      CONTEXT:
+      - Notification service (port 8005) in services/py/notification/
+      - Learning service (port 8007) has GET /flashcards/due endpoint
+      - Notification service has POST /notifications and POST /streak-reminders/send
+      - Current notification types: enrollment, payment, streak_reminder
+      - Notifications table: id, user_id, type, title, message, is_read, created_at
+
+      WHAT TO BUILD:
+      1. New endpoint: POST /flashcard-reminders/send (admin only)
+      2. Similar pattern to POST /streak-reminders/send
+      3. Creates notifications for users who have due flashcards
+      4. Dedup: skip if user already has unread flashcard_reminder from today
+      5. Type: "flashcard_reminder", message: "You have N flashcards due for review!"
+
+      NOTE: This is a simple notification creation endpoint. The actual check for
+      due flashcards would be done by the caller (cron job or admin trigger).
+      For now, accept a list of user_ids + card_counts in the request body.
+
+      TDD:
+      1. Write test: POST /flashcard-reminders/send with user list -> notifications created
+      2. Write test: duplicate call same day -> no duplicate notifications
+      3. Implement endpoint
+      4. Run: cd services/py/notification && uv run --package notification pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - Follow existing streak-reminders pattern exactly
+      - Async, type hints, Clean Architecture
+      - Create atomic git commit: feat(notification): add flashcard review reminder notifications
+    test: "cd services/py/notification && uv run --package notification pytest tests/ -v"

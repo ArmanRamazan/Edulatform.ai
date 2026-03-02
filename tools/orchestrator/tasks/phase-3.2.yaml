@@ -1,0 +1,814 @@
+phase: "3.2"
+description: "Seller App + Teacher Analytics"
+
+tasks:
+  # ─── BACKEND: Course Service analytics ───────────────────────────────────────
+
+  - id: course-analytics-api
+    title: "Course analytics endpoints in course service"
+    scope: backend:course
+    prompt: |
+      Task: Add teacher course analytics endpoints to the course service (services/py/course/, port 8002).
+
+      CONTEXT:
+      - Clean Architecture: routes/ → services/ → domain/ ← repositories/
+      - asyncpg for DB, FastAPI, JWT auth pattern matches existing routes (see app/routes/courses.py)
+      - JWT claims decoded in _get_current_user_claims(): returns {user_id, role, is_verified}
+      - CourseRepository is in app/repositories/course_repo.py, CourseService in app/services/course_service.py
+      - Migrations are idempotent SQL files in services/py/course/migrations/
+      - Next migration file would be 007_analytics.sql
+      - app/main.py runs all migrations from files at startup (see existing lifespan pattern)
+      - Tests use AsyncMock(spec=Repository) for unit tests and httpx ASGITransport for route tests
+      - conftest.py already has: course_id, teacher_id, student_id, sample_course, mock_repo, course_service fixtures
+      - common/errors.py has ForbiddenError (403), NotFoundError (404)
+      - common/security.py has create_access_token(sub, secret, extra_claims=...)
+
+      WHAT TO BUILD (TDD — red first, then green):
+
+      1. Migration: services/py/course/migrations/007_analytics.sql
+         Create a view (not a table — no data duplication) that aggregates per-course stats.
+         The enrollments and payments live in other services, so the course service exposes
+         its own read model: review stats, lesson counts, module counts.
+         SQL to create:
+         ```sql
+         CREATE OR REPLACE VIEW course_analytics AS
+         SELECT
+             c.id AS course_id,
+             c.teacher_id,
+             c.title,
+             c.avg_rating,
+             c.review_count,
+             COUNT(DISTINCT m.id) AS module_count,
+             COUNT(DISTINCT l.id) AS lesson_count
+         FROM courses c
+         LEFT JOIN modules m ON m.course_id = c.id
+         LEFT JOIN lessons l ON l.module_id = m.id
+         GROUP BY c.id, c.teacher_id, c.title, c.avg_rating, c.review_count;
+         ```
+
+      2. Domain: add to app/domain/course.py (new Pydantic models only, no ORM):
+         ```python
+         class CourseAnalytics(BaseModel):
+             course_id: UUID
+             title: str
+             avg_rating: Decimal | None
+             review_count: int
+             module_count: int
+             lesson_count: int
+
+         class TeacherAnalyticsSummary(BaseModel):
+             total_courses: int
+             total_lessons: int
+             avg_rating: Decimal | None
+             total_reviews: int
+             courses: list[CourseAnalytics]
+         ```
+
+      3. Repository: add to CourseRepository in app/repositories/course_repo.py:
+         ```python
+         async def get_analytics_by_teacher(self, teacher_id: UUID) -> list[dict]:
+             rows = await self._pool.fetch(
+                 """
+                 SELECT course_id, title, avg_rating, review_count, module_count, lesson_count
+                 FROM course_analytics
+                 WHERE teacher_id = $1
+                 ORDER BY course_id
+                 """,
+                 teacher_id,
+             )
+             return [dict(r) for r in rows]
+         ```
+
+      4. Service: add to CourseService in app/services/course_service.py:
+         ```python
+         async def get_teacher_analytics(self, teacher_id: UUID, role: str) -> TeacherAnalyticsSummary:
+             from app.domain.course import TeacherAnalyticsSummary, CourseAnalytics
+             if role != "teacher":
+                 raise ForbiddenError("Only teachers can view analytics")
+             rows = await self._repo.get_analytics_by_teacher(teacher_id)
+             courses = [CourseAnalytics(**r) for r in rows]
+             total_lessons = sum(c.lesson_count for c in courses)
+             total_reviews = sum(c.review_count for c in courses)
+             ratings = [c.avg_rating for c in courses if c.avg_rating is not None]
+             avg_rating = sum(ratings) / len(ratings) if ratings else None
+             return TeacherAnalyticsSummary(
+                 total_courses=len(courses),
+                 total_lessons=total_lessons,
+                 avg_rating=Decimal(str(round(avg_rating, 2))) if avg_rating else None,
+                 total_reviews=total_reviews,
+                 courses=courses,
+             )
+         ```
+
+      5. Route: create app/routes/analytics.py:
+         Single endpoint: GET /analytics/teacher — requires teacher JWT.
+         Pattern mirrors app/routes/courses.py exactly:
+         - _get_course_service() → from app.main import get_course_service
+         - _get_current_user_claims(authorization) with same JWT decode pattern
+         - Route: GET /analytics/teacher → service.get_teacher_analytics(user_id, role)
+         - Response model: TeacherAnalyticsSummary
+         - router = APIRouter(prefix="/analytics", tags=["analytics"])
+
+      6. Wire in app/main.py:
+         - Import analytics_router from app.routes.analytics
+         - app.include_router(analytics_router) after existing routers
+         - Load migration 007_analytics.sql in lifespan (add after migration 006)
+
+      TESTS (TDD — write failing tests FIRST, then implement):
+
+      File: services/py/course/tests/test_analytics.py
+
+      Unit tests for CourseService.get_teacher_analytics():
+      - test_get_teacher_analytics_success: mock_repo.get_analytics_by_teacher returns 2 rows,
+        assert total_courses=2, total_lessons is sum of lesson_counts, avg_rating is computed
+      - test_get_teacher_analytics_student_forbidden: role="student" raises ForbiddenError
+      - test_get_teacher_analytics_empty: repo returns [], assert total_courses=0, avg_rating=None
+
+      Route tests for GET /analytics/teacher:
+      - test_analytics_teacher_success: teacher JWT, mock service returns TeacherAnalyticsSummary,
+        assert 200, body has total_courses key
+      - test_analytics_no_auth: no header → 422
+      - test_analytics_student_forbidden: mock raises ForbiddenError → 403
+
+      Route test fixture pattern (from tests/test_payments_routes.py):
+      ```python
+      import app.main as main_module
+      main_module.app_settings = type("S", (), {"jwt_secret": "test-secret", "jwt_algorithm": "HS256"})()
+      main_module._course_service = mock_service
+      ```
+
+      RULES:
+      - TDD: write all test stubs (failing) before writing implementation
+      - domain/ has NO imports from routes/, services/, repositories/, FastAPI
+      - routes/ does NOT call repo directly
+      - Parameterized queries only ($1, $2, ...) — no string concatenation
+      - Named exports, type hints on all public functions
+      - After implementation: cd services/py/course && uv run --package course pytest tests/ -v
+      - All tests green before commit
+      - Commit: feat(course): add teacher analytics endpoint
+    test: "cd services/py/course && uv run --package course pytest tests/ -v"
+
+  # ─── BACKEND: Payment Service — earnings + payouts ───────────────────────────
+
+  - id: payment-earnings-api
+    title: "Teacher earnings and payout endpoints in payment service"
+    scope: backend:payment
+    prompt: |
+      Task: Add teacher earnings tracking and payout request endpoints to the payment service
+      (services/py/payment/, port 8004).
+
+      CONTEXT:
+      - Clean Architecture: routes/ → services/ → domain/ ← repositories/
+      - Existing domain in app/domain/payment.py: Payment, PaymentStatus, PaymentCreate, etc.
+      - Existing repo in app/repositories/payment_repo.py: asyncpg.Pool, parameterized queries
+      - Existing service in app/services/payment_service.py: create, get, list_my
+      - app/main.py uses lifespan to run migrations and wire services; existing pattern:
+          _pool → repo → service → stored in module-level global, exposed via getter function
+      - JWT claims pattern: _get_current_user_claims() returns {user_id, role, is_verified}
+        (copy exact pattern from app/routes/payments.py)
+      - Existing migrations: 001_payments.sql, 002_indexes.sql
+      - common/errors.py: ForbiddenError(403), NotFoundError(404), ConflictError(409)
+      - Tests pattern: AsyncMock(spec=Repository), httpx ASGITransport, create_access_token from common.security
+
+      WHAT TO BUILD (TDD — red first):
+
+      1. Migration: services/py/payment/migrations/003_earnings_payouts.sql
+         ```sql
+         CREATE TABLE IF NOT EXISTS teacher_earnings (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             teacher_id UUID NOT NULL,
+             course_id UUID NOT NULL,
+             payment_id UUID NOT NULL UNIQUE,
+             gross_amount DECIMAL(10,2) NOT NULL,
+             commission_rate DECIMAL(5,4) NOT NULL DEFAULT 0.3000,
+             net_amount DECIMAL(10,2) NOT NULL,
+             status VARCHAR(20) NOT NULL DEFAULT 'pending',
+             created_at TIMESTAMPTZ DEFAULT now()
+         );
+
+         CREATE TABLE IF NOT EXISTS payouts (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             teacher_id UUID NOT NULL,
+             amount DECIMAL(10,2) NOT NULL,
+             stripe_transfer_id VARCHAR(255),
+             status VARCHAR(20) NOT NULL DEFAULT 'pending',
+             requested_at TIMESTAMPTZ DEFAULT now(),
+             completed_at TIMESTAMPTZ
+         );
+
+         CREATE INDEX IF NOT EXISTS idx_teacher_earnings_teacher_id ON teacher_earnings(teacher_id);
+         CREATE INDEX IF NOT EXISTS idx_payouts_teacher_id ON payouts(teacher_id);
+         ```
+
+      2. Domain: add to app/domain/payment.py (Pydantic models, frozen dataclasses — no ORM):
+         ```python
+         class EarningStatus(StrEnum):
+             PENDING = "pending"
+             PAID = "paid"
+
+         class PayoutStatus(StrEnum):
+             PENDING = "pending"
+             COMPLETED = "completed"
+             FAILED = "failed"
+
+         @dataclass(frozen=True)
+         class TeacherEarning:
+             id: UUID
+             teacher_id: UUID
+             course_id: UUID
+             payment_id: UUID
+             gross_amount: Decimal
+             commission_rate: Decimal
+             net_amount: Decimal
+             status: EarningStatus
+             created_at: datetime
+
+         @dataclass(frozen=True)
+         class Payout:
+             id: UUID
+             teacher_id: UUID
+             amount: Decimal
+             stripe_transfer_id: str | None
+             status: PayoutStatus
+             requested_at: datetime
+             completed_at: datetime | None
+
+         class EarningsSummary(BaseModel):
+             total_gross: Decimal
+             total_net: Decimal
+             total_pending: Decimal
+             total_paid: Decimal
+             earnings: list[EarningResponse]
+
+         class EarningResponse(BaseModel):
+             id: UUID
+             teacher_id: UUID
+             course_id: UUID
+             payment_id: UUID
+             gross_amount: Decimal
+             commission_rate: Decimal
+             net_amount: Decimal
+             status: EarningStatus
+             created_at: datetime
+
+         class PayoutResponse(BaseModel):
+             id: UUID
+             teacher_id: UUID
+             amount: Decimal
+             stripe_transfer_id: str | None
+             status: PayoutStatus
+             requested_at: datetime
+             completed_at: datetime | None
+
+         class PayoutListResponse(BaseModel):
+             items: list[PayoutResponse]
+             total: int
+
+         class PayoutCreate(BaseModel):
+             amount: Decimal = Field(gt=0)
+         ```
+
+      3. Repository: create app/repositories/earnings_repo.py
+         Class EarningsRepository with asyncpg.Pool:
+         - create_earning(teacher_id, course_id, payment_id, gross_amount, commission_rate) → TeacherEarning
+           net_amount = gross_amount * (1 - commission_rate)
+           INSERT INTO teacher_earnings ... RETURNING all columns
+         - get_earnings_summary(teacher_id) → dict with total_gross, total_net, total_pending, total_paid, list of earnings
+           SELECT all from teacher_earnings WHERE teacher_id = $1 ORDER BY created_at DESC
+           Compute aggregates in Python from the rows
+         - list_earnings(teacher_id, limit, offset) → tuple[list[TeacherEarning], int]
+         - create_payout(teacher_id, amount) → Payout
+           INSERT INTO payouts (teacher_id, amount) RETURNING all columns
+         - list_payouts(teacher_id, limit, offset) → tuple[list[Payout], int]
+         Static _to_earning_entity and _to_payout_entity methods.
+
+      4. Service: create app/services/earnings_service.py
+         Class EarningsService with repo: EarningsRepository:
+         - get_summary(teacher_id, role) → EarningsSummary
+           If role != "teacher": raise ForbiddenError("Only teachers can view earnings")
+         - list_earnings(teacher_id, role, limit, offset) → tuple[list[TeacherEarning], int]
+           Same role check
+         - request_payout(teacher_id, role, amount) → Payout
+           If role != "teacher": ForbiddenError
+           If amount <= 0: raise AppError("Amount must be positive", 400)
+         - list_payouts(teacher_id, role, limit, offset) → tuple[list[Payout], int]
+           Same role check
+
+         Also add to PaymentService a method:
+         - record_earning(teacher_id, course_id, payment_id, gross_amount) → TeacherEarning
+           Calls EarningsRepository.create_earning with commission_rate=Decimal("0.30")
+           Call this method inside PaymentService.create() after successful payment creation.
+           PaymentService needs an optional earnings_repo: EarningsRepository | None = None
+           If earnings_repo is set, record the earning; if not (e.g. in tests), skip silently.
+
+      5. Route: create app/routes/earnings.py
+         Pattern mirrors app/routes/payments.py:
+         - _get_earnings_service() → from app.main import get_earnings_service
+         - _get_current_user_claims() with same JWT decode pattern
+         - router = APIRouter(prefix="/earnings", tags=["earnings"])
+         Endpoints:
+           GET /earnings/me/summary → EarningsSummary (teacher only)
+           GET /earnings/me → EarningListResponse (items: list[EarningResponse], total: int) (teacher only)
+           POST /earnings/payouts → PayoutResponse, status 201, body: PayoutCreate (teacher only)
+           GET /earnings/payouts → PayoutListResponse (teacher only)
+
+      6. Wire in app/main.py:
+         - Declare _earnings_service: EarningsService | None = None
+         - def get_earnings_service() → EarningsService
+         - In lifespan: load migration 003_earnings_payouts.sql
+         - earnings_repo = EarningsRepository(_pool)
+         - _earnings_service = EarningsService(earnings_repo)
+         - Pass earnings_repo to PaymentService: _payment_service = PaymentService(repo, earnings_repo)
+         - app.include_router(earnings_router)
+
+      TESTS (TDD — write failing tests FIRST, then implement):
+
+      File: services/py/payment/tests/test_earnings_service.py
+      Fixtures in conftest.py to add:
+        - teacher_id = uuid4()
+        - mock_earnings_repo = AsyncMock(spec=EarningsRepository)
+        - earnings_service(mock_earnings_repo) = EarningsService(mock_earnings_repo)
+        - sample_earning = TeacherEarning(id=uuid4(), teacher_id=..., course_id=..., payment_id=...,
+            gross_amount=Decimal("49.99"), commission_rate=Decimal("0.30"),
+            net_amount=Decimal("34.99"), status=EarningStatus.PENDING, created_at=now)
+        - sample_payout = Payout(id=uuid4(), teacher_id=..., amount=Decimal("100"), ...)
+
+      Unit tests for EarningsService:
+      - test_get_summary_success: mock returns list with 1 earning, assert total_gross, total_net
+      - test_get_summary_student_forbidden: role="student" raises ForbiddenError
+      - test_request_payout_success: mock returns sample_payout, assert payout.amount
+      - test_request_payout_student_forbidden: role="student" raises ForbiddenError
+      - test_list_earnings_success: mock returns ([sample_earning], 1), assert len==1
+
+      File: services/py/payment/tests/test_earnings_routes.py
+      Route tests with httpx ASGITransport pattern (same as test_payments_routes.py):
+      - test_get_summary_teacher_success: teacher JWT, mock_service.get_summary returns EarningsSummary → 200
+      - test_get_summary_student_forbidden: mock raises ForbiddenError → 403
+      - test_get_summary_no_auth: no header → 422
+      - test_request_payout_success: POST /earnings/payouts, teacher JWT → 201
+      - test_list_payouts_success: GET /earnings/payouts, teacher JWT → 200
+
+      RULES:
+      - TDD: write all failing tests before implementation
+      - domain/ imports only stdlib + pydantic — no FastAPI, no asyncpg
+      - routes/ does NOT call repo directly
+      - Parameterized queries only
+      - Type hints on all public functions
+      - After implementation: cd services/py/payment && uv run --package payment pytest tests/ -v
+      - All tests green before commit (existing 13 tests must stay green)
+      - Commit: feat(payment): add teacher earnings and payout endpoints
+    test: "cd services/py/payment && uv run --package payment pytest tests/ -v"
+
+  # ─── FRONTEND: Seller App scaffold ───────────────────────────────────────────
+
+  - id: seller-app-scaffold
+    title: "Scaffold seller Next.js app"
+    scope: frontend:seller
+    depend_on:
+      - course-analytics-api
+      - payment-earnings-api
+    prompt: |
+      Task: Scaffold the seller Next.js app at apps/seller/ from scratch.
+      The directory already exists with empty .gitkeep files in app/, components/, hooks/, lib/.
+
+      CONTEXT:
+      - Buyer app (apps/buyer/) is the reference: Next.js 15, App Router, TypeScript strict,
+        Tailwind CSS v4, TanStack Query, port 3001
+      - Package manager: pnpm. Workspace root has pnpm-workspace.yaml
+      - Seller app is for teachers only: manage courses, view analytics, track earnings
+      - No Radix UI (not used in buyer) — plain HTML + Tailwind is fine
+      - Auth: same JWT from identity service (port 8001). Teacher role required.
+      - API proxied via next.config.ts rewrites (same pattern as buyer)
+
+      WHAT TO BUILD:
+
+      1. Remove .gitkeep files from app/, components/, hooks/, lib/
+
+      2. Create apps/seller/package.json:
+         ```json
+         {
+           "name": "seller",
+           "version": "0.1.0",
+           "private": true,
+           "scripts": {
+             "dev": "next dev --port 3002",
+             "build": "next build",
+             "start": "next start --port 3002"
+           },
+           "dependencies": {
+             "@tanstack/react-query": "^5.90.21",
+             "next": "^15.3.0",
+             "react": "^19.1.0",
+             "react-dom": "^19.1.0"
+           },
+           "devDependencies": {
+             "@tailwindcss/postcss": "^4.1.0",
+             "@types/node": "^22.0.0",
+             "@types/react": "^19.0.0",
+             "@types/react-dom": "^19.0.0",
+             "tailwindcss": "^4.1.0",
+             "typescript": "^5.8.0"
+           }
+         }
+         ```
+
+      3. Create apps/seller/tsconfig.json (identical to buyer except name):
+         strict: true, moduleResolution: bundler, paths: {"@/*": ["./*"]}
+         jsx: preserve, incremental: true, plugins: [{name: "next"}]
+
+      4. Create apps/seller/next.config.ts — rewrites proxying all services:
+         /api/identity/:path* → http://localhost:8001/:path*
+         /api/course/:path* → http://localhost:8002/:path*
+         /api/payment/:path* → http://localhost:8004/:path*
+         /api/notification/:path* → http://localhost:8005/:path*
+
+      5. Create apps/seller/postcss.config.mjs:
+         ```js
+         const config = { plugins: { "@tailwindcss/postcss": {} } };
+         export default config;
+         ```
+
+      6. Create apps/seller/app/globals.css:
+         ```css
+         @import "tailwindcss";
+         ```
+
+      7. Create apps/seller/lib/api.ts — typed API client namespace objects.
+         Interfaces to define (minimal — only what seller needs):
+         - User (id, email, name, role, is_verified, email_verified, created_at)
+         - Course (id, teacher_id, title, description, is_free, price, duration_minutes,
+                   level, created_at, avg_rating, review_count, category_id)
+         - CourseCreate (title, description, is_free, price, duration_minutes, level, category_id)
+         - CourseUpdate (Partial CourseCreate fields, all optional)
+         - Module (id, course_id, title, order, created_at)
+         - Lesson (id, module_id, title, content, video_url, duration_minutes, order, created_at)
+         - CourseAnalytics (course_id, title, avg_rating, review_count, module_count, lesson_count)
+         - TeacherAnalyticsSummary (total_courses, total_lessons, avg_rating, total_reviews, courses)
+         - EarningResponse (id, teacher_id, course_id, payment_id, gross_amount,
+                            commission_rate, net_amount, status, created_at)
+         - EarningsSummary (total_gross, total_net, total_pending, total_paid, earnings)
+         - PayoutResponse (id, teacher_id, amount, stripe_transfer_id, status, requested_at, completed_at)
+         - PayoutListResponse (items, total)
+
+         Namespace objects (same fetch pattern as buyer's lib/api.ts):
+         - identity: { login(email, password), me(token) }
+         - courses: {
+             list(token, params?): CourseList,
+             get(token, id): Course,
+             create(token, body: CourseCreate): Course,
+             update(token, id, body: CourseUpdate): Course,
+             curriculum(token, id): CurriculumResponse
+           }
+         - analytics: {
+             getSummary(token): TeacherAnalyticsSummary
+           }
+         - earnings: {
+             getSummary(token): EarningsSummary,
+             listEarnings(token, limit?, offset?): EarningsListResponse,
+             requestPayout(token, amount): PayoutResponse,
+             listPayouts(token, limit?, offset?): PayoutListResponse
+           }
+
+         All fetch calls go to /api/{service}/... (proxied by next.config.ts).
+         Throw an Error with message from JSON body on non-2xx responses.
+
+      8. Create apps/seller/lib/errors.ts — same AppError class as buyer
+
+      9. Create apps/seller/components/Providers.tsx — QueryClientProvider wrapper,
+         same as buyer's components/Providers.tsx (staleTime 60s, retry 1)
+
+      10. Create apps/seller/hooks/use-auth.ts — same pattern as buyer's hooks/use-auth.ts
+          but only allows role="teacher" (redirect if student logs in)
+
+      11. Create apps/seller/app/layout.tsx:
+          - Metadata: title "EduPlatform — Seller", description "Teacher dashboard"
+          - Wraps children in <Providers>
+          - Import globals.css
+          - html lang="en", body with bg-gray-50 text-gray-900 min-h-screen
+
+      12. Create apps/seller/app/loading.tsx — simple centered spinner div
+
+      13. Create apps/seller/app/error.tsx — "use client", error boundary with retry button
+
+      14. Create apps/seller/app/page.tsx (root redirect):
+          Server component that redirects to /dashboard.
+          Use next/navigation redirect() from "next/navigation".
+
+      INSTALL DEPS:
+      Run: cd apps/seller && pnpm install
+
+      RULES:
+      - Named exports only, no default exports
+      - "use client" only where hooks or event handlers are used
+      - Tailwind CSS only (no CSS modules, no styled-components)
+      - TypeScript strict: no `any`, no implicit unknowns
+      - After scaffold: cd apps/seller && pnpm build
+      - Commit: feat(seller): scaffold seller app with API client and auth
+    test: "cd apps/seller && pnpm build"
+
+  # ─── FRONTEND: Seller dashboard + course list ─────────────────────────────────
+
+  - id: seller-dashboard
+    title: "Seller dashboard and course management UI"
+    scope: frontend:seller
+    depend_on:
+      - seller-app-scaffold
+    prompt: |
+      Task: Build the seller dashboard and course management pages in apps/seller/.
+
+      CONTEXT:
+      - apps/seller/ is scaffolded with Next.js 15, App Router, Tailwind v4, TanStack Query
+      - lib/api.ts has typed namespace objects: identity, courses, analytics, earnings
+      - hooks/use-auth.ts provides { token, user, loading, login, logout }
+      - Teacher can: view their courses, create a new course, edit a course, view curriculum
+      - Course service (port 8002, proxied at /api/course/):
+        - GET /courses/my — teacher's courses (requires Bearer token)
+        - POST /courses — create course
+        - PUT /courses/:id — update course
+        - GET /courses/:id/curriculum — modules + lessons
+      - All pages behind /dashboard/* require teacher auth; redirect to /login if not authenticated
+
+      WHAT TO BUILD:
+
+      1. apps/seller/hooks/use-courses.ts — TanStack Query hooks:
+         - useTeacherCourses(token: string | null) → useQuery({queryKey: ["teacher-courses"], ...})
+         - useCurriculum(token, courseId) → useQuery({queryKey: ["curriculum", courseId], ...})
+         - useCreateCourse(token) → useMutation calling courses.create, invalidates "teacher-courses"
+         - useUpdateCourse(token) → useMutation calling courses.update, invalidates "teacher-courses" + ["curriculum", id]
+
+      2. apps/seller/components/CourseRow.tsx — table row component:
+         Interface CourseRowProps { course: Course; onEdit: (id: string) => void }
+         Displays: title, level badge, price/free label, review_count stars, created_at date
+         Named export: CourseRow
+
+      3. apps/seller/app/login/page.tsx — "use client" login form:
+         - Email + password fields
+         - On submit: calls identity.login, stores token in localStorage, redirects to /dashboard
+         - Show error message on failure
+         - If already logged in, redirect to /dashboard
+         - Link to "register" (just a placeholder href for now, no register page needed)
+
+      4. apps/seller/app/dashboard/layout.tsx — "use client":
+         - Check auth on mount (useAuth hook)
+         - If loading: show spinner
+         - If not authenticated: redirect to /login
+         - If role !== "teacher": show "Access denied — teacher account required" message
+         - Sidebar navigation: links to /dashboard, /dashboard/courses, /dashboard/analytics, /dashboard/earnings
+         - Header with user name and logout button
+
+      5. apps/seller/app/dashboard/page.tsx — overview page:
+         Server component shell (no data fetching here — data in child Client components).
+         Renders a DashboardOverview client component.
+
+      6. apps/seller/components/DashboardOverview.tsx — "use client":
+         - Fetches useTeacherCourses(token) and displays stats cards:
+           - Total courses count
+           - Total reviews count (sum of review_count)
+           - Average rating (computed from courses)
+         - Shows last 5 courses in a simple table using CourseRow
+         - "Create New Course" button links to /dashboard/courses/new
+
+      7. apps/seller/app/dashboard/courses/page.tsx — course list page:
+         Renders a CourseList client component.
+
+      8. apps/seller/components/CourseList.tsx — "use client":
+         - Fetches useTeacherCourses(token)
+         - Table with all teacher's courses using CourseRow
+         - "New Course" button → navigates to /dashboard/courses/new
+         - Click row → navigates to /dashboard/courses/[id]/edit
+
+      9. apps/seller/app/dashboard/courses/new/page.tsx — new course form:
+         Renders a CourseForm client component in create mode.
+
+      10. apps/seller/app/dashboard/courses/[id]/edit/page.tsx — edit course form:
+          Renders CourseForm in edit mode, pre-fills with course data from GET /courses/:id
+
+      11. apps/seller/components/CourseForm.tsx — "use client":
+          Interface CourseFormProps { courseId?: string } (undefined = create mode)
+          Fields: title (text), description (textarea), level (select: beginner/intermediate/advanced),
+                  is_free (checkbox), price (number, disabled if is_free), duration_minutes (number)
+          On submit: calls useCreateCourse or useUpdateCourse mutation
+          On success: navigate to /dashboard/courses
+          Validation: title required (min 3 chars), duration_minutes > 0, price required if not free
+
+      RULES:
+      - Named exports only, no default exports
+      - No default exports, no index.tsx barrels
+      - "use client" only in components that use hooks/event handlers
+      - TanStack Query for all server state (no direct fetch in components)
+      - next/link for all internal navigation, no <a> tags
+      - Tailwind only for styles
+      - After implementation: cd apps/seller && pnpm build
+      - Commit: feat(seller): add dashboard and course management UI
+    test: "cd apps/seller && pnpm build"
+
+  # ─── FRONTEND: Seller analytics page ─────────────────────────────────────────
+
+  - id: seller-analytics-ui
+    title: "Seller analytics dashboard page"
+    scope: frontend:seller
+    depend_on:
+      - seller-dashboard
+    prompt: |
+      Task: Build the teacher analytics page in apps/seller/app/dashboard/analytics/.
+
+      CONTEXT:
+      - apps/seller/ is set up with TanStack Query, Tailwind, TypeScript strict
+      - lib/api.ts has analytics.getSummary(token) → TeacherAnalyticsSummary
+        TeacherAnalyticsSummary = { total_courses, total_lessons, avg_rating, total_reviews, courses: CourseAnalytics[] }
+        CourseAnalytics = { course_id, title, avg_rating, review_count, module_count, lesson_count }
+      - Course service analytics endpoint: GET /api/course/analytics/teacher (Bearer token required)
+      - hooks/use-auth.ts provides { token, user }
+      - Dashboard layout (app/dashboard/layout.tsx) already handles auth guard
+
+      WHAT TO BUILD:
+
+      1. apps/seller/hooks/use-analytics.ts — TanStack Query hooks:
+         ```typescript
+         export function useTeacherAnalytics(token: string | null) {
+           return useQuery({
+             queryKey: ["teacher-analytics"],
+             queryFn: () => analytics.getSummary(token!),
+             enabled: !!token,
+           });
+         }
+         ```
+
+      2. apps/seller/app/dashboard/analytics/loading.tsx — skeleton with 4 stat cards
+
+      3. apps/seller/app/dashboard/analytics/page.tsx — Server component shell,
+         renders AnalyticsDashboard client component.
+
+      4. apps/seller/components/AnalyticsDashboard.tsx — "use client":
+         - Calls useTeacherAnalytics(token)
+         - Loading state: show skeleton cards
+         - Error state: "Failed to load analytics" message with retry button
+         - Summary stat cards row (4 cards):
+           - Total Courses (total_courses)
+           - Total Lessons (total_lessons)
+           - Average Rating (avg_rating ?? "N/A", 1 decimal)
+           - Total Reviews (total_reviews)
+         - Per-course analytics table with columns:
+           Course Title | Modules | Lessons | Reviews | Avg Rating
+           One row per course in summary.courses
+         - Empty state: "No courses yet. Create your first course." with link to /dashboard/courses/new
+
+      RULES:
+      - Named exports only
+      - "use client" only on AnalyticsDashboard (not on page.tsx)
+      - No <a> tags — use next/link
+      - Tailwind only
+      - After implementation: cd apps/seller && pnpm build
+      - Commit: feat(seller): add teacher analytics dashboard page
+    test: "cd apps/seller && pnpm build"
+
+  # ─── FRONTEND: Seller earnings page ──────────────────────────────────────────
+
+  - id: seller-earnings-ui
+    title: "Seller earnings and payout request UI"
+    scope: frontend:seller
+    depend_on:
+      - seller-analytics-ui
+    prompt: |
+      Task: Build the teacher earnings page and payout request UI in apps/seller/app/dashboard/earnings/.
+
+      CONTEXT:
+      - apps/seller/ is set up with TanStack Query, Tailwind, TypeScript strict
+      - lib/api.ts has earnings namespace:
+        - earnings.getSummary(token) → EarningsSummary
+          EarningsSummary = { total_gross, total_net, total_pending, total_paid, earnings: EarningResponse[] }
+          EarningResponse = { id, teacher_id, course_id, payment_id, gross_amount,
+                              commission_rate, net_amount, status, created_at }
+        - earnings.requestPayout(token, amount) → PayoutResponse
+        - earnings.listPayouts(token) → PayoutListResponse
+          PayoutListResponse = { items: PayoutResponse[], total }
+          PayoutResponse = { id, teacher_id, amount, stripe_transfer_id, status, requested_at, completed_at }
+      - Payment service earnings endpoints (port 8004, proxied at /api/payment/):
+        - GET /earnings/me/summary
+        - GET /earnings/me
+        - POST /earnings/payouts
+        - GET /earnings/payouts
+      - Dashboard layout already handles auth guard
+
+      WHAT TO BUILD:
+
+      1. apps/seller/hooks/use-earnings.ts — TanStack Query hooks:
+         - useEarningsSummary(token: string | null) → useQuery
+         - usePayouts(token: string | null) → useQuery
+         - useRequestPayout(token: string | null) → useMutation
+           On success: invalidate ["earnings-summary"] and ["payouts"]
+
+      2. apps/seller/app/dashboard/earnings/loading.tsx — skeleton with 4 stat cards
+
+      3. apps/seller/app/dashboard/earnings/page.tsx — Server component shell,
+         renders EarningsDashboard client component.
+
+      4. apps/seller/components/EarningsDashboard.tsx — "use client":
+         - Calls useEarningsSummary(token) and usePayouts(token)
+         - Loading/error states
+         - Summary stat cards (4 cards):
+           - Total Gross Revenue (total_gross formatted as $X.XX)
+           - Total Net (after commission) (total_net formatted as $X.XX)
+           - Pending (total_pending formatted as $X.XX)
+           - Paid Out (total_paid formatted as $X.XX)
+         - Commission info note: "Platform commission: 30%. Net = 70% of gross."
+         - Payout request section:
+           - Number input for amount (min 1, max = total_pending as number)
+           - "Request Payout" button — calls useRequestPayout mutation
+           - Disabled + spinner while mutation is pending
+           - Show success message: "Payout of $X.XX requested successfully"
+           - Show error message on failure
+         - Earnings history table:
+           Columns: Date | Course ID (truncated UUID) | Gross | Net | Status badge
+           Show last 20 from summary.earnings
+         - Payouts history table:
+           Columns: Date | Amount | Status | Transfer ID (or "pending")
+           Show from usePayouts result
+
+      RULES:
+      - Named exports only
+      - "use client" only on EarningsDashboard (not on page.tsx)
+      - No <a> tags, no <img> tags
+      - Tailwind only
+      - Format Decimal amounts as "$X.XX" (toFixed(2))
+      - After implementation: cd apps/seller && pnpm build
+      - Commit: feat(seller): add earnings and payout request UI
+    test: "cd apps/seller && pnpm build"
+
+  # ─── FRONTEND: Seller onboarding page ────────────────────────────────────────
+
+  - id: seller-onboarding
+    title: "Teacher onboarding and registration page"
+    scope: frontend:seller
+    depend_on:
+      - seller-earnings-ui
+    prompt: |
+      Task: Build the teacher onboarding flow in apps/seller/ — a dedicated register/onboarding page
+      that guides a new teacher through account creation and explains the platform.
+
+      CONTEXT:
+      - apps/seller/ is set up with Next.js 15, App Router, Tailwind, TypeScript strict
+      - lib/api.ts has identity namespace: identity.login(email, password), identity.me(token)
+      - Identity service (port 8001, proxied at /api/identity/):
+        - POST /register { email, password, name, role: "teacher" } → { access_token, token_type }
+        - Teachers start as is_verified=false and must be verified by an admin
+      - After registration, teacher sees a "pending verification" screen
+      - hooks/use-auth.ts provides useAuth() with { token, user, login, register, logout }
+        register(email, password, name, role) calls POST /register — add this to use-auth.ts if missing
+
+      WHAT TO BUILD:
+
+      1. Verify apps/seller/hooks/use-auth.ts has register() function.
+         If identity.register is not in lib/api.ts, add it:
+         POST /api/identity/register { email, password, name, role } → TokenResponse
+
+      2. apps/seller/app/register/page.tsx — renders TeacherRegisterForm client component.
+
+      3. apps/seller/components/TeacherRegisterForm.tsx — "use client":
+         Multi-step form (2 steps controlled by local state, no routing between steps):
+
+         Step 1 — Account details:
+           - Name (text, required, min 2 chars)
+           - Email (email type, required)
+           - Password (password type, required, min 8 chars)
+           - "Next" button: validates fields, advances to step 2
+
+         Step 2 — Confirm and create:
+           - Summary: "Creating teacher account for {name} ({email})"
+           - Checklist of what teachers can do on the platform:
+             * Create and manage courses
+             * Track student enrollments and reviews
+             * View earnings analytics
+             * Request payouts
+           - "Create Teacher Account" submit button
+           - "Back" button to return to step 1
+           - Calls identity.register + stores token + calls identity.me
+           - On success: shows PendingVerification component (not a redirect)
+           - On error: shows error message below form
+
+         Step 3 — Pending verification (shown after successful register):
+           Not a separate route — rendered inline after successful registration.
+           Shows:
+           - "Account created successfully!" heading
+           - "Your teacher account is pending admin verification. You will receive
+             an email once your account is approved."
+           - "Go to Dashboard" link → /dashboard
+             (Dashboard layout will show access-denied if not verified — that's intentional
+             so teacher can see what's coming)
+
+      4. Update apps/seller/app/login/page.tsx (if it exists from seller-dashboard task):
+         Add a link "New teacher? Create an account →" pointing to /register
+
+      5. apps/seller/app/page.tsx (root redirect):
+         Ensure it still redirects to /dashboard (created in scaffold task).
+
+      RULES:
+      - Named exports only
+      - "use client" only on TeacherRegisterForm (not on page.tsx)
+      - No default exports
+      - Tailwind only
+      - next/link for navigation links
+      - Client-side validation before API call (no empty submit)
+      - After implementation: cd apps/seller && pnpm build
+      - Commit: feat(seller): add teacher onboarding and registration flow
+    test: "cd apps/seller && pnpm build"

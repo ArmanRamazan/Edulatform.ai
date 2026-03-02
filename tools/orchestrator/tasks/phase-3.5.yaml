@@ -1,0 +1,541 @@
+phase: "3.5"
+description: "Engagement — certificates, email notifications, wishlist, recommendations, frontend UI"
+
+tasks:
+  - id: certificate-model
+    title: "Certificate domain model and DB migration"
+    scope: backend:learning
+    prompt: |
+      Task: Add the Certificate domain model and database migration to the learning service.
+
+      CONTEXT:
+      - Learning service (port 8007) in services/py/learning/
+      - Clean Architecture: routes/ -> services/ -> domain/ <- repositories/
+      - Learning DB (port 5438): PostgreSQL
+      - Migrations in services/py/learning/migrations/ (idempotent SQL, CREATE TABLE IF NOT EXISTS)
+      - Existing domain entities: Quiz, Flashcard, Concept, Streak, LeaderboardEntry
+
+      DB SCHEMA (learning-db):
+      CREATE TABLE certificates (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id UUID NOT NULL,
+          course_id UUID NOT NULL,
+          pdf_url TEXT,
+          issued_at TIMESTAMPTZ DEFAULT now(),
+          UNIQUE(user_id, course_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_certificates_user_id ON certificates(user_id);
+
+      WHAT TO BUILD:
+      1. Migration: services/py/learning/migrations/007_add_certificates.sql
+         - CREATE TABLE IF NOT EXISTS certificates (as above)
+         - CREATE INDEX IF NOT EXISTS for user_id lookups
+      2. Domain entity: services/py/learning/app/domain/certificate.py
+         - @dataclass(frozen=True) Certificate with fields: id (UUID), user_id (UUID), course_id (UUID), pdf_url (str | None), issued_at (datetime)
+      3. Repository interface: services/py/learning/app/repositories/certificate_repository.py
+         - Abstract class CertificateRepository:
+           async def create(self, user_id: UUID, course_id: UUID) -> Certificate
+           async def get_by_user(self, user_id: UUID) -> list[Certificate]
+           async def get_by_user_and_course(self, user_id: UUID, course_id: UUID) -> Certificate | None
+           async def update_pdf_url(self, certificate_id: UUID, pdf_url: str) -> Certificate
+      4. SQL implementation: services/py/learning/app/repositories/sql_certificate_repository.py
+         - Implements CertificateRepository using asyncpg connection pool
+         - Handle UniqueViolationError from asyncpg -> raise ConflictError (from common library)
+
+      TDD:
+      1. Write integration tests in services/py/learning/tests/test_certificate_repository.py:
+         - test: create certificate -> returns Certificate entity
+         - test: create duplicate (same user_id + course_id) -> raises ConflictError
+         - test: get_by_user returns list of certificates for user
+         - test: get_by_user_and_course returns None when not found
+      2. Use testcontainers for real PostgreSQL in integration tests (follow existing test patterns)
+      3. Run migration in test setup
+      4. Run: cd services/py/learning && uv run --package learning pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - domain/certificate.py has NO imports from repositories/, services/, or frameworks
+      - Migration is idempotent (IF NOT EXISTS)
+      - Migration does NOT use locks that block writes
+      - After tests pass: create atomic git commit: feat(learning): add certificate domain model and migration
+    test: "cd services/py/learning && uv run --package learning pytest tests/ -v"
+
+  - id: certificate-generate-pdf
+    title: "Generate certificate PDF"
+    scope: backend:learning
+    depends_on: [certificate-model]
+    prompt: |
+      Task: Implement PDF certificate generation in the learning service.
+
+      CONTEXT:
+      - Learning service (port 8007) in services/py/learning/
+      - Certificate domain model and repository already implemented (see certificate-model task)
+      - PDF generation: use reportlab (add to pyproject.toml) or fpdf2 — pick fpdf2 (lighter dependency)
+      - Certificate PDF should contain: student name, course name, completion date, certificate ID
+      - PDF stored: for now, save to local filesystem at /tmp/certificates/{certificate_id}.pdf
+        (In production this would be S3, but keep it simple for now — no S3 dependency)
+      - The pdf_url stored in DB will be the local path: /tmp/certificates/{certificate_id}.pdf
+
+      WHAT TO BUILD:
+      1. Add fpdf2 to services/py/learning/pyproject.toml dependencies
+      2. Domain service: services/py/learning/app/services/certificate_service.py
+         - issue_certificate(user_id: UUID, course_id: UUID, student_name: str, course_name: str) -> Certificate
+           Steps: check if certificate already exists (return existing if so), create certificate record,
+           generate PDF, update pdf_url in repository, return certificate
+         - get_user_certificates(user_id: UUID) -> list[Certificate]
+         - get_certificate(user_id: UUID, course_id: UUID) -> Certificate | None
+      3. PDF generation helper: services/py/learning/app/services/pdf_generator.py
+         - generate_certificate_pdf(certificate_id: UUID, student_name: str, course_name: str, issued_at: datetime) -> str
+           Returns the file path where PDF was saved
+         - Layout: A4 landscape, centered content
+           - Title: "Certificate of Completion" (large font, brand color)
+           - Body: "This certifies that {student_name} has successfully completed {course_name}"
+           - Date: "Issued on {issued_at.strftime('%B %d, %Y')}"
+           - Certificate ID: small text at bottom for verification
+         - Creates /tmp/certificates/ directory if not exists
+      4. Routes: services/py/learning/app/routes/certificates.py
+         - POST /certificates — body: { course_id, student_name, course_name }
+           Requires auth (JWT). Creates certificate for authenticated user.
+           Returns 201 with certificate data. Returns 200 if already exists.
+         - GET /certificates/me — returns list of user's certificates
+         - GET /certificates/download/{certificate_id} — returns PDF file as FileResponse
+           Only allows downloading own certificate (check user_id match)
+
+      TDD:
+      1. Write test: issue_certificate creates PDF file and stores pdf_url
+      2. Write test: issue_certificate called twice -> returns same certificate (idempotent)
+      3. Write test: POST /certificates returns 201 with certificate data
+      4. Write test: GET /certificates/me returns list
+      5. Write test: GET /certificates/download/{id} returns 404 for non-existent certificate
+      6. Write test: GET /certificates/download/{id} returns 403 when user tries to download another user's cert
+      7. Run: cd services/py/learning && uv run --package learning pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - pdf_generator.py is in services/ layer (it does I/O — creates files)
+      - Clean Architecture respected — routes/ calls service, service calls repository
+      - After tests pass: create atomic git commit: feat(learning): add certificate PDF generation
+    test: "cd services/py/learning && uv run --package learning pytest tests/ -v"
+
+  - id: certificate-auto-issue
+    title: "Auto-issue certificate on course completion"
+    scope: backend:learning
+    depends_on: [certificate-generate-pdf]
+    prompt: |
+      Task: Automatically issue a certificate when a student completes all lessons in a course.
+
+      CONTEXT:
+      - Learning service (port 8007) in services/py/learning/
+      - Enrollment service (port 8003) tracks lesson progress and course completion
+      - Learning service has its own concept of progress via quiz/flashcard completions, BUT
+        enrollment service is the source of truth for lesson completion
+      - Current enrollment service: POST /enrollments/{id}/lessons/{lessonId}/complete marks lesson done
+        and auto-completes course when all lessons done (sets completed_at on enrollment)
+      - The two services do NOT share a DB — use event-based approach
+      - Since NATS is not yet wired, use a polling approach:
+        New endpoint in learning service: POST /certificates/check-and-issue
+        Body: { user_id, course_id, student_name, course_name, all_lessons_completed: bool }
+        Called by enrollment service logic (or a cron job) when course completes
+      - Alternative (simpler): expose the endpoint and let the buyer frontend call it after detecting completion
+
+      WHAT TO BUILD:
+      1. Endpoint: POST /certificates/check-and-issue (authenticated, for the user themselves only)
+         - Body: { course_id: UUID, student_name: str, course_name: str }
+         - Checks if user already has certificate for this course — return existing if so
+         - Creates and returns certificate
+         - Returns 201 on creation, 200 if already exists
+      2. This endpoint is effectively idempotent (safe to call multiple times)
+      3. Add to the existing certificate routes file
+
+      TDD:
+      1. Write test: POST /certificates/check-and-issue creates certificate if not exists
+      2. Write test: POST /certificates/check-and-issue returns existing if already issued
+      3. Write test: cannot issue certificate for another user (user_id from JWT, not body)
+      4. Run: cd services/py/learning && uv run --package learning pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - user_id MUST come from JWT (authenticated user), not from request body — security requirement
+      - Idempotent: calling twice returns same certificate, no error on duplicate
+      - After tests pass: create atomic git commit: feat(learning): add auto-issue certificate on course completion
+    test: "cd services/py/learning && uv run --package learning pytest tests/ -v"
+
+  - id: email-notifications-events
+    title: "Email notifications for welcome, completion, and reminders"
+    scope: backend:notification
+    prompt: |
+      Task: Add email sending for welcome (new registration), course completion, and scheduled reminder notification types.
+
+      CONTEXT:
+      - Notification service (port 8005) in services/py/notification/
+      - Email infrastructure already set up with Resend API (from Phase 3.4 email-delivery-resend task)
+      - Email templates in app/domain/email_templates.py (from Phase 3.4 email-templates task)
+        If those tasks are not done yet, implement email sending inline in this task using StubEmailSender
+      - Identity service (port 8001): can call POST /notifications to send welcome email on registration
+      - Notification types to add:
+        - welcome: sent when new user registers
+        - course_completed: sent when user completes a course
+
+      WHAT TO BUILD:
+      1. Add new notification types to the notification domain/service (if not already present):
+         - "welcome" — subject: "Welcome to EduPlatform!", message: "Your account is ready."
+         - "course_completed" — subject: "Congratulations! You completed {course_name}", message: per course
+      2. Add email templates for these types in email_templates.py:
+         - welcome_email(student_name: str) -> tuple[str, str]
+         - course_completed_email(student_name: str, course_name: str, certificate_url: str | None) -> tuple[str, str]
+      3. Update notification_service.py to send email for "welcome" and "course_completed" types
+         (same pattern as enrollment and payment emails from Phase 3.4)
+      4. Endpoint to trigger welcome: existing POST /notifications supports all types
+         Identity service will call POST /notifications with type="welcome" after user registration
+         NOTE: Do NOT modify identity service in this task — just ensure the notification service handles it
+
+      TDD:
+      1. Write test: POST /notifications with type=welcome -> email_sender.send() called with welcome subject
+      2. Write test: POST /notifications with type=course_completed -> email sent with course name
+      3. Write test: welcome_email(student_name="Alice") returns subject containing "Welcome" and HTML containing "Alice"
+      4. Run: cd services/py/notification && uv run --package notification pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - If Phase 3.4 email tasks are not yet done, create StubEmailSender inline here
+      - Do NOT modify identity service — only notification service
+      - After tests pass: create atomic git commit: feat(notification): add welcome and course completion email notifications
+    test: "cd services/py/notification && uv run --package notification pytest tests/ -v"
+
+  - id: wishlist-model
+    title: "Wishlist domain model and DB migration"
+    scope: backend:course
+    prompt: |
+      Task: Add Wishlist domain model and database migration to the course service.
+
+      CONTEXT:
+      - Course service (port 8002) in services/py/course/
+      - Clean Architecture: routes/ -> services/ -> domain/ <- repositories/
+      - Course DB (port 5434): PostgreSQL
+      - Migrations in services/py/course/migrations/ (idempotent SQL)
+      - Existing domain entities: Course, Module, Lesson, Review, Category
+
+      DB SCHEMA (course-db):
+      CREATE TABLE wishlist (
+          id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+          user_id UUID NOT NULL,
+          course_id UUID NOT NULL,
+          created_at TIMESTAMPTZ DEFAULT now(),
+          UNIQUE(user_id, course_id)
+      );
+      CREATE INDEX IF NOT EXISTS idx_wishlist_user_id ON wishlist(user_id);
+
+      WHAT TO BUILD:
+      1. Migration: services/py/course/migrations/XXX_add_wishlist.sql
+         - Find next migration number by checking existing migrations
+         - CREATE TABLE IF NOT EXISTS wishlist (as above)
+         - CREATE INDEX IF NOT EXISTS for user_id lookups
+      2. Domain entity: services/py/course/app/domain/wishlist.py
+         - @dataclass(frozen=True) WishlistItem: id (UUID), user_id (UUID), course_id (UUID), created_at (datetime)
+      3. Repository interface: services/py/course/app/repositories/wishlist_repository.py
+         - Abstract class WishlistRepository:
+           async def add(self, user_id: UUID, course_id: UUID) -> WishlistItem
+           async def remove(self, user_id: UUID, course_id: UUID) -> bool  # returns False if not found
+           async def get_by_user(self, user_id: UUID) -> list[WishlistItem]
+           async def exists(self, user_id: UUID, course_id: UUID) -> bool
+      4. SQL implementation: services/py/course/app/repositories/sql_wishlist_repository.py
+         - Implements WishlistRepository using asyncpg connection pool
+         - Handle UniqueViolationError -> raise ConflictError
+
+      TDD:
+      1. Integration tests in services/py/course/tests/test_wishlist_repository.py:
+         - test: add item -> returns WishlistItem
+         - test: add duplicate -> raises ConflictError
+         - test: remove existing item -> returns True
+         - test: remove non-existent item -> returns False
+         - test: get_by_user returns all items for user
+         - test: exists returns True/False correctly
+      2. Use testcontainers for real PostgreSQL (follow existing course test patterns)
+      3. Run: cd services/py/course && uv run --package course pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - domain/wishlist.py has NO framework imports
+      - Migration is idempotent
+      - After tests pass: create atomic git commit: feat(course): add wishlist domain model and migration
+    test: "cd services/py/course && uv run --package course pytest tests/ -v"
+
+  - id: wishlist-api
+    title: "Wishlist API endpoints (add, remove, list)"
+    scope: backend:course
+    depends_on: [wishlist-model]
+    prompt: |
+      Task: Add wishlist API endpoints to the course service.
+
+      CONTEXT:
+      - Course service (port 8002) in services/py/course/
+      - Wishlist repository and domain model already implemented (see wishlist-model task)
+      - Clean Architecture: routes/ -> services/ -> domain/ <- repositories/
+      - Auth: JWT required for all wishlist endpoints (student role)
+      - Existing route patterns: see services/py/course/app/routes/ for examples
+
+      WHAT TO BUILD:
+      1. Service: services/py/course/app/services/wishlist_service.py
+         - add_to_wishlist(user_id: UUID, course_id: UUID) -> WishlistItem
+           Verifies course exists (calls CourseRepository.get_by_id) before adding
+           Raises NotFoundError if course doesn't exist
+           Raises ConflictError if already in wishlist (let repository error propagate)
+         - remove_from_wishlist(user_id: UUID, course_id: UUID) -> None
+           Raises NotFoundError if item not in wishlist
+         - get_wishlist(user_id: UUID) -> list[WishlistItem]
+      2. Routes: services/py/course/app/routes/wishlist.py
+         - POST /wishlist — body: { course_id: UUID }
+           Returns 201 with WishlistItem on add, 409 if already exists
+         - DELETE /wishlist/{course_id} — removes course from wishlist
+           Returns 204 on success, 404 if not in wishlist
+         - GET /wishlist/me — returns user's wishlist (list of WishlistItem with course details)
+           Enrich each item with course data (title, thumbnail, price) via CourseRepository
+      3. Register wishlist router in main app
+
+      TDD:
+      1. Write test: POST /wishlist adds course, returns 201
+      2. Write test: POST /wishlist with non-existent course_id returns 404
+      3. Write test: POST /wishlist duplicate returns 409
+      4. Write test: DELETE /wishlist/{course_id} returns 204
+      5. Write test: DELETE /wishlist/{course_id} when not in wishlist returns 404
+      6. Write test: GET /wishlist/me returns list of wishlist items
+      7. Run: cd services/py/course && uv run --package course pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - user_id always from JWT (request.state.user_id), never from request body
+      - routes/ uses Depends() for auth, calls service only
+      - After tests pass: create atomic git commit: feat(course): add wishlist API endpoints
+    test: "cd services/py/course && uv run --package course pytest tests/ -v"
+
+  - id: recommendations-engine
+    title: "Collaborative filtering recommendations"
+    scope: backend:enrollment
+    prompt: |
+      Task: Add a simple collaborative filtering recommendation endpoint to the enrollment service.
+
+      CONTEXT:
+      - Enrollment service (port 8003) in services/py/enrollment/
+      - Enrollment DB (port 5435): has enrollments table with user_id, course_id, enrolled_at
+      - Clean Architecture: routes/ -> services/ -> domain/ <- repositories/
+      - Algorithm: item-based collaborative filtering (simple co-enrollment approach)
+        "Users who enrolled in course X also enrolled in course Y"
+        This is computable from the enrollments table alone — no external ML needed
+      - Course service (port 8002) available at GET /courses/:id for enrichment
+        BUT: enrollment service must NOT query course DB directly
+        Use httpx to call course service API for enrichment (or return just course_ids)
+
+      WHAT TO BUILD:
+      1. Repository method: add to existing EnrollmentRepository:
+         async def get_co_enrolled_courses(self, course_id: UUID, limit: int = 10) -> list[UUID]
+         SQL logic:
+           Find all users enrolled in course_id
+           Find other courses those users are enrolled in (excluding course_id)
+           Rank by count of co-enrollments (most frequently co-enrolled first)
+           Return top N course_ids
+      2. Service: services/py/enrollment/app/services/recommendation_service.py
+         - get_recommendations_for_course(course_id: UUID, limit: int = 8) -> list[UUID]
+           Calls repository, returns list of recommended course_ids
+         - get_recommendations_for_user(user_id: UUID, limit: int = 8) -> list[UUID]
+           Gets all courses the user is enrolled in, aggregates co-enrollment counts across all of them,
+           excludes courses already enrolled by user, returns top N
+      3. Routes: services/py/enrollment/app/routes/recommendations.py
+         - GET /recommendations/course/{course_id} — similar courses (no auth required)
+           Returns: { course_ids: list[UUID] }
+         - GET /recommendations/me — personalized for logged-in user (auth required)
+           Returns: { course_ids: list[UUID] }
+         Note: Return only course_ids — frontend will enrich with course service
+
+      TDD:
+      1. Write test: get_co_enrolled_courses with 3 users all enrolled in A and B -> B recommended for A
+      2. Write test: get_co_enrolled_courses excludes the queried course_id from results
+      3. Write test: GET /recommendations/course/{course_id} returns 200 with course_ids list
+      4. Write test: GET /recommendations/me returns 401 without auth
+      5. Write test: GET /recommendations/me returns empty list for user with no enrollments
+      6. Run: cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
+
+      RULES:
+      - TDD: failing test first
+      - SQL for co-enrollment must use parameterized queries (no string concatenation)
+      - Return course_ids only — do NOT call course service from backend (avoid coupling)
+      - Frontend enriches recommendations with course data via separate calls
+      - After tests pass: create atomic git commit: feat(enrollment): add collaborative filtering recommendations
+    test: "cd services/py/enrollment && uv run --package enrollment pytest tests/ -v"
+
+  - id: frontend-certificates-ui
+    title: "Certificates UI — view and download certificate"
+    scope: frontend:buyer
+    depends_on: [certificate-auto-issue]
+    prompt: |
+      Task: Add certificate viewing and download UI to the buyer app.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Learning service (port 8007) has:
+        - GET /certificates/me — returns list of { id, course_id, pdf_url, issued_at }
+        - GET /certificates/download/{certificate_id} — returns PDF file
+        - POST /certificates/check-and-issue — { course_id, student_name, course_name }
+      - Auth: JWT stored in cookie/localStorage, sent via Authorization header
+      - API client: apps/buyer/lib/api.ts — add certificate namespace
+      - Existing hooks pattern: apps/buyer/hooks/use-gamification.ts for reference
+
+      WHAT TO BUILD:
+      1. API client methods in apps/buyer/lib/api.ts:
+         - certificates.list() -> GET /certificates/me
+         - certificates.download(certificateId: string) -> returns blob URL for PDF
+         - certificates.checkAndIssue(courseId: string, studentName: string, courseName: string)
+
+      2. Hook: apps/buyer/hooks/use-certificates.ts
+         - useCertificates() — TanStack Query, fetches certificate list
+         - useIssueCertificate() — mutation for check-and-issue
+
+      3. Certificates page: apps/buyer/app/certificates/page.tsx
+         - Lists all earned certificates
+         - Each certificate card shows: course name (from course_id lookup or stored separately), issued date
+         - Download button: calls /certificates/download/{id}, triggers PDF download in browser
+         - Empty state: "Complete a course to earn your first certificate"
+         - Loading skeleton while fetching
+
+      4. Course completion detection: in the lesson page or enrollment hooks,
+         after marking last lesson complete, call certificates.checkAndIssue() automatically
+         Show a toast/banner: "Congratulations! Your certificate is ready. View Certificates"
+         Link to /certificates page
+
+      5. Add "Certificates" link to user profile nav or header dropdown
+
+      IMPLEMENTATION:
+      1. Create apps/buyer/app/certificates/ directory
+      2. Create page.tsx (Server Component wrapper with Client Component for interactive parts)
+      3. Create apps/buyer/components/certificates/CertificateCard.tsx
+      4. Update apps/buyer/lib/api.ts with certificates namespace
+      5. Create apps/buyer/hooks/use-certificates.ts
+
+      RULES:
+      - "use client" only for CertificateCard (has download button interaction)
+      - page.tsx can be server component that passes initial data down
+      - next/link for navigation to /certificates
+      - Named exports for all components
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add certificates UI — view and download
+    test: "cd apps/buyer && pnpm build"
+
+  - id: frontend-wishlist-ui
+    title: "Wishlist UI — add/remove and wishlist page"
+    scope: frontend:buyer
+    depends_on: [wishlist-api]
+    prompt: |
+      Task: Add wishlist add/remove button and a wishlist page to the buyer app.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Course service (port 8002) has:
+        - POST /wishlist — body: { course_id }
+        - DELETE /wishlist/{course_id}
+        - GET /wishlist/me — returns list of wishlist items with course data
+      - Wishlist items contain: { id, user_id, course_id, created_at } — need to enrich with course details
+      - Auth required for all wishlist operations
+      - TanStack Query for data fetching; optimistic updates for add/remove
+
+      WHAT TO BUILD:
+      1. API client methods in apps/buyer/lib/api.ts:
+         - wishlist.list() -> GET /wishlist/me
+         - wishlist.add(courseId: string) -> POST /wishlist
+         - wishlist.remove(courseId: string) -> DELETE /wishlist/{courseId}
+
+      2. Hook: apps/buyer/hooks/use-wishlist.ts
+         - useWishlist() — fetches wishlist list with TanStack Query
+         - useToggleWishlist(courseId: string) — mutation with optimistic update
+           Adds if not in wishlist, removes if already in wishlist
+           Invalidates wishlist query on success
+
+      3. WishlistButton component: apps/buyer/components/wishlist/WishlistButton.tsx
+         - Heart icon button (filled when in wishlist, outline when not)
+         - Shows on course detail page and course cards
+         - Uses useToggleWishlist hook
+         - Disabled when not authenticated (shows login prompt or redirects)
+         - Loading state during mutation
+
+      4. Wishlist page: apps/buyer/app/wishlist/page.tsx
+         - Lists all wishlisted courses
+         - Each entry: course card with thumbnail, title, price, and remove button
+         - Empty state: "Your wishlist is empty. Browse courses to add some!"
+         - Link each card to /courses/{id}
+
+      5. Add WishlistButton to course detail page (apps/buyer/app/courses/[id]/page.tsx)
+      6. Add "Wishlist" link to user nav/header
+
+      IMPLEMENTATION:
+      1. Create apps/buyer/components/wishlist/WishlistButton.tsx ("use client")
+      2. Create apps/buyer/hooks/use-wishlist.ts
+      3. Create apps/buyer/app/wishlist/page.tsx
+      4. Update apps/buyer/lib/api.ts
+      5. Add WishlistButton to course detail page
+
+      RULES:
+      - Optimistic update for heart toggle (instant UI feedback)
+      - "use client" for WishlistButton (event handler)
+      - Named exports for all components
+      - Heart icon: use a simple inline SVG — no icon library
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add wishlist UI — toggle button and wishlist page
+    test: "cd apps/buyer && pnpm build"
+
+  - id: frontend-recommendations-ui
+    title: "Recommendations UI — similar courses and personalized feed"
+    scope: frontend:buyer
+    depends_on: [recommendations-engine]
+    prompt: |
+      Task: Add course recommendations UI to the buyer app.
+
+      CONTEXT:
+      - Buyer app is in apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind)
+      - Enrollment service (port 8003) has:
+        - GET /recommendations/course/{course_id} — returns { course_ids: UUID[] }
+        - GET /recommendations/me — returns { course_ids: UUID[] } (auth required)
+      - Course service (port 8002): GET /courses/{id} for enrichment
+      - The recommendations endpoints return only course_ids — frontend must enrich
+      - Existing hooks: use-courses.ts for course data fetching
+
+      WHAT TO BUILD:
+      1. API client in apps/buyer/lib/api.ts:
+         - recommendations.forCourse(courseId: string) -> GET /recommendations/course/{courseId}
+         - recommendations.forMe() -> GET /recommendations/me
+
+      2. Hook: apps/buyer/hooks/use-recommendations.ts
+         - useSimilarCourses(courseId: string) — fetches course_ids then enriches with course data
+           Use Promise.all to fetch course details in parallel
+         - usePersonalizedRecommendations() — same pattern, auth required
+
+      3. SimilarCourses component: apps/buyer/components/recommendations/SimilarCourses.tsx
+         - Horizontal scrollable row of course cards
+         - Title: "Students also enrolled in"
+         - Shows 4-6 course cards
+         - Each card: thumbnail, title, instructor, rating, price, link to /courses/{id}
+         - Loading skeleton while fetching
+         - Hidden (null return) if no recommendations available
+
+      4. Add SimilarCourses to course detail page: apps/buyer/app/courses/[id]/page.tsx
+         - Place below course description / above reviews
+         - Pass courseId as prop
+
+      5. Personalized section on home page (apps/buyer/app/page.tsx or landing section):
+         - "Recommended for You" section — only visible when logged in
+         - Uses usePersonalizedRecommendations() hook
+         - Same card grid layout as featured courses
+         - If not logged in: section is hidden (no SSR for this — client-side only)
+
+      IMPLEMENTATION:
+      1. Create apps/buyer/components/recommendations/SimilarCourses.tsx ("use client" — uses hooks)
+      2. Create apps/buyer/hooks/use-recommendations.ts
+      3. Update apps/buyer/lib/api.ts
+      4. Add SimilarCourses to course detail page
+      5. Add personalized section to home page or user dashboard
+
+      RULES:
+      - SimilarCourses is "use client" (uses hooks and TanStack Query)
+      - Named exports only
+      - Empty/null state: hide the section entirely if no recommendations
+      - Do NOT show recommendations section during loading (avoid layout shift) — show only after data loads
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add recommendations UI — similar courses and personalized feed
+    test: "cd apps/buyer && pnpm build"

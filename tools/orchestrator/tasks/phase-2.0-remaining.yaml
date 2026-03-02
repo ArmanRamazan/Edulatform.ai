@@ -1,0 +1,76 @@
+phase: "2.0"
+description: "AI Service + Quiz Foundation — remaining tasks"
+
+tasks:
+  - id: generate-quiz-button
+    title: "Generate quiz button for teacher"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add a "Generate quiz" button on the lesson page for teachers.
+
+      CONTEXT:
+      - Course service (port 8002) has lessons with teacher_id
+      - AI service (port 8006) has POST /ai/quiz/generate {lesson_id, content}
+      - Learning service (port 8007) has POST /quizzes to save generated quiz
+      - Frontend buyer app is in apps/buyer/ (Next.js App Router, Tailwind, TanStack Query)
+      - Existing quiz UI is at apps/buyer/app/courses/[id]/lessons/[lessonId]/
+      - API client is in apps/buyer/lib/api.ts with namespace objects
+      - Hooks pattern: apps/buyer/hooks/use-quiz.ts
+
+      WHAT TO BUILD:
+      1. Add a "Generate Quiz" button on the lesson page, visible only to the course teacher
+      2. Button calls AI service to generate quiz, then saves it via Learning service
+      3. Show loading state during generation
+      4. After generation, show the quiz inline
+
+      IMPLEMENTATION:
+      1. Check if current user is the course teacher (compare JWT user_id with course.teacher_id)
+      2. Add button component with loading spinner
+      3. On click: POST /ai/quiz/generate → POST /quizzes with the result
+      4. Invalidate quiz query cache after creation
+      5. Use existing patterns from apps/buyer/hooks/use-quiz.ts
+
+      RULES:
+      - Follow existing component patterns in apps/buyer/
+      - Use TanStack Query mutations
+      - "use client" only where needed
+      - Named exports only, no default exports
+      - Tailwind for styling
+      - After implementation: cd apps/buyer && pnpm build
+      - Create atomic git commit: feat(buyer): add generate quiz button for teachers
+    test: "cd apps/buyer && pnpm build"
+
+  - id: seed-quizzes
+    title: "Seed quizzes for demo courses"
+    scope: backend:learning
+    prompt: |
+      Task: Add quiz seed data to the existing seed script.
+
+      CONTEXT:
+      - Seed script is in tools/seed/ directory
+      - Learning service DB (port 5438) has tables: quizzes, questions, quiz_attempts
+      - Schema:
+        quizzes: id, lesson_id (UNIQUE), course_id, teacher_id, created_at
+        questions: id, quiz_id (FK), text, options (JSONB), correct_index, explanation, "order"
+        NOTE: "order" is a SQL reserved word — must be quoted in queries
+      - Existing seed data creates courses with modules and lessons
+
+      WHAT TO BUILD:
+      1. Add quiz data to the seed script for demo courses
+      2. Each quiz should have 3-5 questions with realistic educational content
+      3. Create quiz_attempts for some students with realistic scores
+      4. Use COPY or batch INSERT for performance
+
+      IMPLEMENTATION:
+      1. Look at existing seed script in tools/seed/
+      2. Add quizzes for the first 5-10 lessons of demo courses
+      3. Questions should be realistic MCQ about programming/tech topics
+      4. Add 10-20 quiz attempts with varied scores (0.4 to 1.0)
+      5. Ensure lesson_ids match existing seeded lessons
+
+      RULES:
+      - Follow existing seed script patterns
+      - Use asyncpg for DB access
+      - Realistic educational content (not placeholder text)
+      - Create atomic git commit: feat(learning): seed quiz data for demo courses
+    test: null
