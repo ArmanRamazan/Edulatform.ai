@@ -268,6 +268,18 @@ class CourseRepository:
             course_id,
         )
 
+    async def get_analytics_by_teacher(self, teacher_id: UUID) -> list[dict]:
+        rows = await self._pool.fetch(
+            """
+            SELECT course_id, title, avg_rating, review_count, module_count, lesson_count
+            FROM course_analytics
+            WHERE teacher_id = $1
+            ORDER BY course_id
+            """,
+            teacher_id,
+        )
+        return [dict(r) for r in rows]
+
     @staticmethod
     def _to_entity(row: asyncpg.Record) -> Course:
         return Course(

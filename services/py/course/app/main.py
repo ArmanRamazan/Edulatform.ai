@@ -26,6 +26,7 @@ from app.routes.categories import router as categories_router
 from app.routes.courses import router as courses_router
 from app.routes.modules import router as modules_router
 from app.routes.lessons import router as lessons_router
+from app.routes.analytics import router as analytics_router
 from app.routes.reviews import router as reviews_router
 
 app_settings = Settings()
@@ -87,6 +88,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/006_categories.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/007_analytics.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
     _cache = CourseCache(_redis)
@@ -121,6 +124,7 @@ app.add_middleware(
     limit=app_settings.rate_limit_per_minute,
     window=60,
 )
+app.include_router(analytics_router)
 app.include_router(categories_router)
 app.include_router(courses_router)
 app.include_router(modules_router)

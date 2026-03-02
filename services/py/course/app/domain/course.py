@@ -88,3 +88,20 @@ class CurriculumResponse(BaseModel):
     course: CourseResponse
     modules: list[CurriculumModule]
     total_lessons: int
+
+
+class CourseAnalytics(BaseModel):
+    course_id: UUID
+    title: str
+    avg_rating: Decimal | None
+    review_count: int
+    module_count: int
+    lesson_count: int
+
+
+class TeacherAnalyticsSummary(BaseModel):
+    total_courses: int
+    total_lessons: int
+    avg_rating: Decimal | None
+    total_reviews: int
+    courses: list[CourseAnalytics]

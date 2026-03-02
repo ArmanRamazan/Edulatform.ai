@@ -6,7 +6,10 @@ from uuid import UUID
 from common.errors import ForbiddenError, NotFoundError
 from app.cache import CourseCache
 from app.sanitize import sanitize_text, sanitize_html
-from app.domain.course import Course, CourseLevel, CourseResponse, CurriculumModule, CurriculumResponse
+from app.domain.course import (
+    Course, CourseAnalytics, CourseLevel, CourseResponse,
+    CurriculumModule, CurriculumResponse, TeacherAnalyticsSummary,
+)
 from app.domain.lesson import LessonResponse
 from app.repositories.course_repo import CourseRepository
 from app.repositories.module_repo import ModuleRepository
@@ -226,3 +229,20 @@ class CourseService:
             await self._cache.set_curriculum(course_id, result.model_dump(mode="json"))
 
         return result
+
+    async def get_teacher_analytics(self, teacher_id: UUID, role: str) -> TeacherAnalyticsSummary:
+        if role != "teacher":
+            raise ForbiddenError("Only teachers can view analytics")
+        rows = await self._repo.get_analytics_by_teacher(teacher_id)
+        courses = [CourseAnalytics(**r) for r in rows]
+        total_lessons = sum(c.lesson_count for c in courses)
+        total_reviews = sum(c.review_count for c in courses)
+        ratings = [c.avg_rating for c in courses if c.avg_rating is not None]
+        avg_rating = sum(ratings) / len(ratings) if ratings else None
+        return TeacherAnalyticsSummary(
+            total_courses=len(courses),
+            total_lessons=total_lessons,
+            avg_rating=Decimal(str(round(avg_rating, 2))) if avg_rating else None,
+            total_reviews=total_reviews,
+            courses=courses,
+        )
