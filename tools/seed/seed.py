@@ -502,23 +502,25 @@ COMMENT_TEMPLATES = [
 ]
 
 
-def _generate_question(subject: str, order: int) -> tuple[str, str, int, str, int]:
-    """Generate a quiz question from the realistic question bank. Returns (text, options_json, correct_index, explanation, order)."""
+def _generate_questions(subject: str, count: int) -> list[tuple[str, str, int, str, int]]:
+    """Generate unique quiz questions from the question bank. Returns [(text, options_json, correct_index, explanation, order)]."""
     bank = QUESTION_BANK.get(subject, QUESTION_BANK["Python"])
-    q_text, options, correct_index, explanation = random.choice(bank)
-    return q_text, json.dumps(options), correct_index, explanation, order
+    selected = random.sample(bank, min(count, len(bank)))
+    return [
+        (q_text, json.dumps(options), correct_index, explanation, order)
+        for order, (q_text, options, correct_index, explanation) in enumerate(selected)
+    ]
 
 
 async def seed_quizzes_and_questions(
     pool: asyncpg.Pool,
     lesson_data: list[tuple[str, str, str]],
-) -> dict[str, list[str]]:
-    """Seed quizzes and questions. Returns {quiz_id: [question_ids]} for later use."""
+) -> dict[str, tuple[list[str], list[int]]]:
+    """Seed quizzes and questions. Returns {quiz_id: (question_ids, correct_indices)}."""
     selected = [ld for ld in lesson_data if random.random() < QUIZ_LESSON_RATIO]
     print(f"Seeding {len(selected)} quizzes...")
 
-    quiz_map: dict[str, list[str]] = {}
-    # We need concept names per course for question generation
+    quiz_map: dict[str, tuple[list[str], list[int]]] = {}
     course_subjects: dict[str, str] = {}
     subjects = list(CONCEPT_NAMES_BY_SUBJECT.keys())
 
@@ -526,31 +528,29 @@ async def seed_quizzes_and_questions(
         batch = selected[batch_start:batch_start + BATCH_SIZE]
         quiz_buf = io.BytesIO()
         question_buf = io.BytesIO()
-        batch_quiz_ids: list[str] = []
 
         for lesson_id, course_id, teacher_id in batch:
             quiz_id = str(uuid.uuid4())
-            batch_quiz_ids.append(quiz_id)
             quiz_buf.write(f"{quiz_id}\t{lesson_id}\t{course_id}\t{teacher_id}\n".encode())
 
-            # Assign a subject to the course for generating relevant questions
             if course_id not in course_subjects:
                 course_subjects[course_id] = random.choice(subjects)
             subj = course_subjects[course_id]
 
             num_questions = random.randint(3, 5)
+            questions = _generate_questions(subj, num_questions)
             q_ids = []
-            for q_order in range(num_questions):
+            correct_indices = []
+            for text, options_json, correct_idx, explanation, q_order in questions:
                 q_id = str(uuid.uuid4())
                 q_ids.append(q_id)
-                text, options_json, correct_idx, explanation, _ = _generate_question(subj, q_order)
-                # Escape tabs and newlines in text fields for COPY format
+                correct_indices.append(correct_idx)
                 text_safe = text.replace("\t", " ").replace("\n", " ")
                 explanation_safe = explanation.replace("\t", " ").replace("\n", " ")
                 question_buf.write(
                     f"{q_id}\t{quiz_id}\t{text_safe}\t{options_json}\t{correct_idx}\t{explanation_safe}\t{q_order}\n".encode()
                 )
-            quiz_map[quiz_id] = q_ids
+            quiz_map[quiz_id] = (q_ids, correct_indices)
 
         quiz_buf.seek(0)
         async with pool.acquire() as conn:
@@ -639,7 +639,7 @@ async def seed_concepts(
 async def seed_quiz_attempts_and_mastery(
     pool: asyncpg.Pool,
     course_students: dict[str, list[str]],
-    quiz_data: list[tuple[str, str, int]],
+    quiz_data: list[tuple[str, str, list[int]]],
     concept_map: dict[str, list[tuple[str, str]]],
 ) -> list[tuple[str, str, float]]:
     """Seed quiz attempts and concept mastery. Returns [(student_id, course_id, score)]."""
@@ -656,7 +656,7 @@ async def seed_quiz_attempts_and_mastery(
     for _ in range(QUIZ_ATTEMPT_COUNT * 2):  # oversample for dedup
         if written >= QUIZ_ATTEMPT_COUNT:
             break
-        quiz_id, course_id, num_questions = random.choice(quiz_data)
+        quiz_id, course_id, correct_indices = random.choice(quiz_data)
         students = course_students.get(course_id, [])
         if not students:
             continue
@@ -666,13 +666,23 @@ async def seed_quiz_attempts_and_mastery(
             continue
         seen.add(key)
 
-        # Generate random answers and score
-        answers = [random.randint(0, 3) for _ in range(num_questions)]
-        # Weighted toward higher scores for demo appeal
-        score = random.choices(
-            [1.0, 0.75, 0.5, 0.25, 0.0],
-            weights=[30, 30, 20, 15, 5],
+        # Generate answers that produce a realistic score
+        num_q = len(correct_indices)
+        num_correct = random.choices(
+            list(range(num_q + 1)),
+            weights=[5] + [15] * max(num_q - 2, 0) + [30, 30] if num_q >= 2 else [30, 30],
         )[0]
+        # Build answer list: first num_correct match, rest are wrong
+        indices = list(range(num_q))
+        random.shuffle(indices)
+        answers = [0] * num_q
+        for i, idx in enumerate(indices):
+            if i < num_correct:
+                answers[idx] = correct_indices[idx]
+            else:
+                wrong = [x for x in range(4) if x != correct_indices[idx]]
+                answers[idx] = random.choice(wrong)
+        score = round(num_correct / num_q, 2) if num_q > 0 else 0.0
         answers_json = json.dumps(answers)
         attempt_buf.write(f"{quiz_id}\t{student_id}\t{answers_json}\t{score}\n".encode())
         attempts.append((student_id, course_id, score))
@@ -1122,13 +1132,14 @@ async def seed_learning(
     concept_map = await seed_concepts(learning_pool, course_lessons)
 
     # 3. Quiz attempts + concept mastery
-    # Build quiz data: (quiz_id, course_id, num_questions)
-    quiz_rows = await learning_pool.fetch("""
-        SELECT q.id, q.course_id, count(qu.id) as num_q
-        FROM quizzes q JOIN questions qu ON qu.quiz_id = q.id
-        GROUP BY q.id, q.course_id
-    """)
-    quiz_data = [(str(r["id"]), str(r["course_id"]), int(r["num_q"])) for r in quiz_rows]
+    # Build quiz data: (quiz_id, course_id, correct_indices) from quiz_map + DB
+    quiz_course_rows = await learning_pool.fetch("SELECT id, course_id FROM quizzes")
+    quiz_course_map = {str(r["id"]): str(r["course_id"]) for r in quiz_course_rows}
+    quiz_data = [
+        (qid, quiz_course_map[qid], correct_indices)
+        for qid, (_q_ids, correct_indices) in quiz_map.items()
+        if qid in quiz_course_map
+    ]
 
     quiz_attempts = await seed_quiz_attempts_and_mastery(
         learning_pool, course_students, quiz_data, concept_map,
