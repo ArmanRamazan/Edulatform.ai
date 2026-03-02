@@ -942,9 +942,33 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ## AI Service (`:8006`)
 
+Все AI-эндпоинты (quiz, summary, tutor/chat) потребляют 1 кредит за вызов из общего дневного пула.
+Лимиты зависят от `subscription_tier` в JWT: `free` = 10/день, `student` = 100/день, `pro` = безлимит.
+
+### GET /ai/credits/me
+
+Статус кредитов текущего пользователя. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "used": 3,
+  "limit": 10,
+  "remaining": 7,
+  "reset_at": "2026-03-04T00:00:00+00:00",
+  "tier": "free"
+}
+```
+
+> `limit = -1` и `remaining = 999999` для `pro` тира.
+
+---
+
 ### POST /ai/quiz/generate
 
-Генерация квиза из содержания урока через Gemini Flash. Требует JWT.
+Генерация квиза из содержания урока через Gemini Flash. Требует JWT. Потребляет 1 AI-кредит.
 
 **Headers:** `Authorization: Bearer <token>`
 
@@ -1033,7 +1057,7 @@ Mock оплата курса. Всегда возвращает `status=complete
 | Code | Причина |
 |------|---------|
 | 401 | Отсутствует или невалидный токен |
-| 403 | Дневной лимит чатов исчерпан (10/день) |
+| 403 | AI-кредиты исчерпаны (free: 10/день, student: 100/день, pro: безлимит) |
 
 ---
 

@@ -13,7 +13,7 @@
 | Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
 | Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, подписки, GET /me, GET /:id |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read |
-| AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, credit tracking |
+| AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers) |
 | Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards (auto-generated from quiz mistakes), spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, 22 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |

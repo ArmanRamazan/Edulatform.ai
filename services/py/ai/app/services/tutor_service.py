@@ -1,7 +1,7 @@
 import logging
 import uuid
 
-from common.errors import AppError, ForbiddenError
+from common.errors import AppError
 from app.config import Settings
 from app.domain.models import ChatMessage, TutorChatResponse, TutorFeedbackResponse
 from app.repositories.llm_client import GeminiClient
@@ -24,11 +24,8 @@ class TutorService:
         message: str,
         lesson_content: str,
         session_id: str | None = None,
+        credits_remaining: int = 0,
     ) -> TutorChatResponse:
-        credits_used = await self._cache.get_credits_used(user_id)
-        if credits_used >= self._settings.tutor_daily_limit:
-            raise ForbiddenError("Daily tutor chat limit reached")
-
         if session_id is None:
             session_id = str(uuid.uuid4())
 
@@ -58,14 +55,11 @@ class TutorService:
             session_id, history, self._settings.tutor_session_ttl
         )
 
-        new_count = await self._cache.increment_credits(user_id)
-        remaining = max(0, self._settings.tutor_daily_limit - new_count)
-
         return TutorChatResponse(
             session_id=session_id,
             message=reply,
             model_used=self._llm.model_name,
-            credits_remaining=remaining,
+            credits_remaining=credits_remaining,
         )
 
     async def feedback(

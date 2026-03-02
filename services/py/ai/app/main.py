@@ -16,6 +16,7 @@ from app.repositories.llm_client import GeminiClient
 from app.repositories.cache import AICache
 from app.services.ai_service import AIService
 from app.services.tutor_service import TutorService
+from app.services.credit_service import CreditService
 from app.routes.ai import router as ai_router
 
 app_settings = Settings()
@@ -23,6 +24,7 @@ app_settings = Settings()
 _redis: Redis | None = None
 _ai_service: AIService | None = None
 _tutor_service: TutorService | None = None
+_credit_service: CreditService | None = None
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -34,6 +36,11 @@ def get_ai_service() -> AIService:
 def get_tutor_service() -> TutorService:
     assert _tutor_service is not None
     return _tutor_service
+
+
+def get_credit_service() -> CreditService:
+    assert _credit_service is not None
+    return _credit_service
 
 
 def _create_health_router() -> APIRouter:
@@ -72,7 +79,7 @@ def _create_health_router() -> APIRouter:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _redis, _ai_service, _tutor_service, _http_client
+    global _redis, _ai_service, _tutor_service, _credit_service, _http_client
 
     _redis = Redis.from_url(app_settings.redis_url)
     _http_client = httpx.AsyncClient()
@@ -81,6 +88,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     cache = AICache(_redis)
     _ai_service = AIService(llm, cache, app_settings)
     _tutor_service = TutorService(llm, cache, app_settings)
+    _credit_service = CreditService(cache=cache)
 
     yield
 

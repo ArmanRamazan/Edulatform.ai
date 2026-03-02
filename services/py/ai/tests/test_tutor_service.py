@@ -3,7 +3,7 @@ from uuid import uuid4
 import pytest
 from unittest.mock import AsyncMock
 
-from common.errors import AppError, ForbiddenError
+from common.errors import AppError
 from app.config import Settings
 from app.repositories.llm_client import GeminiClient
 from app.repositories.cache import AICache
@@ -36,9 +36,7 @@ class TestChat:
     async def test_new_session_creates_session_id(
         self, tutor_service, tutor_llm, tutor_cache
     ):
-        tutor_cache.get_credits_used.return_value = 0
         tutor_cache.get_conversation.return_value = []
-        tutor_cache.increment_credits.return_value = 1
         tutor_llm.generate.return_value = (
             "What do you think Python is best known for?",
             50,
@@ -50,23 +48,22 @@ class TestChat:
             lesson_id=str(uuid4()),
             message="What is Python?",
             lesson_content="Python is a high-level language.",
+            credits_remaining=9,
         )
 
         assert result.session_id is not None
         assert len(result.session_id) == 36  # UUID format
         assert result.message == "What do you think Python is best known for?"
         assert result.model_used == "gemini-2.0-flash-lite"
-        assert result.credits_remaining == 2  # limit=3, used=1
+        assert result.credits_remaining == 9
 
     async def test_existing_session_preserves_id(
         self, tutor_service, tutor_llm, tutor_cache
     ):
-        tutor_cache.get_credits_used.return_value = 0
         tutor_cache.get_conversation.return_value = [
             {"role": "user", "content": "Hello"},
             {"role": "assistant", "content": "Hi! What do you know about Python?"},
         ]
-        tutor_cache.increment_credits.return_value = 2
         tutor_llm.generate.return_value = ("Good question! Think about it.", 80, 20)
 
         result = await tutor_service.chat(
@@ -75,6 +72,7 @@ class TestChat:
             message="It's a language right?",
             lesson_content="Python is a high-level language.",
             session_id="existing-session-id",
+            credits_remaining=5,
         )
 
         assert result.session_id == "existing-session-id"
@@ -83,9 +81,7 @@ class TestChat:
     async def test_saves_conversation_history(
         self, tutor_service, tutor_llm, tutor_cache
     ):
-        tutor_cache.get_credits_used.return_value = 0
         tutor_cache.get_conversation.return_value = []
-        tutor_cache.increment_credits.return_value = 1
         tutor_llm.generate.return_value = ("What do you think?", 50, 20)
 
         await tutor_service.chat(
@@ -93,6 +89,7 @@ class TestChat:
             lesson_id=str(uuid4()),
             message="Tell me about Python",
             lesson_content="Python is a language.",
+            credits_remaining=9,
         )
 
         tutor_cache.save_conversation.assert_called_once()
@@ -105,12 +102,10 @@ class TestChat:
     async def test_includes_history_in_prompt(
         self, tutor_service, tutor_llm, tutor_cache
     ):
-        tutor_cache.get_credits_used.return_value = 0
         tutor_cache.get_conversation.return_value = [
             {"role": "user", "content": "Hi"},
             {"role": "assistant", "content": "Hello!"},
         ]
-        tutor_cache.increment_credits.return_value = 1
         tutor_llm.generate.return_value = ("Sure!", 100, 20)
 
         await tutor_service.chat(
@@ -118,6 +113,7 @@ class TestChat:
             lesson_id=str(uuid4()),
             message="Next question",
             lesson_content="Lesson text here.",
+            credits_remaining=5,
         )
 
         prompt = tutor_llm.generate.call_args[0][0]
@@ -126,25 +122,10 @@ class TestChat:
         assert "Student: Next question" in prompt
         assert "LESSON CONTENT:" in prompt
 
-    async def test_daily_limit_reached_raises_forbidden(
-        self, tutor_service, tutor_cache
-    ):
-        tutor_cache.get_credits_used.return_value = 3  # at limit
-
-        with pytest.raises(ForbiddenError, match="Daily tutor chat limit reached"):
-            await tutor_service.chat(
-                user_id="user-1",
-                lesson_id=str(uuid4()),
-                message="Hello",
-                lesson_content="Content here.",
-            )
-
-    async def test_credits_remaining_calculated_correctly(
+    async def test_credits_remaining_passed_through(
         self, tutor_service, tutor_llm, tutor_cache
     ):
-        tutor_cache.get_credits_used.return_value = 0
         tutor_cache.get_conversation.return_value = []
-        tutor_cache.increment_credits.return_value = 3  # last credit used
         tutor_llm.generate.return_value = ("Answer", 50, 20)
 
         result = await tutor_service.chat(
@@ -152,9 +133,10 @@ class TestChat:
             lesson_id=str(uuid4()),
             message="Hi",
             lesson_content="Content.",
+            credits_remaining=42,
         )
 
-        assert result.credits_remaining == 0
+        assert result.credits_remaining == 42
 
 
 class TestFeedback:

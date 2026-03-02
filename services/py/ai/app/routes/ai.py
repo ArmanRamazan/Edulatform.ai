@@ -11,6 +11,7 @@ from app.domain.models import (
 )
 from app.services.ai_service import AIService
 from app.services.tutor_service import TutorService
+from app.services.credit_service import CreditService
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -23,6 +24,11 @@ def _get_ai_service() -> AIService:
 def _get_tutor_service() -> TutorService:
     from app.main import get_tutor_service
     return get_tutor_service()
+
+
+def _get_credit_service() -> CreditService:
+    from app.main import get_credit_service
+    return get_credit_service()
 
 
 def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
@@ -38,9 +44,21 @@ def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
         return {
             "user_id": UUID(payload["sub"]),
             "role": payload.get("role", "student"),
+            "subscription_tier": payload.get("subscription_tier", "free"),
         }
     except (jwt.PyJWTError, ValueError, KeyError) as exc:
         raise AppError("Invalid token", status_code=401) from exc
+
+
+@router.get("/credits/me")
+async def credits_me(
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    credit_service: Annotated[CreditService, Depends(_get_credit_service)],
+) -> dict:
+    return await credit_service.get_status(
+        user_id=str(claims["user_id"]),
+        tier=claims["subscription_tier"],
+    )
 
 
 @router.post("/quiz/generate", response_model=QuizResponse)
@@ -48,7 +66,12 @@ async def generate_quiz(
     body: QuizRequest,
     claims: Annotated[dict, Depends(_get_current_user_claims)],
     service: Annotated[AIService, Depends(_get_ai_service)],
+    credit_service: Annotated[CreditService, Depends(_get_credit_service)],
 ) -> QuizResponse:
+    await credit_service.check_and_consume(
+        user_id=str(claims["user_id"]),
+        tier=claims["subscription_tier"],
+    )
     return await service.generate_quiz(body.lesson_id, body.content)
 
 
@@ -57,7 +80,12 @@ async def generate_summary(
     body: SummaryRequest,
     claims: Annotated[dict, Depends(_get_current_user_claims)],
     service: Annotated[AIService, Depends(_get_ai_service)],
+    credit_service: Annotated[CreditService, Depends(_get_credit_service)],
 ) -> SummaryResponse:
+    await credit_service.check_and_consume(
+        user_id=str(claims["user_id"]),
+        tier=claims["subscription_tier"],
+    )
     return await service.generate_summary(body.lesson_id, body.content)
 
 
@@ -66,13 +94,19 @@ async def tutor_chat(
     body: TutorChatRequest,
     claims: Annotated[dict, Depends(_get_current_user_claims)],
     service: Annotated[TutorService, Depends(_get_tutor_service)],
+    credit_service: Annotated[CreditService, Depends(_get_credit_service)],
 ) -> TutorChatResponse:
+    credits_remaining = await credit_service.check_and_consume(
+        user_id=str(claims["user_id"]),
+        tier=claims["subscription_tier"],
+    )
     return await service.chat(
         user_id=str(claims["user_id"]),
         lesson_id=str(body.lesson_id),
         message=body.message,
         lesson_content=body.lesson_content,
         session_id=body.session_id,
+        credits_remaining=credits_remaining,
     )
 
 
