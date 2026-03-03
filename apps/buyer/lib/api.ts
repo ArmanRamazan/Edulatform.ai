@@ -246,6 +246,14 @@ export interface TutorChatResponse {
   credits_remaining: number;
 }
 
+export interface AiCreditsResponse {
+  used: number;
+  limit: number;
+  remaining: number;
+  reset_at: string;
+  tier: string;
+}
+
 export interface TutorFeedbackResponse {
   status: string;
 }
@@ -657,6 +665,11 @@ export const ai = {
       method: "POST",
       headers: authHeaders(token),
       body: JSON.stringify(data),
+    });
+  },
+  credits(token: string) {
+    return request<AiCreditsResponse>(`${AI_URL}/ai/credits/me`, {
+      headers: authHeaders(token),
     });
   },
 };

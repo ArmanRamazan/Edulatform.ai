@@ -8,7 +8,7 @@ import { useCourseList, useCategories } from "@/hooks/use-courses";
 import { useAuth } from "@/hooks/use-auth";
 import { getErrorMessage } from "@/lib/errors";
 
-export function HeroSection({ isLoggedIn }: { isLoggedIn: boolean }) {
+function HeroSection({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <section className="bg-gradient-to-br from-blue-600 to-indigo-700 px-4 py-20 text-white">
       <div className="mx-auto max-w-4xl text-center">
@@ -89,7 +89,7 @@ export function HeroSection({ isLoggedIn }: { isLoggedIn: boolean }) {
   );
 }
 
-export function SocialProofSection() {
+function SocialProofSection() {
   return (
     <section className="bg-white px-4 py-16">
       <div className="mx-auto max-w-4xl text-center">

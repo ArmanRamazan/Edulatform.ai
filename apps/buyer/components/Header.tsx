@@ -5,6 +5,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useDueCount } from "@/hooks/use-flashcards";
 import { useMyXp, useMyStreak } from "@/hooks/use-gamification";
 import { identity as identityApi } from "@/lib/api";
+import { AICreditIndicator } from "@/components/AICreditIndicator";
 
 const ROLE_LABELS: Record<string, string> = {
   student: "Студент",
@@ -95,6 +96,7 @@ export function Header() {
                         0
                       </span>
                     )}
+                    <AICreditIndicator token={token} />
                   </div>
                 )}
                 <span className="text-sm text-gray-500">{user.name}</span>

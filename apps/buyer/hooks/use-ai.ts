@@ -16,3 +16,12 @@ export function useSummary(token: string | null, lessonId: string, content: stri
     staleTime: 5 * 60 * 1000,
   });
 }
+
+export function useAICredits(token: string | null) {
+  return useQuery({
+    queryKey: ["ai-credits"],
+    queryFn: () => aiApi.credits(token!),
+    enabled: !!token,
+    staleTime: 30 * 1000,
+  });
+}
