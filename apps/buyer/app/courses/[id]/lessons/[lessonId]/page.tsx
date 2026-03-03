@@ -12,12 +12,16 @@ import { useCompletedLessons, useCompleteLesson } from "@/hooks/use-progress";
 import { useQuiz, useSubmitQuiz, useCreateQuiz } from "@/hooks/use-quiz";
 import { useSummary, useGenerateQuiz } from "@/hooks/use-ai";
 import { usePaywall } from "@/hooks/use-paywall";
-import { TutorDrawer } from "@/components/TutorDrawer";
 import { getErrorMessage } from "@/lib/errors";
 import type { QuizQuestionResult } from "@/lib/api";
 
 const PaywallDialog = dynamic(
   () => import("@/components/PaywallDialog").then((m) => ({ default: m.PaywallDialog })),
+);
+
+const TutorDrawer = dynamic(
+  () => import("@/components/TutorDrawer").then((m) => ({ default: m.TutorDrawer })),
+  { ssr: false },
 );
 
 export default function LessonPage({
