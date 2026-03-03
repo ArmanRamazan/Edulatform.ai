@@ -454,6 +454,11 @@ QUESTION_BANK: dict[str, list[tuple[str, list[str], int, str]]] = {
         ("What is the difference between local and remote push notifications?", ["No difference", "Local are scheduled by the app; remote are sent from a server", "Remote are faster", "Local need internet"], 1, "Local notifications are triggered by the app itself; remote notifications originate from a backend server."),
         ("What is state management in mobile development?", ["Managing server databases", "Handling and synchronizing app data across UI components", "Version control", "Memory allocation"], 1, "State management ensures consistent data flow and UI updates across components."),
         ("What is an APK?", ["A programming language", "Android application package for distribution", "An API protocol", "A design tool"], 1, "APK (Android Package Kit) is the file format used to distribute Android applications."),
+        ("What is hot reload?", ["Restarting the entire app", "Injecting updated code without losing app state", "Clearing the cache", "Rebuilding the APK"], 1, "Hot reload injects changed code into the running app, preserving the current state for faster iteration."),
+        ("What is the purpose of AsyncStorage/SharedPreferences?", ["Network caching", "Persisting key-value data locally on the device", "Managing app permissions", "Handling push notifications"], 1, "AsyncStorage (React Native) and SharedPreferences (Android) store simple key-value pairs locally."),
+        ("What is a splash screen?", ["The main app screen", "A brief introductory screen shown while the app loads", "An error screen", "A settings page"], 1, "Splash screens display branding or a loading indicator while the app initializes resources."),
+        ("What does offline-first architecture mean?", ["The app never uses the internet", "The app works without connectivity and syncs data when online", "The app caches everything permanently", "The app requires airplane mode"], 1, "Offline-first apps store data locally and synchronize with the server when a network connection is available."),
+        ("What is the purpose of app sandboxing?", ["Improving performance", "Isolating app data and processes for security", "Compressing app storage", "Enabling multitasking"], 1, "Sandboxing restricts each app to its own isolated environment, preventing unauthorized access to other apps' data."),
     ],
     "DevOps": [
         ("What is CI/CD?", ["A programming language", "Continuous Integration and Continuous Delivery/Deployment", "A cloud provider", "A testing framework"], 1, "CI/CD automates building, testing, and deploying code changes to production."),
@@ -461,6 +466,11 @@ QUESTION_BANK: dict[str, list[tuple[str, list[str], int, str]]] = {
         ("What does Kubernetes orchestrate?", ["Source code", "Container deployment, scaling, and management", "Database queries", "Frontend components"], 1, "Kubernetes automates deploying, scaling, and managing containerized applications across clusters."),
         ("What is Infrastructure as Code (IaC)?", ["Writing code inside infrastructure", "Managing infrastructure through declarative configuration files", "A monitoring tool", "A container format"], 1, "IaC tools like Terraform define infrastructure in code, enabling version control and reproducibility."),
         ("What is the purpose of a load balancer?", ["Compressing files", "Distributing incoming traffic across multiple servers", "Managing databases", "Encrypting data"], 1, "Load balancers distribute requests across servers to ensure no single server is overwhelmed."),
+        ("What is a rolling deployment?", ["Deploying to all servers at once", "Gradually replacing old instances with new ones", "Rolling back a failed deployment", "Deploying only on weekends"], 1, "Rolling deployments update instances incrementally, reducing downtime and risk during releases."),
+        ("What does a reverse proxy do?", ["Blocks all incoming traffic", "Sits in front of backend servers forwarding client requests", "Encrypts database connections", "Monitors CPU usage"], 1, "A reverse proxy (e.g., Nginx) receives client requests and forwards them to appropriate backend servers."),
+        ("What is blue-green deployment?", ["Running two environments and switching traffic between them", "Deploying code only at night", "Using two programming languages", "A testing strategy"], 0, "Blue-green deployment maintains two identical environments, switching traffic to the updated one instantly."),
+        ("What is the purpose of a health check endpoint?", ["User authentication", "Allowing monitoring systems to verify service availability", "Logging user activity", "Database backup"], 1, "Health check endpoints return the service status, enabling load balancers and monitors to detect failures."),
+        ("What is GitOps?", ["Using Git for social networking", "Managing infrastructure and deployments through Git repositories", "A Git GUI tool", "A branching strategy"], 1, "GitOps uses Git as the single source of truth for declarative infrastructure and application delivery."),
     ],
     "Cloud Computing": [
         ("What is serverless computing?", ["Computing without any servers", "A model where the cloud provider manages server infrastructure", "Peer-to-peer computing", "Edge computing"], 1, "Serverless lets developers run code without managing servers; the provider handles scaling and infrastructure."),
@@ -468,6 +478,11 @@ QUESTION_BANK: dict[str, list[tuple[str, list[str], int, str]]] = {
         ("What does a CDN do?", ["Compiles code", "Caches and serves content from geographically distributed servers", "Creates databases", "Manages containers"], 1, "CDNs reduce latency by serving static content from edge locations closer to the user."),
         ("What is IAM in cloud services?", ["An encryption algorithm", "Identity and Access Management for controlling resource access", "A monitoring dashboard", "A storage service"], 1, "IAM defines who (identity) can do what (access) on which cloud resources."),
         ("What is the difference between IaaS, PaaS, and SaaS?", ["They are the same", "IaaS provides infrastructure, PaaS provides platform, SaaS provides software", "Only SaaS is cloud-based", "PaaS is the cheapest"], 1, "IaaS gives raw compute/storage, PaaS adds runtime/tools, SaaS delivers complete applications."),
+        ("What is object storage?", ["A file system with directories", "Flat storage that manages data as objects with metadata", "RAM-based caching", "A database type"], 1, "Object storage (e.g., S3) stores data as objects in a flat namespace with rich metadata and HTTP access."),
+        ("What is a VPC?", ["Virtual Programming Console", "Virtual Private Cloud — an isolated network segment in the cloud", "A container format", "A monitoring tool"], 1, "A VPC provides a logically isolated section of the cloud where you can launch resources in a defined network."),
+        ("What is multi-region deployment?", ["Using multiple programming languages", "Running applications across different geographic cloud regions", "Deploying microservices", "A backup strategy"], 1, "Multi-region deployment distributes workloads across geographies for low latency and disaster recovery."),
+        ("What is cloud-native architecture?", ["Running legacy apps in the cloud", "Designing applications specifically to exploit cloud capabilities", "Using only free cloud services", "A migration strategy"], 1, "Cloud-native apps leverage containers, microservices, and dynamic orchestration to maximize cloud benefits."),
+        ("What are spot/preemptible instances?", ["Dedicated servers", "Discounted compute instances that can be reclaimed by the provider", "Free-tier instances", "GPU-only machines"], 1, "Spot instances offer significant cost savings but can be interrupted when the provider needs the capacity back."),
     ],
     "Cybersecurity": [
         ("What is SQL injection?", ["A database optimization technique", "An attack that inserts malicious SQL through user input", "A query caching method", "A stored procedure"], 1, "SQL injection exploits unsanitized user input to execute unauthorized SQL commands."),
@@ -475,6 +490,11 @@ QUESTION_BANK: dict[str, list[tuple[str, list[str], int, str]]] = {
         ("What is multi-factor authentication (MFA)?", ["Using a strong password", "Requiring two or more verification methods to prove identity", "Encrypting passwords", "Rate limiting login attempts"], 1, "MFA combines something you know (password), have (phone), or are (biometrics) for stronger security."),
         ("What is the principle of least privilege?", ["Give everyone admin access", "Grant users only the minimum permissions needed for their role", "Use the simplest password possible", "Disable all security features"], 1, "Least privilege limits access rights to the bare minimum needed, reducing attack surface."),
         ("What is a firewall?", ["A type of malware", "A network security system that monitors and controls traffic", "A password manager", "A backup tool"], 1, "Firewalls filter incoming and outgoing network traffic based on predefined security rules."),
+        ("What is a zero-day vulnerability?", ["A bug found on day zero of development", "A previously unknown security flaw with no available patch", "A vulnerability that takes zero days to fix", "An expired security certificate"], 1, "A zero-day is a vulnerability discovered before the vendor has released a fix, leaving systems exposed."),
+        ("What is phishing?", ["A network scanning technique", "A social engineering attack that tricks users into revealing sensitive data", "A type of DDoS attack", "A password cracking method"], 1, "Phishing uses fraudulent emails or websites to deceive victims into disclosing credentials or personal information."),
+        ("What is the CIA triad in cybersecurity?", ["A government agency model", "Confidentiality, Integrity, and Availability — core security principles", "Certificate, Identity, Authentication", "A risk assessment framework"], 1, "The CIA triad defines three fundamental security goals: keeping data secret, accurate, and accessible."),
+        ("What is a VPN?", ["A type of firewall", "An encrypted tunnel that protects data transmitted over public networks", "A virus protection tool", "A password vault"], 1, "A VPN creates an encrypted connection over the internet, hiding your traffic from eavesdroppers."),
+        ("What is penetration testing?", ["Testing network speed", "Authorized simulated attacks to identify security weaknesses", "Installing security patches", "Monitoring server performance"], 1, "Penetration testing proactively finds vulnerabilities by simulating real-world attacks in a controlled manner."),
     ],
     "Algorithms": [
         ("What is the time complexity of binary search?", ["O(n)", "O(log n)", "O(n log n)", "O(1)"], 1, "Binary search halves the search space each step, resulting in O(log n) time complexity."),
@@ -684,7 +704,11 @@ async def seed_quiz_attempts_and_mastery(
                 answers[idx] = random.choice(wrong)
         score = round(num_correct / num_q, 2) if num_q > 0 else 0.0
         answers_json = json.dumps(answers)
-        attempt_buf.write(f"{quiz_id}\t{student_id}\t{answers_json}\t{score}\n".encode())
+        # Spread attempts across last 30 days for realistic timestamps
+        days_ago = random.randint(0, 30)
+        hours_offset = random.randint(0, 23)
+        completed_at = (datetime.now(timezone.utc) - timedelta(days=days_ago, hours=hours_offset)).isoformat()
+        attempt_buf.write(f"{quiz_id}\t{student_id}\t{answers_json}\t{score}\t{completed_at}\n".encode())
         attempts.append((student_id, course_id, score))
         written += 1
 
@@ -693,7 +717,7 @@ async def seed_quiz_attempts_and_mastery(
             async with pool.acquire() as conn:
                 await conn.copy_to_table(
                     "quiz_attempts", source=attempt_buf,
-                    columns=["quiz_id", "student_id", "answers", "score"], format="text",
+                    columns=["quiz_id", "student_id", "answers", "score", "completed_at"], format="text",
                 )
             attempt_buf = io.BytesIO()
             print(f"  Quiz attempts: {written}/{QUIZ_ATTEMPT_COUNT}")
@@ -704,7 +728,7 @@ async def seed_quiz_attempts_and_mastery(
         async with pool.acquire() as conn:
             await conn.copy_to_table(
                 "quiz_attempts", source=attempt_buf,
-                columns=["quiz_id", "student_id", "answers", "score"], format="text",
+                columns=["quiz_id", "student_id", "answers", "score", "completed_at"], format="text",
             )
 
     print(f"Seeded {written} quiz attempts")
