@@ -7,6 +7,7 @@ Graceful shutdown on SIGINT/SIGTERM/SIGHUP (terminal close).
 Usage:
     ./run.sh tasks/phase-2.5.yaml              # run a task file
     ./run.sh tasks/phase-2.5.yaml --dry-run    # preview tasks
+    ./run.sh tasks/phase-2.5.yaml --workers 3  # parallel mode (3 workers)
     ./run.sh --resume                          # continue from saved state
     ./run.sh --status                          # show progress
     ./run.sh --reset                           # clear state
@@ -23,9 +24,11 @@ import argparse
 import atexit
 import json
 import os
+import queue
 import signal
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -51,17 +54,25 @@ STATE_DIR = ORCH_DIR / ".state"
 LOG_DIR = ORCH_DIR / ".logs"
 PID_FILE = ORCH_DIR / ".pid"
 STOP_FILE = ORCH_DIR / ".stop"
+WORKTREE_DIR = ROOT / ".claude" / "worktrees"
 
 MAX_RETRIES = 2
 CLAUDE_TIMEOUT = 900  # 15 min per task
 TEST_TIMEOUT = 300    # 5 min per test
+DISPATCH_INTERVAL = 2  # seconds between queue scans
 
 # ---------------------------------------------------------------------------
 # Process management
 # ---------------------------------------------------------------------------
 
-_child_proc: subprocess.Popen | None = None
+_child_procs: dict[str, subprocess.Popen] = {}
+_child_procs_lock = threading.Lock()
 _shutdown_requested = False
+
+# Locks for parallel mode
+_state_lock = threading.Lock()
+_merge_lock = threading.Lock()
+_print_lock = threading.Lock()
 
 
 def _handle_signal(signum: int, _frame: object) -> None:
@@ -69,7 +80,7 @@ def _handle_signal(signum: int, _frame: object) -> None:
     global _shutdown_requested
     _shutdown_requested = True
     name = signal.Signals(signum).name
-    _p(f"\n  [{name}] Shutdown requested. Finishing current task...")
+    _p(f"\n  [{name}] Shutdown requested. Finishing current tasks...")
 
 
 for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
@@ -79,25 +90,36 @@ for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
         pass  # SIGHUP not available on Windows
 
 
-def _kill_child() -> None:
-    """Kill the child claude process if still running."""
-    global _child_proc
-    if _child_proc is None or _child_proc.poll() is not None:
-        return
-    _p("  Killing child process...")
-    try:
-        pgid = os.getpgid(_child_proc.pid)
-        os.killpg(pgid, signal.SIGTERM)
-        _child_proc.wait(timeout=5)
-    except (ProcessLookupError, subprocess.TimeoutExpired, OSError):
+def _kill_child(task_id: str | None = None) -> None:
+    """Kill a child process by task_id, or all if None."""
+    with _child_procs_lock:
+        if task_id is not None:
+            proc = _child_procs.get(task_id)
+            if proc is None or proc.poll() is not None:
+                _child_procs.pop(task_id, None)
+                return
+            targets = [(task_id, proc)]
+        else:
+            targets = [(tid, p) for tid, p in _child_procs.items()
+                        if p.poll() is None]
+
+    for tid, proc in targets:
+        _p(f"  Killing child process (task {tid})...")
         try:
-            _child_proc.kill()
-        except (ProcessLookupError, OSError):
-            pass
+            pgid = os.getpgid(proc.pid)
+            os.killpg(pgid, signal.SIGTERM)
+            proc.wait(timeout=5)
+        except (ProcessLookupError, subprocess.TimeoutExpired, OSError):
+            try:
+                proc.kill()
+            except (ProcessLookupError, OSError):
+                pass
+        with _child_procs_lock:
+            _child_procs.pop(tid, None)
 
 
 def _cleanup() -> None:
-    """atexit handler: kill child, remove PID file."""
+    """atexit handler: kill all children, remove PID file."""
     _kill_child()
     if PID_FILE.exists():
         try:
@@ -113,9 +135,12 @@ atexit.register(_cleanup)
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _p(msg: str) -> None:
-    """Print with flush."""
-    print(msg, flush=True)
+def _p(msg: str, task_id: str | None = None) -> None:
+    """Print with flush. Thread-safe with optional [task_id] prefix."""
+    if task_id:
+        msg = f"  [{task_id}] {msg.lstrip()}"
+    with _print_lock:
+        print(msg, flush=True)
 
 
 def _now() -> str:
@@ -126,15 +151,18 @@ def _should_stop() -> bool:
     if _shutdown_requested:
         return True
     if STOP_FILE.exists():
-        STOP_FILE.unlink()
+        try:
+            STOP_FILE.unlink()
+        except OSError:
+            pass
         return True
     return False
 
 
-def _has_git_changes() -> bool:
+def _has_git_changes(cwd: Path | None = None) -> bool:
     result = subprocess.run(
         ["git", "status", "--porcelain"],
-        cwd=str(ROOT), capture_output=True, text=True,
+        cwd=str(cwd or ROOT), capture_output=True, text=True,
     )
     return bool(result.stdout.strip())
 
@@ -261,9 +289,9 @@ def _stream_process(
     *,
     shell: bool = False,
     prefix: str = "  | ",
+    task_id: str | None = None,
 ) -> tuple[int, str]:
     """Run subprocess with real-time streaming. Returns (exit_code, output)."""
-    global _child_proc
     collected: list[str] = []
     start = time.time()
 
@@ -274,75 +302,176 @@ def _stream_process(
             text=True, shell=shell, bufsize=1,
             start_new_session=True,  # own process group for clean kill
         )
-        _child_proc = proc
+        proc_key = task_id or "_default"
+        with _child_procs_lock:
+            _child_procs[proc_key] = proc
 
         assert proc.stdout is not None
         for line in proc.stdout:
             collected.append(line)
             display = line.rstrip("\n")[:200]
-            print(f"{prefix}{display}", flush=True)
+            with _print_lock:
+                print(f"{prefix}{display}", flush=True)
 
             if _shutdown_requested:
-                _kill_child()
+                _kill_child(proc_key)
                 break
 
         proc.wait(timeout=timeout)
         elapsed = time.time() - start
         output = "".join(collected)
-        print(f"{prefix}--- Done in {elapsed:.0f}s (exit={proc.returncode}) ---", flush=True)
-        _child_proc = None
+        with _print_lock:
+            print(f"{prefix}--- Done in {elapsed:.0f}s (exit={proc.returncode}) ---", flush=True)
+        with _child_procs_lock:
+            _child_procs.pop(proc_key, None)
         return proc.returncode, output
 
     except subprocess.TimeoutExpired:
-        _kill_child()
+        proc_key = task_id or "_default"
+        _kill_child(proc_key)
         output = "".join(collected)
-        _child_proc = None
         return 1, output + f"\nTIMEOUT after {timeout}s"
 
     except FileNotFoundError:
-        _child_proc = None
+        proc_key = task_id or "_default"
+        with _child_procs_lock:
+            _child_procs.pop(proc_key, None)
         return 1, f"Command not found: {cmd[0] if isinstance(cmd, list) else cmd}"
 
 
-def run_claude(prompt: str) -> tuple[int, str]:
+def run_claude(prompt: str, cwd: Path | None = None, task_id: str | None = None) -> tuple[int, str]:
     """Execute task via Claude Code CLI."""
+    work_dir = str(cwd or ROOT)
     cmd = ["claude", "--dangerously-skip-permissions", "-p", prompt]
-    _p("  +-- Claude Code starting...")
-    code, output = _stream_process(cmd, str(ROOT), CLAUDE_TIMEOUT, prefix="  |  ")
-    _p(f"  +-- Claude Code done (exit={code})")
+    _p("  +-- Claude Code starting...", task_id)
+    prefix = f"  [{task_id}] |  " if task_id else "  |  "
+    code, output = _stream_process(cmd, work_dir, CLAUDE_TIMEOUT, prefix=prefix, task_id=task_id)
+    _p(f"  +-- Claude Code done (exit={code})", task_id)
     return code, output
 
 
-def run_tests(command: str) -> tuple[int, str]:
+def run_tests(command: str, cwd: Path | None = None, task_id: str | None = None) -> tuple[int, str]:
     """Run test/build verification."""
-    _p(f"  +-- Tests: {command}")
-    code, output = _stream_process(command, str(ROOT), TEST_TIMEOUT, shell=True, prefix="  |  ")
+    work_dir = str(cwd or ROOT)
+    _p(f"  +-- Tests: {command}", task_id)
+    prefix = f"  [{task_id}] |  " if task_id else "  |  "
+    code, output = _stream_process(command, work_dir, TEST_TIMEOUT, shell=True, prefix=prefix, task_id=task_id)
     status = "PASSED" if code == 0 else "FAILED"
-    _p(f"  +-- Tests {status}")
+    _p(f"  +-- Tests {status}", task_id)
     return code, output
 
 
-def run_commit(task: Task) -> tuple[int, str]:
+def run_commit(task: Task, cwd: Path | None = None) -> tuple[int, str]:
     """Stage all changes and commit."""
+    work_dir = str(cwd or ROOT)
     scope = task.scope.split(":")[-1] if ":" in task.scope else task.scope
     msg = f"feat({scope}): {task.title.lower()}"
 
-    subprocess.run(["git", "add", "-A"], cwd=str(ROOT), capture_output=True)
+    subprocess.run(["git", "add", "-A"], cwd=work_dir, capture_output=True)
 
     # Check if anything to commit
-    check = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=str(ROOT), capture_output=True)
+    check = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=work_dir, capture_output=True)
     if check.returncode == 0:
         return 0, "Nothing to commit"
 
     result = subprocess.run(
         ["git", "commit", "-m", msg],
-        cwd=str(ROOT), capture_output=True, text=True,
+        cwd=work_dir, capture_output=True, text=True,
     )
     return result.returncode, result.stdout + result.stderr
 
 
 # ---------------------------------------------------------------------------
-# Task execution loop
+# Git worktree management
+# ---------------------------------------------------------------------------
+
+def _create_worktree(task_id: str) -> Path:
+    """Create a git worktree for a task. Returns the worktree path."""
+    wt_path = WORKTREE_DIR / f"task-{task_id}"
+    branch = f"orch/task-{task_id}"
+
+    WORKTREE_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Remove stale worktree if exists
+    if wt_path.exists():
+        subprocess.run(
+            ["git", "worktree", "remove", "--force", str(wt_path)],
+            cwd=str(ROOT), capture_output=True,
+        )
+        subprocess.run(
+            ["git", "branch", "-D", branch],
+            cwd=str(ROOT), capture_output=True,
+        )
+
+    result = subprocess.run(
+        ["git", "worktree", "add", str(wt_path), "-b", branch, "HEAD"],
+        cwd=str(ROOT), capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Failed to create worktree: {result.stderr}")
+
+    return wt_path
+
+
+def _merge_worktree(task_id: str) -> tuple[bool, str]:
+    """Merge worktree branch into main. Returns (success, error_message)."""
+    branch = f"orch/task-{task_id}"
+
+    with _merge_lock:
+        result = subprocess.run(
+            ["git", "merge", "--no-ff", "-m", f"merge: task {task_id}", branch],
+            cwd=str(ROOT), capture_output=True, text=True,
+        )
+        if result.returncode != 0:
+            # Conflict — abort
+            subprocess.run(
+                ["git", "merge", "--abort"],
+                cwd=str(ROOT), capture_output=True,
+            )
+            return False, result.stderr + result.stdout
+
+    return True, ""
+
+
+def _cleanup_worktree(task_id: str) -> None:
+    """Remove worktree and delete branch."""
+    wt_path = WORKTREE_DIR / f"task-{task_id}"
+    branch = f"orch/task-{task_id}"
+
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", str(wt_path)],
+        cwd=str(ROOT), capture_output=True,
+    )
+    subprocess.run(
+        ["git", "branch", "-D", branch],
+        cwd=str(ROOT), capture_output=True,
+    )
+
+
+def _prune_worktrees() -> None:
+    """Cleanup stale worktrees on startup."""
+    subprocess.run(
+        ["git", "worktree", "prune"],
+        cwd=str(ROOT), capture_output=True,
+    )
+    # Clean up leftover worktree directories
+    if WORKTREE_DIR.exists():
+        for entry in WORKTREE_DIR.iterdir():
+            if entry.is_dir() and entry.name.startswith("task-"):
+                _p(f"  Removing stale worktree: {entry.name}")
+                subprocess.run(
+                    ["git", "worktree", "remove", "--force", str(entry)],
+                    cwd=str(ROOT), capture_output=True,
+                )
+                task_id = entry.name.removeprefix("task-")
+                subprocess.run(
+                    ["git", "branch", "-D", f"orch/task-{task_id}"],
+                    cwd=str(ROOT), capture_output=True,
+                )
+
+
+# ---------------------------------------------------------------------------
+# Task execution — sequential (workers=1)
 # ---------------------------------------------------------------------------
 
 def _save_log(task: Task, attempt: int, output: str) -> None:
@@ -355,7 +484,7 @@ def _save_log(task: Task, attempt: int, output: str) -> None:
 
 
 def execute(state: State, dry_run: bool = False) -> None:
-    """Main execution loop with multi-pass dependency resolution."""
+    """Main execution loop with multi-pass dependency resolution (sequential)."""
     tasks = state.tasks
     total = len(tasks)
     task_map = {t.id: t for t in tasks}
@@ -494,6 +623,289 @@ def execute(state: State, dry_run: bool = False) -> None:
     _print_report(state)
 
 
+# ---------------------------------------------------------------------------
+# Task execution — parallel (workers > 1)
+# ---------------------------------------------------------------------------
+
+_SENTINEL = None  # poison pill for worker threads
+
+
+def _execute_task_in_worktree(task: Task, state: State, task_map: dict[str, Task]) -> None:
+    """Execute a single task inside a git worktree, then merge back."""
+    tid = task.id
+
+    # Create worktree
+    _p(f"Creating worktree...", tid)
+    try:
+        wt_path = _create_worktree(tid)
+    except RuntimeError as e:
+        _p(f"X Worktree creation failed: {e}", tid)
+        task.status = "failed"
+        task.error = f"Worktree creation failed: {e}"
+        task.finished_at = _now()
+        with _state_lock:
+            state.save()
+        return
+
+    _p(f"Worktree ready: {wt_path}", tid)
+    task.started_at = _now()
+
+    for attempt in range(1, MAX_RETRIES + 1):
+        task.attempts = attempt
+        task.status = "running"
+        with _state_lock:
+            state.save()
+
+        _p(f"Attempt {attempt}/{MAX_RETRIES}...", tid)
+
+        exit_code, output = run_claude(task.prompt, cwd=wt_path, task_id=tid)
+        _save_log(task, attempt, output)
+
+        if _shutdown_requested:
+            with _state_lock:
+                state.paused_at = _now()
+                state.save()
+            return
+
+        # Timeout
+        if exit_code != 0 and "TIMEOUT" in output:
+            _p("X TIMEOUT", tid)
+            task.status = "failed"
+            task.error = "Timeout"
+            break
+
+        # No changes produced
+        if not _has_git_changes(wt_path):
+            _p("X NO CODE CHANGES", tid)
+            task.error = "No code changes produced"
+            if attempt < MAX_RETRIES:
+                _p("Retrying with stronger prompt...", tid)
+                task.prompt += (
+                    "\n\nPREVIOUS ATTEMPT PRODUCED NO CODE CHANGES."
+                    "\nYou MUST write code. Do not ask questions. Just implement."
+                )
+                continue
+            task.status = "failed"
+            task.finished_at = _now()
+            with _state_lock:
+                state.save()
+            break
+
+        # Run tests
+        test_ok = True
+        if task.test:
+            test_code, test_out = run_tests(task.test, cwd=wt_path, task_id=tid)
+            test_ok = test_code == 0
+            if not test_ok:
+                task.error = test_out[-500:]
+
+        if exit_code == 0 and test_ok:
+            # Commit in worktree
+            commit_code, commit_out = run_commit(task, cwd=wt_path)
+            if commit_code == 0:
+                last_line = commit_out.strip().splitlines()[-1] if commit_out.strip() else "ok"
+                _p(f"V Committed: {last_line}", tid)
+
+            # Merge back to main
+            _p("Merging to main...", tid)
+            ok, err = _merge_worktree(tid)
+            if ok:
+                _p("V Merged successfully", tid)
+                _cleanup_worktree(tid)
+                task.status = "passed"
+                task.finished_at = _now()
+                with _state_lock:
+                    state.save()
+                return
+            else:
+                _p(f"X Merge conflict: {err[:200]}", tid)
+                task.status = "failed"
+                task.error = f"Merge conflict: {err[:200]}"
+                task.finished_at = _now()
+                _p(f"Worktree preserved at {wt_path}", tid)
+                with _state_lock:
+                    state.save()
+                return
+
+        elif attempt < MAX_RETRIES:
+            _p("Retrying with error context...", tid)
+            task.prompt += (
+                f"\n\nPREVIOUS ATTEMPT FAILED. Error:\n{task.error[:500]}"
+                "\nFix it and make sure tests pass."
+            )
+        else:
+            _p("X Max retries. FAILED.", tid)
+            task.status = "failed"
+            task.finished_at = _now()
+            with _state_lock:
+                state.save()
+
+    # If we got here via break (timeout/no changes), still save
+    if task.status == "failed":
+        _cleanup_worktree(tid)
+        with _state_lock:
+            state.save()
+
+
+def _worker_loop(
+    task_queue: queue.Queue,
+    state: State,
+    task_map: dict[str, Task],
+    dry_run: bool = False,
+) -> None:
+    """Worker thread: pull tasks from queue, execute in worktrees."""
+    while True:
+        item = task_queue.get()
+        if item is _SENTINEL:
+            task_queue.task_done()
+            break
+
+        task: Task = item
+
+        if _should_stop():
+            task_queue.task_done()
+            break
+
+        tid = task.id
+        _p(f">> Task {tid}: {task.title} [scope: {task.scope}]", tid)
+
+        if dry_run:
+            _p(f"[DRY RUN] prompt ({len(task.prompt)} chars)", tid)
+            _p(f"{task.prompt[:300]}...", tid)
+            task.status = "passed"
+            with _state_lock:
+                state.save()
+            task_queue.task_done()
+            continue
+
+        _execute_task_in_worktree(task, state, task_map)
+        task_queue.task_done()
+
+
+def execute_parallel(state: State, workers: int, dry_run: bool = False) -> None:
+    """Parallel execution: dispatch ready tasks to worker threads via worktrees."""
+    tasks = state.tasks
+    total = len(tasks)
+    task_map = {t.id: t for t in tasks}
+
+    _p(f"\n{'#' * 60}")
+    _p(f"  Phase {state.phase} — {total} tasks — {workers} workers (parallel)")
+    _p(f"{'#' * 60}")
+
+    task_queue: queue.Queue = queue.Queue()
+    enqueued: set[str] = set()
+
+    # Start worker threads
+    threads: list[threading.Thread] = []
+    for i in range(workers):
+        t = threading.Thread(
+            target=_worker_loop,
+            args=(task_queue, state, task_map, dry_run),
+            daemon=True,
+            name=f"worker-{i}",
+        )
+        t.start()
+        threads.append(t)
+
+    # Dispatcher loop
+    try:
+        idle_cycles = 0
+        while True:
+            if _should_stop():
+                _p("\n  STOP requested. Saving state...")
+                with _state_lock:
+                    state.paused_at = _now()
+                    state.save()
+                break
+
+            dispatched_this_cycle = False
+
+            # Find ready tasks
+            with _state_lock:
+                for task in tasks:
+                    if task.id in enqueued:
+                        continue
+                    if task.status != "pending":
+                        continue
+                    # Check deps resolved
+                    deps_ok = all(
+                        task_map[dep].status == "passed"
+                        for dep in task.depends_on
+                        if dep in task_map
+                    )
+                    # Check no dep failed (would block forever)
+                    deps_failed = any(
+                        task_map[dep].status in ("failed", "skipped")
+                        for dep in task.depends_on
+                        if dep in task_map
+                    )
+                    if deps_failed:
+                        task.status = "skipped"
+                        task.error = f"Dependency failed: {task.depends_on}"
+                        state.save()
+                        continue
+                    if deps_ok:
+                        enqueued.add(task.id)
+                        task_queue.put(task)
+                        dispatched_this_cycle = True
+                        _p(f"  Dispatched task {task.id}: {task.title}")
+
+            # Check completion
+            with _state_lock:
+                pending = sum(1 for t in tasks if t.status == "pending" and t.id not in enqueued)
+                running = sum(1 for t in tasks if t.status == "running")
+                queued = task_queue.qsize()
+
+            all_terminal = all(t.status in ("passed", "failed", "skipped") for t in tasks)
+            if all_terminal:
+                break
+
+            if pending == 0 and running == 0 and queued == 0:
+                if dispatched_this_cycle:
+                    # Just dispatched, give workers time to pick up
+                    idle_cycles = 0
+                else:
+                    idle_cycles += 1
+
+                # Wait a few cycles before declaring deadlock (workers may still be finishing)
+                if idle_cycles >= 3:
+                    with _state_lock:
+                        non_terminal = [t for t in tasks if t.status == "pending"]
+                        if non_terminal:
+                            _p(f"\n  WARNING: {len(non_terminal)} tasks permanently blocked")
+                            for t in non_terminal:
+                                t.status = "skipped"
+                                t.error = f"Dependencies never resolved: {t.depends_on}"
+                            state.save()
+                    break
+            else:
+                idle_cycles = 0
+
+            time.sleep(DISPATCH_INTERVAL)
+
+    finally:
+        # Send sentinel to each worker
+        for _ in threads:
+            task_queue.put(_SENTINEL)
+
+        # Wait for workers to finish (with timeout)
+        for t in threads:
+            t.join(timeout=30)
+
+    # Final report
+    with _state_lock:
+        state.save()
+
+    _p(f"\n{'#' * 60}")
+    _p("  EXECUTION COMPLETE")
+    _p(f"{'#' * 60}")
+    _print_report(state)
+
+
+# ---------------------------------------------------------------------------
+# Report
+# ---------------------------------------------------------------------------
+
 def _print_report(state: State) -> None:
     _p(f"\n{'=' * 60}")
     _p(f"  STATUS REPORT — Phase {state.phase}")
@@ -514,7 +926,7 @@ def _print_report(state: State) -> None:
 # Multi-file mode: run multiple YAML files sequentially
 # ---------------------------------------------------------------------------
 
-def execute_files(paths: list[Path], dry_run: bool = False) -> None:
+def execute_files(paths: list[Path], dry_run: bool = False, workers: int = 1) -> None:
     """Load and execute multiple YAML task files in order."""
     for path in paths:
         _p(f"\n  Loading: {path.name}")
@@ -529,7 +941,11 @@ def execute_files(paths: list[Path], dry_run: bool = False) -> None:
             phase=tf.phase,
             tasks=tf.tasks,
         )
-        execute(state, dry_run=dry_run)
+
+        if workers > 1:
+            execute_parallel(state, workers=workers, dry_run=dry_run)
+        else:
+            execute(state, dry_run=dry_run)
 
         # Stop if shutdown requested
         if _shutdown_requested:
@@ -555,6 +971,7 @@ Examples:
   ./run.sh tasks/phase-2.5.yaml              Run a task file
   ./run.sh tasks/phase-*.yaml                Run multiple files
   ./run.sh tasks/phase-2.5.yaml --dry-run    Preview tasks
+  ./run.sh tasks/phase-2.5.yaml --workers 3  Parallel mode (3 workers)
   ./run.sh --resume                          Resume from saved state
   ./run.sh --status                          Show progress
   ./run.sh --reset                           Clear state
@@ -573,6 +990,7 @@ Stop:
     parser.add_argument("--reset", action="store_true", help="Clear saved state")
     parser.add_argument("--is-running", action="store_true", help="Check if orchestrator is running")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
+    parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers (default: 1 = sequential)")
     args = parser.parse_args()
 
     # --is-running
@@ -610,6 +1028,10 @@ Stop:
         _print_report(state)
         return
 
+    # Startup cleanup: prune stale worktrees
+    if args.workers > 1:
+        _prune_worktrees()
+
     # --resume
     if args.resume:
         state = State.load()
@@ -620,7 +1042,10 @@ Stop:
         _p(f"\n  Resuming Phase {state.phase}")
         if state.paused_at:
             _p(f"  Paused at: {state.paused_at}")
-        execute(state, dry_run=args.dry_run)
+        if args.workers > 1:
+            execute_parallel(state, workers=args.workers, dry_run=args.dry_run)
+        else:
+            execute(state, dry_run=args.dry_run)
         return
 
     # Normal: run task files
@@ -642,8 +1067,10 @@ Stop:
     # Sort by filename for consistent order
     paths.sort(key=lambda p: p.name)
 
+    mode = f"{args.workers} workers (parallel)" if args.workers > 1 else "sequential"
     _p(f"\n  EduPlatform Orchestrator v2")
     _p(f"  Root: {ROOT}")
+    _p(f"  Mode: {mode}")
     _p(f"  Files: {len(paths)}\n")
 
     # Preview
@@ -664,7 +1091,7 @@ Stop:
             _p("  Aborted.")
             return
 
-    execute_files(paths, dry_run=args.dry_run)
+    execute_files(paths, dry_run=args.dry_run, workers=args.workers)
 
 
 if __name__ == "__main__":
