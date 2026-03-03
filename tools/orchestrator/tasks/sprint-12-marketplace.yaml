@@ -1,0 +1,913 @@
+phase: "sprint-12"
+description: "Marketplace v2 — bundles, coupons, referrals, invoices, refunds"
+
+tasks:
+  # ─── BACKEND: Course — Bundles & Promotions ─────────────────────────────────
+
+  - id: course-bundles
+    title: "Course bundles: group courses at discount"
+    scope: backend:course
+    prompt: |
+      Task: Add course bundles to the Course service — teachers can group courses and sell at a discount.
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - course-db on port 5434
+      - Existing: courses table with id, teacher_id, title, description, is_free, price, level, etc.
+      - Teacher ownership check pattern: service verifies teacher_id matches course.teacher_id
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth with role (student/teacher/admin) and is_verified
+      - Tests: AsyncMock(spec=Repository), pytest-asyncio, asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Migrations:
+         CREATE TABLE course_bundles (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           teacher_id UUID NOT NULL,
+           title VARCHAR(200) NOT NULL,
+           description TEXT,
+           price DECIMAL(10,2) NOT NULL,
+           discount_percent INT NOT NULL CHECK (discount_percent BETWEEN 1 AND 99),
+           is_active BOOLEAN NOT NULL DEFAULT true,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX idx_bundles_teacher ON course_bundles(teacher_id);
+
+         CREATE TABLE bundle_courses (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           bundle_id UUID NOT NULL REFERENCES course_bundles(id) ON DELETE CASCADE,
+           course_id UUID NOT NULL,
+           UNIQUE(bundle_id, course_id)
+         );
+         CREATE INDEX idx_bc_bundle ON bundle_courses(bundle_id);
+
+      2. Domain: CourseBundle entity (id, teacher_id, title, description, price, discount_percent,
+         is_active, created_at). BundleCourse entity (id, bundle_id, course_id).
+         BundleWithCourses VO (bundle + courses: list[Course]).
+
+      3. Repository: BundleRepository (ABC + SQL):
+         - create_bundle(teacher_id, title, description, price, discount_percent) → CourseBundle
+         - get_bundle(bundle_id) → CourseBundle | None
+         - get_bundle_with_courses(bundle_id) → BundleWithCourses | None
+           (JOIN bundle_courses + courses to get full course info)
+         - list_bundles(limit, offset, teacher_id=None) → list[CourseBundle]
+         - update_bundle(bundle_id, title, description, price, discount_percent) → CourseBundle
+         - delete_bundle(bundle_id) → bool
+         - add_course_to_bundle(bundle_id, course_id) → BundleCourse
+         - remove_course_from_bundle(bundle_id, course_id) → bool
+         - count_courses_in_bundle(bundle_id) → int
+
+      4. Service: BundleService:
+         - create_bundle(teacher_id, title, description, price, discount_percent, course_ids: list[UUID]) → BundleWithCourses
+           Validates: teacher is verified (is_verified from JWT), title 1-200 chars,
+           price > 0, discount 1-99%, course_ids length 2-10.
+           Verifies each course_id exists and belongs to this teacher.
+           Creates bundle + adds all courses in a transaction.
+         - get_bundle(bundle_id) → BundleWithCourses — raises NotFoundError
+         - list_bundles(limit=20, offset=0, teacher_id=None) → paginated
+           (public — shows only active bundles)
+         - update_bundle(teacher_id, bundle_id, ...) → BundleWithCourses
+           Owner check: bundle.teacher_id == teacher_id
+         - delete_bundle(teacher_id, bundle_id) → None
+           Owner check.
+
+      5. Routes: app/routes/bundles.py
+         - POST /bundles { title, description, price, discount_percent, course_ids } → 201 (teacher, verified)
+         - GET /bundles?limit=20&offset=0&teacher_id= → paginated (public)
+         - GET /bundles/{bundle_id} → BundleWithCourses (public)
+         - PUT /bundles/{bundle_id} { title, description, price, discount_percent } → 200 (teacher, owner)
+         - DELETE /bundles/{bundle_id} → 204 (teacher, owner)
+         Register router in main app.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_bundles.py:
+      1. test_create_bundle_success — teacher creates bundle with 3 courses
+      2. test_create_bundle_not_verified → 403
+      3. test_create_bundle_not_teacher → 403
+      4. test_create_bundle_too_many_courses → 400 (>10)
+      5. test_create_bundle_course_not_owned → 403
+      6. test_get_bundle_success → returns bundle with courses
+      7. test_get_bundle_not_found → 404
+      8. test_list_bundles — paginated list
+      9. test_update_bundle_owner — success
+      10. test_update_bundle_not_owner → 403
+      11. test_delete_bundle_owner → 204
+      12. test_delete_bundle_not_owner → 403
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain: no framework imports
+      - Parameterized SQL ($1, $2, ...)
+      - Owner check: bundle.teacher_id == JWT teacher_id
+      - Teacher must be verified (is_verified=true)
+      - Max 10 courses per bundle, min 2
+      - All courses in bundle must belong to the same teacher
+      - asyncpg.UniqueViolationError → ConflictError
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(course): add course bundles with discount pricing
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on: []
+
+  - id: promotional-pricing
+    title: "Flash sales and promotional pricing for courses"
+    scope: backend:course
+    prompt: |
+      Task: Add time-limited promotional pricing to the Course service.
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - Courses table has: id, teacher_id, title, price, is_free, etc.
+      - Teacher ownership check: service verifies teacher_id matches course.teacher_id
+      - JWT auth with role and is_verified
+      - Tests: AsyncMock, pytest-asyncio, asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Migration:
+         CREATE TABLE course_promotions (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           course_id UUID NOT NULL,
+           original_price DECIMAL(10,2) NOT NULL,
+           promo_price DECIMAL(10,2) NOT NULL,
+           starts_at TIMESTAMPTZ NOT NULL,
+           ends_at TIMESTAMPTZ NOT NULL,
+           is_active BOOLEAN NOT NULL DEFAULT true,
+           created_by UUID NOT NULL,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           CHECK (promo_price < original_price),
+           CHECK (ends_at > starts_at)
+         );
+         CREATE INDEX idx_promotions_course ON course_promotions(course_id);
+         CREATE INDEX idx_promotions_active ON course_promotions(is_active, starts_at, ends_at);
+
+      2. Domain: CoursePromotion entity (id, course_id, original_price, promo_price, starts_at,
+         ends_at, is_active, created_by, created_at).
+         ActivePromotion VO (promo_price, ends_at) — lightweight for embedding in course responses.
+
+      3. Repository: PromotionRepository (ABC + SQL):
+         - create_promotion(course_id, original_price, promo_price, starts_at, ends_at, created_by) → CoursePromotion
+         - get_active_promotion(course_id) → CoursePromotion | None
+           WHERE course_id = $1 AND is_active = true AND starts_at <= now() AND ends_at > now()
+         - get_course_promotions(course_id) → list[CoursePromotion]
+         - delete_promotion(promotion_id) → bool
+         - deactivate_expired() → int (batch job: set is_active=false where ends_at < now())
+
+      4. Service: PromotionService:
+         - create_promotion(teacher_id, course_id, promo_price, starts_at, ends_at) → CoursePromotion
+           Validates: teacher owns the course, promo_price < course.price, course is not free,
+           starts_at < ends_at, no overlapping active promotion for same course.
+           Sets original_price from course.price.
+         - get_active_promotion(course_id) → ActivePromotion | None
+         - get_course_promotions(teacher_id, course_id) → list (owner check)
+         - delete_promotion(teacher_id, promotion_id) → None (owner check via course)
+
+      5. Routes: app/routes/promotions.py
+         - POST /courses/{course_id}/promotions { promo_price, starts_at, ends_at } → 201 (teacher, owner)
+         - GET /courses/{course_id}/promotions → list (public, active only for non-owners)
+         - DELETE /promotions/{promotion_id} → 204 (teacher, owner)
+         Register router in main app.
+
+      6. Update course listing: In the existing GET /courses and GET /courses/:id endpoints,
+         include an optional active_promotion field (promo_price, ends_at) when a promotion is active.
+         This requires updating the course service/repository to JOIN or subquery promotions.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_promotions.py:
+      1. test_create_promotion_success
+      2. test_create_promotion_not_owner → 403
+      3. test_create_promotion_free_course → 400
+      4. test_create_promotion_price_too_high → 400 (promo >= original)
+      5. test_create_promotion_overlapping → 409
+      6. test_create_promotion_invalid_dates → 400 (ends_at <= starts_at)
+      7. test_get_active_promotion — returns current promo
+      8. test_get_active_promotion_expired → None
+      9. test_delete_promotion_owner → 204
+      10. test_delete_promotion_not_owner → 403
+      11. test_course_list_includes_promotion — GET /courses includes active_promotion
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain: no framework imports
+      - Parameterized SQL
+      - promo_price must be strictly less than original_price
+      - No overlapping promotions for the same course
+      - Owner check via course.teacher_id
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(course): add promotional pricing with time-limited discounts
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on: []
+
+  # ─── BACKEND: Payment — Coupons, Invoices, Refunds, Gifting ─────────────────
+
+  - id: coupon-system
+    title: "Coupon/promo code system"
+    scope: backend:payment
+    prompt: |
+      Task: Add a coupon/promo code system to the Payment service.
+
+      CONTEXT:
+      - Payment service: services/py/payment/ (FastAPI, asyncpg, Clean Architecture)
+      - payment-db on port 5436
+      - Existing: payments table, POST /payments endpoint (mock — always completed)
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth with role (student/teacher/admin)
+      - Tests: AsyncMock, pytest-asyncio, asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Migration:
+         CREATE TABLE coupons (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           code VARCHAR(50) NOT NULL UNIQUE,
+           discount_type VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+           discount_value DECIMAL(10,2) NOT NULL CHECK (discount_value > 0),
+           max_uses INT,
+           current_uses INT NOT NULL DEFAULT 0,
+           valid_from TIMESTAMPTZ NOT NULL,
+           valid_until TIMESTAMPTZ NOT NULL,
+           course_id UUID,
+           created_by UUID NOT NULL,
+           is_active BOOLEAN NOT NULL DEFAULT true,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           CHECK (valid_until > valid_from)
+         );
+         CREATE UNIQUE INDEX idx_coupons_code ON coupons(code);
+
+         CREATE TABLE coupon_usages (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           coupon_id UUID NOT NULL REFERENCES coupons(id),
+           user_id UUID NOT NULL,
+           payment_id UUID,
+           used_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           UNIQUE(coupon_id, user_id)
+         );
+
+      2. Domain: Coupon entity (id, code, discount_type, discount_value, max_uses, current_uses,
+         valid_from, valid_until, course_id, created_by, is_active, created_at).
+         CouponUsage entity (id, coupon_id, user_id, payment_id, used_at).
+         DiscountResult VO (original_price, discount_amount, final_price, coupon_code).
+
+      3. Repository: CouponRepository (ABC + SQL):
+         - create_coupon(code, discount_type, discount_value, max_uses, valid_from, valid_until,
+           course_id, created_by) → Coupon
+         - get_coupon_by_code(code) → Coupon | None
+         - get_coupon(coupon_id) → Coupon | None
+         - list_coupons(limit, offset) → list[Coupon]
+         - deactivate_coupon(coupon_id) → bool
+         - increment_usage(coupon_id) → None
+         - record_usage(coupon_id, user_id, payment_id) → CouponUsage
+         - has_user_used(coupon_id, user_id) → bool
+
+      4. Service: CouponService:
+         - create_coupon(admin_id, ...) → Coupon (admin-only)
+           Validates: code is uppercase alphanumeric + hyphens, discount_value > 0,
+           percentage discount max 100, valid_until > valid_from.
+         - validate_coupon(code, course_id, user_id, original_price) → DiscountResult
+           Checks: coupon exists, is_active, not expired (valid_from <= now <= valid_until),
+           not maxed out (current_uses < max_uses or max_uses is null),
+           course matches (coupon.course_id is null = all courses, or matches),
+           user hasn't already used it. Calculates discount.
+         - apply_coupon(code, user_id, payment_id) → None
+           Increments usage, records user usage.
+         - deactivate_coupon(admin_id, coupon_id) → None (admin-only)
+         - list_coupons(limit, offset) → paginated (admin-only)
+
+      5. Routes: app/routes/coupons.py
+         - POST /coupons { code, discount_type, discount_value, max_uses?, valid_from, valid_until,
+           course_id? } → 201 (admin-only)
+         - GET /coupons?limit=20&offset=0 → paginated (admin-only)
+         - POST /coupons/validate { code, course_id } → DiscountResult or 404 (public, authenticated)
+         - PATCH /coupons/{coupon_id}/deactivate → 204 (admin-only)
+         Register router in main app.
+
+      6. Update POST /payments to accept optional coupon_code field.
+         If provided: validate coupon, apply discount to amount, after payment creation apply coupon usage.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_coupons.py:
+      1. test_create_coupon_admin → 201
+      2. test_create_coupon_non_admin → 403
+      3. test_validate_coupon_percentage — 20% off $100 = $80
+      4. test_validate_coupon_fixed — $15 off $100 = $85
+      5. test_validate_coupon_expired → 404
+      6. test_validate_coupon_maxed_out → 404
+      7. test_validate_coupon_wrong_course → 404
+      8. test_validate_coupon_already_used → 400
+      9. test_validate_coupon_all_courses — course_id is null, works for any
+      10. test_deactivate_coupon_admin → 204
+      11. test_payment_with_coupon — creates payment with discounted amount
+      12. test_list_coupons_admin → paginated
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain: no framework imports
+      - Parameterized SQL
+      - Percentage discount capped at 100, fixed discount capped at original price
+      - One coupon per user per coupon (UNIQUE coupon_id, user_id)
+      - Admin-only for create, list, deactivate
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(payment): add coupon/promo code system
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/payment && uv run --package payment pytest tests/ -v"
+    depends_on: []
+
+  - id: invoice-generation
+    title: "Invoice PDF generation for payments"
+    scope: backend:payment
+    prompt: |
+      Task: Add invoice PDF generation to the Payment service.
+
+      CONTEXT:
+      - Payment service: services/py/payment/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing: payments table with id, user_id, course_id, amount, status, created_at
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth, user_id from token
+      - Tests: AsyncMock, pytest-asyncio, asyncio_mode = "auto"
+      - uv for package management: pyproject.toml in services/py/payment/
+
+      WHAT TO BUILD:
+
+      1. Add reportlab dependency to services/py/payment/pyproject.toml:
+         reportlab = ">=4.0"
+
+      2. Adapter: app/adapters/invoice.py — InvoicePDFGenerator class:
+         - generate_invoice(invoice_data: InvoiceData) → bytes (PDF content)
+         InvoiceData is a domain value object with:
+           invoice_number (format: INV-YYYY-XXXXXX, X = random digits),
+           payment_date, buyer_name, buyer_email, course_title, original_price,
+           discount_amount (if coupon used), final_price, coupon_code (optional)
+
+         PDF layout (A4):
+         - Header: "EduPlatform" logo text, "Счёт-фактура" / "Invoice"
+         - Company info: "EduPlatform Inc.", fictional address
+         - Invoice number + date
+         - Buyer info: name, email
+         - Line items table: description, quantity, unit price, total
+         - Subtotal, discount (if any), total
+         - Footer: "Спасибо за обучение с EduPlatform!"
+
+      3. Domain: InvoiceData value object in app/domain/.
+         InvoiceNumber generator: static method generating INV-YYYY-XXXXXX.
+
+      4. Service: InvoiceService:
+         - generate_invoice(user_id, payment_id) → tuple[bytes, str]
+           Returns (pdf_bytes, filename).
+           Validates: payment exists, payment.user_id == user_id or user is admin.
+           Fetches payment data, constructs InvoiceData, generates PDF.
+           Filename: invoice_{payment_id}.pdf
+
+      5. Routes: app/routes/invoices.py
+         - GET /payments/{payment_id}/invoice → PDF response (content-type: application/pdf)
+           Headers: Content-Disposition: attachment; filename="invoice_{id}.pdf"
+           Auth: only the paying user or admin.
+         Register router in main app.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_invoices.py:
+      1. test_generate_invoice_pdf — InvoicePDFGenerator returns bytes starting with %PDF
+      2. test_invoice_number_format — matches INV-YYYY-XXXXXX pattern
+      3. test_get_invoice_success — authenticated user gets own payment invoice
+      4. test_get_invoice_not_owner → 403
+      5. test_get_invoice_admin_access — admin can get any invoice
+      6. test_get_invoice_payment_not_found → 404
+      7. test_get_invoice_unauthenticated → 401
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain: no framework imports (InvoiceData is a pure data class)
+      - Adapter (InvoicePDFGenerator) encapsulates reportlab dependency
+      - Services don't import reportlab directly — only use the adapter
+      - Authorization: owner or admin
+      - Async I/O, type hints
+      - Independent tests
+      - PDF must be valid (starts with %PDF magic bytes)
+
+      COMMIT:
+      feat(payment): add invoice PDF generation for payments
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/payment && uv run --package payment pytest tests/ -v"
+    depends_on: []
+
+  - id: refund-system
+    title: "Refund system for paid courses"
+    scope: backend:payment
+    prompt: |
+      Task: Add a refund system to the Payment service with admin approval workflow.
+
+      CONTEXT:
+      - Payment service: services/py/payment/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing: payments table with id, user_id, course_id, amount, status, created_at
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth with role (student/teacher/admin)
+      - Tests: AsyncMock, pytest-asyncio, asyncio_mode = "auto"
+      - Enrollment service at port 8003 has progress data, but for simplicity
+        the refund service will trust the client/admin to verify progress eligibility
+
+      WHAT TO BUILD:
+
+      1. Migration:
+         CREATE TABLE refunds (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           payment_id UUID NOT NULL UNIQUE REFERENCES payments(id),
+           user_id UUID NOT NULL,
+           reason TEXT NOT NULL,
+           status VARCHAR(20) NOT NULL DEFAULT 'requested'
+             CHECK (status IN ('requested', 'approved', 'rejected', 'processed')),
+           amount DECIMAL(10,2) NOT NULL,
+           admin_note TEXT,
+           requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           processed_at TIMESTAMPTZ
+         );
+         CREATE INDEX idx_refunds_user ON refunds(user_id);
+         CREATE INDEX idx_refunds_status ON refunds(status);
+
+      2. Domain: Refund entity (id, payment_id, user_id, reason, status, amount, admin_note,
+         requested_at, processed_at). RefundStatus enum: requested, approved, rejected, processed.
+
+      3. Repository: RefundRepository (ABC + SQL):
+         - create_refund(payment_id, user_id, reason, amount) → Refund
+         - get_refund(refund_id) → Refund | None
+         - get_user_refunds(user_id, limit, offset) → list[Refund]
+         - list_all_refunds(status, limit, offset) → list[Refund]
+         - update_status(refund_id, status, admin_note, processed_at) → Refund
+
+      4. Service: RefundService:
+         - request_refund(user_id, payment_id, reason) → Refund
+           Validates: payment exists, payment.user_id == user_id, payment.status == 'completed',
+           no existing refund for this payment, payment is within 14 days of created_at.
+           Amount = payment.amount.
+         - get_my_refunds(user_id, limit=20, offset=0) → paginated
+         - list_refunds(status=None, limit=20, offset=0) → paginated (admin)
+         - approve_refund(admin_id, refund_id) → Refund
+           Sets status='approved', processed_at=now(). Updates payment status to 'refunded'.
+         - reject_refund(admin_id, refund_id, reason) → Refund
+           Sets status='rejected', admin_note=reason, processed_at=now().
+
+      5. Routes: app/routes/refunds.py
+         - POST /refunds { payment_id, reason } → 201 (authenticated student)
+         - GET /refunds/me?limit=20&offset=0 → paginated (authenticated)
+         - GET /refunds?status=&limit=20&offset=0 → paginated (admin-only)
+         - PATCH /refunds/{refund_id}/approve → 200 Refund (admin-only)
+         - PATCH /refunds/{refund_id}/reject { reason } → 200 Refund (admin-only)
+         Register router in main app.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_refunds.py:
+      1. test_request_refund_success → 201
+      2. test_request_refund_not_owner → 403 (payment belongs to different user)
+      3. test_request_refund_already_exists → 409 (duplicate for same payment)
+      4. test_request_refund_too_late → 400 (payment older than 14 days)
+      5. test_request_refund_not_completed → 400 (payment not completed)
+      6. test_get_my_refunds — paginated list
+      7. test_list_refunds_admin — all refunds with status filter
+      8. test_list_refunds_non_admin → 403
+      9. test_approve_refund → sets status to approved, updates payment
+      10. test_reject_refund → sets status to rejected with admin note
+      11. test_approve_already_processed → 400
+      12. test_unauthenticated → 401
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain: no framework imports
+      - Parameterized SQL
+      - 14-day refund window from payment.created_at
+      - One refund per payment (UNIQUE payment_id)
+      - Only payment owner can request
+      - Only admin can approve/reject
+      - Approved refund updates payment.status to 'refunded'
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(payment): add refund system with admin approval workflow
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/payment && uv run --package payment pytest tests/ -v"
+    depends_on: []
+
+  - id: course-gifting
+    title: "Course gifting: buy a course for someone else"
+    scope: backend:payment
+    prompt: |
+      Task: Add course gifting to the Payment service — users can buy courses as gifts.
+
+      CONTEXT:
+      - Payment service: services/py/payment/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing: payments table, POST /payments (mock, always completed)
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth, user_id from token
+      - Tests: AsyncMock, pytest-asyncio, asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Migration:
+         CREATE TABLE gift_purchases (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           buyer_id UUID NOT NULL,
+           recipient_email VARCHAR(255) NOT NULL,
+           course_id UUID NOT NULL,
+           payment_id UUID NOT NULL REFERENCES payments(id),
+           gift_code VARCHAR(14) NOT NULL UNIQUE,
+           status VARCHAR(20) NOT NULL DEFAULT 'purchased'
+             CHECK (status IN ('purchased', 'redeemed', 'expired')),
+           message TEXT,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           redeemed_at TIMESTAMPTZ,
+           redeemed_by UUID,
+           expires_at TIMESTAMPTZ NOT NULL
+         );
+         CREATE UNIQUE INDEX idx_gift_code ON gift_purchases(gift_code);
+         CREATE INDEX idx_gift_buyer ON gift_purchases(buyer_id);
+         CREATE INDEX idx_gift_recipient ON gift_purchases(recipient_email);
+
+      2. Domain: GiftPurchase entity (id, buyer_id, recipient_email, course_id, payment_id,
+         gift_code, status, message, created_at, redeemed_at, redeemed_by, expires_at).
+         GiftStatus enum: purchased, redeemed, expired.
+         Gift code format: GIFT-XXXX-XXXX (X = uppercase alphanumeric, generated randomly).
+
+      3. Repository: GiftRepository (ABC + SQL):
+         - create_gift(buyer_id, recipient_email, course_id, payment_id, gift_code, message, expires_at) → GiftPurchase
+         - get_gift_by_code(gift_code) → GiftPurchase | None
+         - get_sent_gifts(buyer_id, limit, offset) → list[GiftPurchase]
+         - redeem_gift(gift_code, user_id) → GiftPurchase
+           UPDATE SET status='redeemed', redeemed_at=now(), redeemed_by=user_id
+         - expire_gifts() → int (batch: set status='expired' WHERE expires_at < now() AND status='purchased')
+
+      4. Service: GiftService:
+         - purchase_gift(buyer_id, course_id, recipient_email, message=None) → GiftPurchase
+           Validates: recipient_email is valid format, message max 500 chars.
+           Creates a payment (same as normal course purchase), then creates gift entry.
+           Gift expires in 90 days. Generates unique gift code.
+           (In real system, would send email to recipient — for now just log it.)
+         - get_my_sent_gifts(buyer_id, limit=20, offset=0) → paginated
+         - redeem_gift(user_id, gift_code) → GiftPurchase
+           Validates: gift exists, status is 'purchased', not expired (expires_at > now()).
+           Marks as redeemed. (In real system, would create enrollment — for now just update status.)
+         - get_gift_info(gift_code) → GiftPurchase (public — for previewing gift before redeeming)
+           Returns gift info without sensitive buyer details.
+
+      5. Routes: app/routes/gifts.py
+         - POST /gifts { course_id, recipient_email, message? } → 201 GiftPurchase (authenticated)
+         - GET /gifts/me/sent?limit=20&offset=0 → paginated (authenticated, buyer's sent gifts)
+         - POST /gifts/redeem { gift_code } → 200 GiftPurchase (authenticated, recipient redeems)
+         - GET /gifts/{gift_code}/info → GiftPurchase preview (public, limited fields)
+         Register router in main app.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_gifts.py:
+      1. test_purchase_gift_success → 201, generates GIFT-XXXX-XXXX code
+      2. test_purchase_gift_invalid_email → 422
+      3. test_purchase_gift_long_message → 422 (>500 chars)
+      4. test_get_sent_gifts — buyer's gift list
+      5. test_redeem_gift_success → status changes to redeemed
+      6. test_redeem_gift_not_found → 404
+      7. test_redeem_gift_already_redeemed → 400
+      8. test_redeem_gift_expired → 400
+      9. test_gift_code_format — matches GIFT-XXXX-XXXX pattern
+      10. test_get_gift_info_public — returns limited fields
+      11. test_unauthenticated → 401
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain: no framework imports
+      - Parameterized SQL
+      - Gift code: GIFT-XXXX-XXXX format, unique
+      - 90-day expiration
+      - One redemption per gift
+      - Recipient email validated but no email actually sent (log only)
+      - Message max 500 chars
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(payment): add course gifting with redeemable gift codes
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/payment && uv run --package payment pytest tests/ -v"
+    depends_on: []
+
+  # ─── BACKEND: Identity — Referral Program ───────────────────────────────────
+
+  - id: referral-program
+    title: "Referral program: invite friends, earn credits"
+    scope: backend:identity
+    prompt: |
+      Task: Add a referral program to the Identity service.
+
+      CONTEXT:
+      - Identity service: services/py/identity/ (FastAPI, asyncpg, Clean Architecture)
+      - Users table has: id, email, name, role, is_verified, created_at, etc.
+      - Registration endpoint: POST /register { email, password, name }
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth, user_id from token
+      - Tests: AsyncMock, pytest-asyncio, asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Migrations:
+         ALTER TABLE users ADD COLUMN referral_code VARCHAR(12) UNIQUE;
+         — Generate referral codes for existing users via UPDATE (format: REF-XXXXXXXX, 8 random alphanumeric)
+
+         CREATE TABLE referrals (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           referrer_id UUID NOT NULL REFERENCES users(id),
+           referee_id UUID NOT NULL REFERENCES users(id) UNIQUE,
+           referral_code VARCHAR(12) NOT NULL,
+           status VARCHAR(20) NOT NULL DEFAULT 'pending'
+             CHECK (status IN ('pending', 'completed', 'expired')),
+           reward_type VARCHAR(20),
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           completed_at TIMESTAMPTZ
+         );
+         CREATE INDEX idx_referrals_referrer ON referrals(referrer_id);
+
+      2. Domain: Referral entity (id, referrer_id, referee_id, referral_code, status, reward_type,
+         created_at, completed_at).
+         ReferralStats VO (referral_code, invited_count, completed_count, rewards_earned).
+         ReferralCode generator: static method → "REF-" + 8 random uppercase alphanumeric chars.
+
+      3. Repository: ReferralRepository (ABC + SQL):
+         - create_referral(referrer_id, referee_id, referral_code) → Referral
+         - get_referral_by_referee(referee_id) → Referral | None
+         - get_referrer_by_code(referral_code) → UUID | None (returns referrer user_id)
+         - complete_referral(referee_id) → Referral | None
+         - get_referral_stats(user_id) → ReferralStats
+         - get_user_referral_code(user_id) → str | None
+
+      4. Service: ReferralService:
+         - apply_referral_code(referee_id, referral_code) → Referral
+           Validates: code exists, referrer != referee, referee not already referred.
+           Creates pending referral.
+         - complete_referral(referee_id) → Referral | None
+           Called when referee completes first course (external trigger).
+           Marks referral as completed.
+         - get_my_referral_info(user_id) → ReferralStats
+           Returns user's referral code + stats.
+         - generate_referral_code(user_id) → str
+           If user doesn't have referral_code yet, generate and save.
+
+      5. Routes: app/routes/referrals.py
+         - GET /referral/me → ReferralStats (authenticated, own code + stats)
+         - POST /referral/apply { referral_code } → 201 Referral (authenticated, used during/after registration)
+         - POST /referral/complete → 200 (internal/admin — marks referee's referral as completed)
+         Register router in main app.
+
+      6. On user registration: auto-generate referral_code for new users.
+         Update the registration flow in the existing service to set referral_code on INSERT.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_referrals.py:
+      1. test_apply_referral_success → 201
+      2. test_apply_referral_self → 400 (can't refer yourself)
+      3. test_apply_referral_already_referred → 409
+      4. test_apply_referral_invalid_code → 404
+      5. test_complete_referral → status changes to completed
+      6. test_complete_referral_no_pending → 404
+      7. test_get_referral_stats — returns code, counts
+      8. test_referral_code_format — matches REF-XXXXXXXX pattern
+      9. test_new_user_gets_referral_code — registration generates code
+      10. test_unauthenticated → 401
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain: no framework imports
+      - Parameterized SQL
+      - Referral code: REF- + 8 uppercase alphanumeric, unique
+      - One referral per referee (referee_id UNIQUE)
+      - Can't refer yourself
+      - Auto-generate code on registration
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(identity): add referral program with invite codes
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+    depends_on: []
+
+  # ─── FRONTEND: Buyer App — Marketplace Features ────────────────────────────
+
+  - id: bundles-frontend
+    title: "Course bundles UI in buyer app"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build course bundles browsing and detail pages in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15 App Router, Tailwind CSS, TanStack Query)
+      - API client: apps/buyer/lib/api.ts
+      - Auth hook: apps/buyer/hooks/use-auth.ts — { user, token }
+      - API proxy: /api/course/:path* → http://localhost:8002/:path*
+      - Course service bundle endpoints:
+        GET /bundles?limit&offset&teacher_id → paginated CourseBundle
+        GET /bundles/:id → BundleWithCourses { id, teacher_id, title, description, price, discount_percent, courses[] }
+        POST /bundles → 201 (teacher)
+      - CourseBundle: { id, teacher_id, title, description, price, discount_percent, is_active, created_at }
+      - BundleWithCourses: bundle + courses: Course[]
+
+      WHAT TO BUILD:
+
+      1. API client additions in apps/buyer/lib/api.ts:
+         Add to courses namespace:
+         - listBundles(params): paginated CourseBundle
+         - getBundle(bundleId): BundleWithCourses
+
+      2. Hook: apps/buyer/hooks/use-bundles.ts
+         - useBundleList(params?) — TanStack Query
+         - useBundle(bundleId) — TanStack Query
+
+      3. Bundles listing page: apps/buyer/app/bundles/page.tsx ("use client")
+         - Page title: "Наборы курсов"
+         - Grid of bundle cards (2-3 columns):
+           Each card: title, description (truncated), number of courses, original total price
+           (sum of individual prices), bundle price, discount badge ("-{discount_percent}%"),
+           "Подробнее" link
+         - Empty state: "Пока нет доступных наборов"
+
+      4. Bundle detail page: apps/buyer/app/bundles/[id]/page.tsx ("use client")
+         - Bundle title, description
+         - Price comparison: "Отдельно: {sum}" crossed out → "В наборе: {bundle_price}" highlighted
+         - Savings badge: "Экономия: {sum - bundle_price} ₽ ({discount_percent}%)"
+         - List of included courses (reuse CourseCard component or simplified cards):
+           title, level, duration, rating
+         - "Купить набор" button (placeholder — no actual purchase flow yet)
+
+      5. Navigation: Add "Наборы" link in Header.tsx navigation.
+
+      IMPLEMENTATION APPROACH:
+      1. Add API methods
+      2. Create hook
+      3. Build listing page
+      4. Build detail page
+      5. Add nav link
+      6. Verify: cd apps/buyer && pnpm build
+
+      RULES:
+      - "use client" for pages with hooks
+      - Named exports (except page default exports)
+      - Tailwind CSS only
+      - next/link for navigation
+      - No new dependencies
+      - Price display in ₽ (Russian ruble)
+
+      COMMIT:
+      feat(buyer): add course bundles browsing and detail pages
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [course-bundles]
+
+  - id: coupons-frontend
+    title: "Coupon code UI in checkout"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add coupon code input and validation to the checkout flow in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15 App Router, Tailwind CSS, TanStack Query)
+      - API client: apps/buyer/lib/api.ts
+      - Auth hook: apps/buyer/hooks/use-auth.ts — { user, token }
+      - API proxy: /api/payment/:path* → http://localhost:8004/:path*
+      - Payment service coupon endpoints:
+        POST /coupons/validate { code, course_id } → DiscountResult { original_price, discount_amount, final_price, coupon_code }
+        Returns 404 if coupon not found or invalid
+      - Existing checkout/payment flow: look at current course purchase pages/components
+        to find where to integrate coupon input
+
+      WHAT TO BUILD:
+
+      1. API client additions in apps/buyer/lib/api.ts:
+         Add to payment namespace:
+         - validateCoupon(token, { code, course_id }): DiscountResult
+
+      2. Hook: apps/buyer/hooks/use-coupons.ts
+         - useValidateCoupon(token) — useMutation
+           On success: stores DiscountResult in state
+           On error (404): shows error message
+
+      3. Coupon input component: apps/buyer/components/CouponInput.tsx
+         - "У вас есть промокод?" — clickable text that expands the input section
+         - Text input for coupon code + "Применить" button
+         - States:
+           * Default: collapsed
+           * Expanded: input visible, button enabled
+           * Loading: button shows spinner during validation
+           * Valid: green checkmark, shows discount info: "{code} — скидка {discount_amount} ₽"
+           * Invalid: red text "Промокод не найден или истёк"
+           * Applied: input disabled, "Удалить" button to clear coupon
+         - Props: courseId, onCouponApplied(discount: DiscountResult | null)
+
+      4. Price display component: apps/buyer/components/PriceDisplay.tsx
+         - Without coupon: shows price normally
+         - With coupon: shows original price with strikethrough + discounted price + coupon label
+         - Props: originalPrice, discount?: DiscountResult
+
+      5. Integration: Find the existing course purchase/enrollment page and add:
+         - CouponInput component before the payment button
+         - PriceDisplay showing the (possibly discounted) price
+         - Pass coupon_code to the payment API call when coupon is applied
+
+      IMPLEMENTATION APPROACH:
+      1. Add API methods
+      2. Create hook
+      3. Build CouponInput component
+      4. Build PriceDisplay component
+      5. Integrate into checkout flow
+      6. Verify: cd apps/buyer && pnpm build
+
+      RULES:
+      - "use client" for interactive components
+      - Named exports
+      - Tailwind CSS only
+      - No new dependencies
+      - Coupon code input: uppercase transform on input (visual only)
+      - Accessible: proper labels, aria attributes for states
+
+      COMMIT:
+      feat(buyer): add coupon code input and validation in checkout
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [coupon-system]
+
+  - id: referral-frontend
+    title: "Referral program UI"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build referral program pages in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15 App Router, Tailwind CSS, TanStack Query)
+      - API client: apps/buyer/lib/api.ts
+      - Auth hook: apps/buyer/hooks/use-auth.ts — { user, token }
+      - API proxy: /api/identity/:path* → http://localhost:8001/:path*
+      - Identity service referral endpoints:
+        GET /referral/me → ReferralStats { referral_code, invited_count, completed_count, rewards_earned }
+        POST /referral/apply { referral_code } → 201
+      - Registration page: apps/buyer/app/register/page.tsx
+
+      WHAT TO BUILD:
+
+      1. API client additions in apps/buyer/lib/api.ts:
+         Add to identity namespace:
+         - getReferralInfo(token): ReferralStats
+         - applyReferralCode(token, { referral_code }): Referral
+
+      2. Hook: apps/buyer/hooks/use-referral.ts
+         - useReferralInfo(token) — TanStack Query
+         - useApplyReferral(token) — useMutation
+
+      3. Referral page: apps/buyer/app/referral/page.tsx ("use client")
+         Layout:
+         - Page title: "Пригласите друзей"
+         - Referral link section:
+           * Your code: "{referral_code}" with copy button
+           * Your link: "https://eduplatform.ru/register?ref={referral_code}" with copy button
+           * Share buttons: "Скопировать ссылку" (copies to clipboard), "Поделиться в Telegram"
+             (opens https://t.me/share/url?url=...), "Поделиться в VK"
+             (opens https://vk.com/share.php?url=...)
+         - Stats section (3 cards):
+           * "Приглашено" — invited_count
+           * "Завершили курс" — completed_count
+           * "Награды" — rewards_earned
+         - How it works section:
+           * Step 1: "Поделитесь ссылкой с другом"
+           * Step 2: "Друг регистрируется по вашей ссылке"
+           * Step 3: "Друг завершает первый курс — оба получаете бонус"
+
+      4. Registration page update: apps/buyer/app/register/page.tsx
+         - Add optional "Реферальный код" input field below the name field
+         - Pre-fill from ?ref= query parameter if present
+         - After successful registration, if referral code was entered,
+           call POST /referral/apply { referral_code }
+         - Wrap register page in Suspense boundary for useSearchParams()
+
+      5. Navigation: Add "Пригласить друзей" link in user menu (dropdown or sidebar).
+
+      IMPLEMENTATION APPROACH:
+      1. Add API methods
+      2. Create hook
+      3. Build referral page
+      4. Update registration page
+      5. Add nav link
+      6. Verify: cd apps/buyer && pnpm build
+
+      RULES:
+      - "use client" for pages with hooks
+      - useSearchParams() needs Suspense boundary wrapper
+      - Named exports (except page default exports)
+      - Tailwind CSS only
+      - next/link for navigation
+      - No new dependencies
+      - Copy to clipboard via navigator.clipboard.writeText()
+
+      COMMIT:
+      feat(buyer): add referral program UI and registration integration
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [referral-program]

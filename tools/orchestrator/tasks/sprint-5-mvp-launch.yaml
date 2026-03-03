@@ -1,0 +1,686 @@
+phase: "sprint-5"
+description: "MVP Polish & Launch — complete Phase 2.5 + subscription frontend for public release"
+
+tasks:
+  - id: landing-page
+    title: "Landing page: hero, value props, social proof, CTA"
+    scope: frontend:buyer
+    prompt: |
+      Task: Enhance the homepage (apps/buyer/app/page.tsx) with a richer marketing landing page
+      including refined hero, social proof, feature highlights, and a smooth scroll to catalog.
+
+      CONTEXT:
+      - Current homepage: apps/buyer/app/page.tsx — already a "use client" component with HeroSection,
+        SocialProof, FeatureHighlights, and a course catalog grid with search/filter.
+      - HeroSection already exists as a named export in page.tsx with gradient bg, headline
+        "Учитесь быстрее с AI-тьютором", and CTAs for logged-in/logged-out users.
+      - Social proof section exists with 3 stat boxes (hardcoded).
+      - Course catalog section exists with id="catalog", search, filters, grid.
+      - Auth hook: apps/buyer/hooks/use-auth.ts — { user, token, loading }
+      - Header component: apps/buyer/components/Header.tsx
+      - CourseCard component: apps/buyer/components/CourseCard.tsx
+      - Hooks: useCourseList, useCategories from apps/buyer/hooks/use-courses.ts
+
+      WHAT TO BUILD:
+      Enhance the existing landing page with:
+
+      1. Hero section improvements:
+         - Add a subtle pattern or animated gradient background (CSS only, no JS animation)
+         - Make headline responsive: text-2xl sm:text-4xl lg:text-5xl
+         - Stack CTA buttons vertically on mobile: flex-col sm:flex-row
+         - Add a "trusted by" line under CTAs: "Присоединяйтесь к тысячам студентов"
+
+      2. Updated social proof numbers:
+         - "373 теста" / "Полное покрытие кода" (actual test count from MEMORY)
+         - "7 микросервисов" / "Масштабируемая архитектура"
+         - "AI + FSRS" / "Умные повторения и адаптивное обучение"
+
+      3. Feature highlights section (3 columns below social proof):
+         - "AI-тьютор" — icon (brain emoji or SVG), title, description:
+           "Задаёт вопросы в сократовском стиле, помогает понять, а не запомнить"
+         - "Адаптивные повторения" — icon (cards emoji), title, description:
+           "Флеш-карточки с алгоритмом FSRS — повторяйте только то, что забыли"
+         - "Геймификация" — icon (trophy emoji), title, description:
+           "XP, серии активности, значки и таблица лидеров"
+         Each card: white bg, rounded-xl, shadow-sm, p-6, hover:shadow-md transition
+
+      4. Course catalog section:
+         - Add a section heading above catalog: "Каталог курсов" with a subtitle
+         - Keep ALL existing search/filter/grid functionality unchanged
+         - Ensure id="catalog" is on the section wrapper
+
+      IMPLEMENTATION APPROACH:
+      1. Read apps/buyer/app/page.tsx to understand current structure.
+      2. Edit HeroSection to add responsive classes and "trusted by" line.
+      3. Update SocialProof numbers to match actual project state.
+      4. Add FeatureHighlights section between social proof and catalog if not present,
+         or enhance existing one. Use grid-cols-1 md:grid-cols-3.
+      5. Add catalog section heading.
+      6. Do NOT break any existing functionality — search, filters, course grid must work.
+
+      RULES:
+      - "use client" stays at top (already present)
+      - Tailwind CSS only, no inline styles, no CSS modules
+      - next/link for navigation (not <a>) except same-page anchors
+      - No new npm dependencies
+      - Named exports for sub-components (HeroSection, etc.)
+      - Keep ALL existing imports and hooks — do not remove any
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): enhance landing page with social proof and feature highlights
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: responsive-mobile
+    title: "Responsive mobile web audit & fixes"
+    scope: frontend:buyer
+    prompt: |
+      Task: Audit and fix mobile responsiveness across the entire buyer app for screens from 320px wide.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS)
+      - All pages use max-w-6xl or max-w-4xl containers with px-4.
+      - Problem areas to audit and fix:
+
+        1. apps/buyer/components/Header.tsx
+           - Nav has many items: links, XP badge, flame badge, username, role badge, logout.
+           - On mobile (<640px) this overflows the row.
+           - Fix: hide non-critical items on mobile using hidden sm:flex / hidden sm:inline.
+           - Keep visible on mobile: Logo, primary nav links (Курсы), Login/Register or Logout.
+           - Hide on mobile: XP badge, streak flame, role badge, username text.
+
+        2. apps/buyer/app/page.tsx (homepage/landing)
+           - Hero: headline text-2xl sm:text-4xl, CTAs flex-col sm:flex-row
+           - Feature highlights: grid-cols-1 sm:grid-cols-3
+           - Social proof: grid-cols-1 sm:grid-cols-3
+           - Filter row: ensure flex-wrap
+           - Course grid: grid-cols-1 sm:grid-cols-2 lg:grid-cols-3
+
+        3. apps/buyer/app/badges/page.tsx
+           - Stats grid: should be grid-cols-1 sm:grid-cols-3
+
+        4. apps/buyer/app/enrollments/page.tsx
+           - Card with flex items-center justify-between may overflow on small screens.
+           - Fix: add flex-wrap or use flex-col on mobile.
+
+        5. apps/buyer/app/courses/[id]/page.tsx
+           - Meta row: ensure flex-wrap for level, price, duration, enrollments, rating.
+           - Review form: check for horizontal overflow.
+
+        6. apps/buyer/app/onboarding/page.tsx
+           - Step 2 course grid: grid-cols-1 sm:grid-cols-2 lg:grid-cols-3
+           - Step 3 highlights: grid-cols-1 sm:grid-cols-3
+
+        7. apps/buyer/app/flashcards/page.tsx
+           - Flashcard container: ensure it doesn't overflow on 320px screens.
+
+        8. apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx
+           - Sidebar/main layout: stack vertically on mobile (flex-col lg:flex-row).
+
+      IMPLEMENTATION APPROACH:
+      1. Read each file listed above.
+      2. Apply Tailwind responsive prefixes (sm:, md:, lg:) to fix layout issues.
+      3. For Header: simplest approach — wrap items, hide non-critical on mobile with hidden sm:flex.
+         Do NOT add hamburger menu with JS state.
+      4. Do NOT introduce new components or abstractions — edit existing files in place.
+      5. Do NOT change any functionality — only layout/spacing/visibility classes.
+
+      RULES:
+      - Only Tailwind responsive utility classes — no custom CSS, no media queries
+      - Do not add new components or JavaScript logic
+      - Do not change any text content, routing, or business logic
+      - All changes are purely in className strings
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): fix mobile responsive layout across all pages
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [landing-page]
+
+  - id: pricing-page
+    title: "Pricing page: 3 tiers with feature comparison"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build a pricing page at /pricing showing three subscription tiers with a monthly/yearly toggle.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS)
+      - Payment service has subscription_plans table and GET /subscription-plans endpoint.
+      - Plans: Free (5 courses, 10 AI chats/day, basic quizzes), Student $9.99/mo (unlimited courses,
+        100 AI/day, spaced repetition, knowledge graph), Pro $19.99/mo (unlimited AI, velocity
+        dashboard, Obsidian export).
+      - API client: apps/buyer/lib/api.ts — has namespace objects for each service.
+      - Auth hook: apps/buyer/hooks/use-auth.ts — { user, token, loading }
+      - Header component: apps/buyer/components/Header.tsx — need to add pricing link.
+      - Existing pages follow pattern: Server Component page.tsx wrapping "use client" content.
+
+      WHAT TO BUILD:
+      1. apps/buyer/app/pricing/page.tsx — page component:
+         - Can be "use client" (needs state for toggle and hooks for auth)
+         - Title section: "Выберите свой план" with subtitle
+         - Monthly/Yearly toggle (useState): yearly = 20% discount, show "Скидка 20%" badge
+         - Three pricing cards in a responsive grid (grid-cols-1 md:grid-cols-3):
+
+         Card 1 — Free:
+           - Price: "Бесплатно"
+           - Features: 5 курсов, 10 AI-запросов/день, Базовые квизы, Флеш-карточки
+           - CTA: "Начать бесплатно" → /register (if not logged in) or disabled "Текущий план"
+
+         Card 2 — Student (highlighted with ring-2 ring-indigo-500 and "Рекомендуем" badge):
+           - Price: "$9.99/мес" or "$7.99/мес" (yearly)
+           - Features: Безлимитные курсы, 100 AI-запросов/день, Адаптивные повторения (FSRS),
+             Граф знаний, Расширенная статистика
+           - CTA: "Выбрать план" → /checkout?plan=student&billing=monthly|yearly
+
+         Card 3 — Pro:
+           - Price: "$19.99/мес" or "$15.99/мес" (yearly)
+           - Features: Всё из Student +, Безлимитный AI, Velocity дашборд,
+             Экспорт в Obsidian, Приоритетная поддержка
+           - CTA: "Выбрать план" → /checkout?plan=pro&billing=monthly|yearly
+
+      2. apps/buyer/app/pricing/loading.tsx — three skeleton cards.
+
+      3. Update Header.tsx: add "Тарифы" link pointing to /pricing in the nav.
+
+      IMPLEMENTATION APPROACH:
+      1. Create apps/buyer/app/pricing/page.tsx as "use client" component.
+      2. Use useState for billingCycle ("monthly" | "yearly").
+      3. Hardcode plan data (no API call needed — plans are static for now).
+      4. Use useAuth() to detect logged-in state for CTA button logic.
+      5. Create loading.tsx with 3 skeleton cards (animate-pulse).
+      6. Edit Header.tsx to add "Тарифы" nav link between existing nav items.
+      7. Style with Tailwind: white cards, rounded-2xl, shadow-sm, p-8.
+         Highlighted card: ring-2 ring-indigo-500 shadow-lg relative with absolute badge.
+
+      RULES:
+      - "use client" on pricing/page.tsx (uses useState, useAuth)
+      - next/link for all navigation
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Named exports for extracted sub-components (PricingCard, etc.)
+      - Default export for the page component (Next.js requirement)
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add pricing page with 3-tier plan comparison
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [landing-page]
+
+  - id: checkout-flow
+    title: "Checkout flow: plan selection and payment confirmation"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build a checkout page at /checkout for subscription plan purchase with a mock payment form.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS)
+      - Pricing page at /pricing passes plan and billing cycle via query params:
+        /checkout?plan=student&billing=monthly
+      - Payment service has POST /subscriptions endpoint (mock — always returns success).
+      - API client: apps/buyer/lib/api.ts — needs subscriptions.create() method if not present.
+      - Auth hook: apps/buyer/hooks/use-auth.ts — redirect to /login if not authenticated.
+      - useSearchParams() requires Suspense boundary in Next.js static generation.
+
+      WHAT TO BUILD:
+      1. apps/buyer/app/checkout/page.tsx — "use client" component:
+         - Read ?plan and ?billing from useSearchParams() (wrap in Suspense)
+         - If not authenticated, redirect to /login?redirect=/checkout
+         - Left side: Order summary card (plan name, price, billing cycle, total)
+         - Right side: Mock payment form with fields:
+           * Card number (text input, placeholder "4242 4242 4242 4242")
+           * Expiry (text input, placeholder "MM/YY")
+           * CVV (text input, placeholder "123")
+           * Name on card (text input)
+         - "Оплатить" submit button — calls payment API to create subscription
+         - Loading/disabled state during submission
+         - Error display below form if API call fails
+
+      2. apps/buyer/app/checkout/success/page.tsx — success confirmation:
+         - Headline: "Оплата прошла успешно!"
+         - Checkmark icon (CSS circle with checkmark or emoji)
+         - Plan name and "Подписка активна"
+         - Two CTAs: "Перейти к курсам" → / and "Мой аккаунт" → /account
+
+      3. apps/buyer/app/checkout/loading.tsx — skeleton for checkout form.
+
+      4. If not present, add to apps/buyer/lib/api.ts:
+         subscriptions namespace with create(token, { plan_id, billing_cycle }) method
+         calling POST /api/payment/subscriptions.
+
+      IMPLEMENTATION APPROACH:
+      1. Create apps/buyer/app/checkout/page.tsx as "use client".
+      2. Use useSearchParams() for plan/billing — wrap component in Suspense.
+      3. Map plan name to price: { free: 0, student: { monthly: 9.99, yearly: 95.88 },
+         pro: { monthly: 19.99, yearly: 191.88 } }.
+      4. On form submit: validate fields are non-empty (client-side only, no real validation
+         since payment is mock), call API, on success router.push("/checkout/success?plan=...").
+      5. Create success page that reads ?plan from searchParams and shows confirmation.
+      6. Create loading.tsx skeleton.
+
+      RULES:
+      - "use client" on checkout/page.tsx and success/page.tsx
+      - useSearchParams() must be wrapped in Suspense boundary
+      - next/link for navigation
+      - Tailwind CSS only
+      - No real Stripe or payment processing — this is a mock form
+      - No new npm dependencies (no @stripe/react-stripe-js — keep it simple)
+      - Card number/CVV inputs must have autoComplete="off" (security hygiene)
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add checkout flow with mock payment form
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [pricing-page]
+
+  - id: account-subscription
+    title: "Account settings: subscription management"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build an account settings page at /account with profile info, subscription management,
+      and billing history.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - Auth hook: apps/buyer/hooks/use-auth.ts — { user, token, loading, logout }
+      - API client: apps/buyer/lib/api.ts — has identity.me(), payment namespace.
+      - Payment endpoints: GET /payments/me (billing history), possibly GET /subscriptions/me,
+        DELETE /subscriptions/:id.
+      - User object: { id, email, name, role, is_verified, email_verified, created_at }
+
+      WHAT TO BUILD:
+      1. apps/buyer/app/account/page.tsx — "use client" component:
+         - Auth guard: if !user && !loading, redirect to /login
+         - Sections layout: max-w-3xl mx-auto, stacked sections with dividers
+
+         Section 1 — Profile:
+           - Avatar placeholder (initials circle, bg-indigo-100 text-indigo-600)
+           - Name, email, role badge, member since date
+           - "Редактировать профиль" link (placeholder, links to # for now)
+
+         Section 2 — Subscription:
+           - Current plan card: plan name, status badge (active=green, free=gray)
+           - If paid plan: next billing date, cancel button
+           - If free plan: "Улучшить план" button → /pricing
+           - Cancel button: window.confirm() then call API, show toast
+
+         Section 3 — Billing history:
+           - Table/list of past payments from GET /payments/me
+           - Columns: date, description, amount, status badge
+           - Empty state: "Нет платежей"
+
+      2. apps/buyer/app/account/loading.tsx — skeleton page.
+
+      3. Add "Аккаунт" link in Header.tsx nav (visible when logged in).
+
+      IMPLEMENTATION APPROACH:
+      1. Create apps/buyer/app/account/page.tsx as "use client".
+      2. Use useAuth() for user data and auth guard.
+      3. For billing history, check if payment.myPayments exists in api.ts.
+         If not, add: payment.myPayments(token) calling GET /api/payment/payments/me.
+      4. For subscription status, hardcode "Free" plan display for now (subscription
+         status API may not be fully wired — handle gracefully).
+      5. Format dates with Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).
+      6. Create loading.tsx with section skeletons.
+      7. Add nav link in Header.tsx.
+
+      RULES:
+      - "use client" on account/page.tsx
+      - next/link for navigation
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Handle API errors gracefully (show error message, not crash)
+      - Named exports for sub-components if extracted
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add account page with subscription and billing history
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [checkout-flow]
+
+  - id: credit-indicator
+    title: "AI credit usage indicator in header"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add an AI credit usage indicator to the Header component and create a supporting hook.
+
+      CONTEXT:
+      - AI service: GET /ai/credits/me returns { used: int, limit: int, plan: str, resets_at: str }
+      - API client: apps/buyer/lib/api.ts — has AI_URL = "/api/ai" and an `ai` namespace object.
+      - Header component: apps/buyer/components/Header.tsx — shows XP badge (star icon + XP count)
+        and streak flame (fire icon + streak days). These are in a gamification badges row.
+      - Auth hook: useAuth() provides { user, token, loading }.
+      - Existing gamification hooks: apps/buyer/hooks/use-gamification.ts — useMyXp, useMyStreak.
+      - TanStack Query used for all server state.
+
+      WHAT TO BUILD:
+      1. apps/buyer/hooks/use-credits.ts — new hook:
+         - useCredits(token: string | null) → TanStack Query hook
+         - Calls GET /api/ai/credits/me with auth header
+         - Returns { data: { used, limit, plan, resets_at }, isLoading, error }
+         - Refetch interval: 60 seconds (staleTime: 60_000)
+
+      2. Add credit method to api.ts if not present:
+         - ai.credits(token) → GET /api/ai/credits/me
+
+      3. Update apps/buyer/components/Header.tsx:
+         - Import useCredits hook
+         - Add credit badge next to XP and streak badges in the gamification row
+         - Display format: lightning bolt emoji + "X/Y" (used/limit)
+         - Color coding based on usage percentage:
+           * < 50%: text-green-600
+           * 50-80%: text-yellow-600
+           * > 80%: text-red-600
+         - Tooltip (title attribute): "{plan} plan — resets {resets_at formatted}"
+         - Only show when user is logged in and data is loaded
+         - If limit is 0 or "unlimited", show lightning bolt + "unlimited" in green
+
+      IMPLEMENTATION APPROACH:
+      1. Check apps/buyer/lib/api.ts for existing ai.credits method — add if missing.
+      2. Create apps/buyer/hooks/use-credits.ts following the pattern in use-gamification.ts.
+      3. Edit Header.tsx: add useCredits(token) call alongside useMyXp and useMyStreak.
+      4. Add the credit badge span in the gamification badges row.
+      5. Calculate percentage: (used / limit) * 100 for color logic.
+
+      RULES:
+      - Named export only: export function useCredits(...)
+      - TanStack Query for data fetching (useQuery)
+      - Tailwind CSS only for styling
+      - No new npm dependencies
+      - Follow the exact pattern of useMyXp/useMyStreak hooks
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add AI credit usage indicator to header
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: paywall-ui
+    title: "Paywall UI: upgrade prompt when credits exhausted"
+    scope: frontend:buyer
+    prompt: |
+      Task: Create a PaywallModal component that shows when AI API returns 429 (credits exhausted)
+      and integrate it into AI-using pages.
+
+      CONTEXT:
+      - AI service returns HTTP 429 with body { detail: "Daily credit limit exceeded" } when credits
+        are exhausted.
+      - Pages that use AI credits:
+        * apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx — tutor chat (TutorDrawer),
+          summary generation, quiz generation
+        * Possibly standalone quiz/summary pages
+      - TutorDrawer component: apps/buyer/components/TutorDrawer.tsx — sends chat messages to AI.
+      - Pricing page exists at /pricing.
+      - API error handling: apps/buyer/lib/errors.ts has getErrorMessage().
+      - TanStack Query mutation errors have error.message containing the API error detail.
+
+      WHAT TO BUILD:
+      1. apps/buyer/components/PaywallModal.tsx — named export PaywallModal:
+         - Props: { isOpen: boolean; onClose: () => void }
+         - Modal overlay (fixed inset-0, bg-black/50, z-50)
+         - Modal content (centered card, max-w-md, white bg, rounded-2xl, p-8):
+           * Headline: "Кредиты на сегодня закончились"
+           * Subtext: "Ваш текущий план исчерпал лимит AI-запросов на сегодня"
+           * Mini plan comparison (2 rows):
+             - Student: "100 запросов/день — $9.99/мес"
+             - Pro: "Безлимитно — $19.99/мес"
+           * Primary CTA: "Улучшить план" → Link to /pricing (indigo button)
+           * Secondary: "Подождать до завтра" → calls onClose (gray text button)
+         - Close on Escape key (useEffect with keydown listener)
+         - Close on overlay click
+
+      2. Integration in apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx:
+         - Add state: const [showPaywall, setShowPaywall] = useState(false)
+         - When AI mutation (tutor chat, summary, quiz) returns error with status 429
+           or error message containing "credit" or "limit", set showPaywall = true
+         - Render <PaywallModal isOpen={showPaywall} onClose={() => setShowPaywall(false)} />
+
+      3. Integration in apps/buyer/components/TutorDrawer.tsx:
+         - Same pattern: detect 429 errors from chat mutation, show PaywallModal
+
+      IMPLEMENTATION APPROACH:
+      1. Create PaywallModal.tsx as a "use client" component.
+      2. Use createPortal for the modal (or simple fixed positioning, no portal needed for simplicity).
+      3. Read the lesson page and TutorDrawer to understand their mutation error handling.
+      4. Add 429 detection: check if error message includes "credit" or "limit" or if
+         the error object has a status of 429.
+      5. Add PaywallModal state and rendering to both files.
+
+      RULES:
+      - "use client" on PaywallModal.tsx
+      - Named export: export function PaywallModal(...)
+      - next/link for the /pricing link
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Modal must be accessible: focus trap not required, but Escape to close is required
+      - Do not change existing AI API calls — only add error detection
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add paywall modal for exhausted AI credits
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [credit-indicator, pricing-page]
+
+  - id: profile-edit
+    title: "User profile editing: name, bio, avatar"
+    scope: backend:identity
+    prompt: |
+      Task: Add profile editing capability to the identity service — new columns, domain entity,
+      endpoint PATCH /me for updating name, bio, and avatar_url.
+
+      CONTEXT:
+      - Identity service: services/py/identity/ (FastAPI, asyncpg, Clean Architecture)
+      - Current user table: id, email, name, password_hash, role, is_verified, email_verified, created_at
+      - Domain entity: services/py/identity/app/domain/user.py — User dataclass
+      - Repository: services/py/identity/app/repositories/ — UserRepository with SQL queries
+      - Service: services/py/identity/app/services/auth_service.py — AuthService with business logic
+      - Routes: services/py/identity/app/routes/auth.py — has GET /me returning user info
+      - Migrations: services/py/identity/migrations/ — SQL migration files
+      - Tests: services/py/identity/tests/ — 48 existing tests
+      - Common lib: libs/py/common/ — errors (NotFoundError, ConflictError, ForbiddenError),
+        security (decode_token, get_current_user_id)
+
+      WHAT TO BUILD:
+      1. Migration: services/py/identity/migrations/00N_profile_fields.sql
+         - ALTER TABLE users ADD COLUMN IF NOT EXISTS bio TEXT DEFAULT NULL;
+         - ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT DEFAULT NULL;
+
+      2. Domain: update User entity in services/py/identity/app/domain/user.py
+         - Add fields: bio: str | None = None, avatar_url: str | None = None
+
+      3. Repository: update UserRepository
+         - Add method: update_profile(user_id: str, name: str | None, bio: str | None,
+           avatar_url: str | None) -> User
+         - SQL: UPDATE users SET name=COALESCE($2,name), bio=COALESCE($3,bio),
+           avatar_url=COALESCE($4,avatar_url) WHERE id=$1 RETURNING *
+         - Return updated User domain entity
+
+      4. Service: update AuthService
+         - Add method: update_profile(user_id: str, name: str | None, bio: str | None,
+           avatar_url: str | None) -> User
+         - Validate: name if provided must be 1-100 chars, bio max 500 chars,
+           avatar_url if provided must start with http:// or https://
+         - Call repository.update_profile()
+
+      5. Route: add PATCH /users/me endpoint in auth.py routes
+         - Request body (pydantic): { name?: str, bio?: str, avatar_url?: str }
+         - Requires authentication (get_current_user_id from JWT)
+         - Returns updated user profile
+         - At least one field must be provided (400 if all None)
+
+      6. Update GET /users/me response to include bio and avatar_url fields.
+
+      TDD — write tests FIRST:
+      1. test_update_profile_name — PATCH /users/me with { name: "New Name" } → 200, name updated
+      2. test_update_profile_bio — PATCH /users/me with { bio: "My bio" } → 200, bio in response
+      3. test_update_profile_avatar — PATCH /users/me with { avatar_url: "https://example.com/a.jpg" } → 200
+      4. test_update_profile_invalid_avatar — PATCH /users/me with { avatar_url: "not-a-url" } → 400
+      5. test_update_profile_bio_too_long — 501 chars → 400
+      6. test_update_profile_unauthenticated — no token → 401
+      7. test_update_profile_empty_body — all fields None → 400
+      8. Write failing tests, then implement to make them pass.
+
+      IMPLEMENTATION APPROACH:
+      1. Read existing domain/user.py, repository, service, and routes to understand patterns.
+      2. Write all tests in tests/test_profile.py (or add to existing test file).
+      3. Add migration file.
+      4. Update domain entity.
+      5. Add repository method.
+      6. Add service method.
+      7. Add route.
+      8. Run tests until all green.
+
+      RULES:
+      - TDD: write failing tests FIRST, then implement
+      - Clean Architecture: routes → services → domain ← repositories
+      - Domain entity must not import from routes/services/repositories
+      - Parameterized SQL queries only ($1, $2) — no string concatenation
+      - avatar_url validation: URL format check (starts with https:// or http://)
+      - bio: strip whitespace, max 500 chars
+      - name: strip whitespace, 1-100 chars, not empty after strip
+      - After implementation: cd services/py/identity && uv run --package identity pytest tests/ -v
+
+      COMMIT:
+      feat(identity): add profile editing with bio and avatar support
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+    depends_on: []
+
+  - id: profile-edit-frontend
+    title: "Profile edit page in buyer app"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add a profile editing section to the account page with form for name, bio, and avatar URL.
+
+      CONTEXT:
+      - Identity service PATCH /users/me accepts { name?, bio?, avatar_url? } (from profile-edit task).
+      - Account page: apps/buyer/app/account/page.tsx (from account-subscription task).
+      - API client: apps/buyer/lib/api.ts — identity namespace.
+      - Auth hook: useAuth() — { user, token, loading }.
+      - TanStack Query for mutations and cache invalidation.
+      - User object includes: id, email, name, role, is_verified, email_verified, created_at,
+        and now bio and avatar_url.
+
+      WHAT TO BUILD:
+      1. Add to apps/buyer/lib/api.ts:
+         - identity.updateProfile(token, { name?, bio?, avatar_url? }) calling PATCH /api/identity/users/me
+         - Update User interface to include bio: string | null, avatar_url: string | null
+
+      2. Create apps/buyer/hooks/use-profile.ts:
+         - useUpdateProfile(token) — TanStack Query mutation hook
+         - On success: invalidate ["user"] query to refresh auth state
+         - Returns mutation object
+
+      3. Update apps/buyer/app/account/page.tsx — add Profile Edit section:
+         - Editable form below the profile display section
+         - Fields:
+           * Name (text input, prefilled with current user.name)
+           * Bio (textarea, 500 char limit, char counter, prefilled with user.bio)
+           * Avatar URL (text input, prefilled with user.avatar_url)
+           * If avatar_url is set, show preview image (next/image with fallback)
+         - "Сохранить" button — calls useUpdateProfile mutation
+         - Success: show green toast/alert "Профиль обновлён"
+         - Error: show red alert with error message
+         - Loading state on save button
+         - Optimistic update: immediately show new values in profile display
+
+      IMPLEMENTATION APPROACH:
+      1. Update api.ts: add updateProfile method and update User interface.
+      2. Create use-profile.ts hook following existing mutation hook patterns.
+      3. Read account/page.tsx and add the profile edit form section.
+      4. Use useState for form fields, initialize from user object.
+      5. For avatar preview: use next/image with onError fallback to initials circle.
+      6. Add character counter for bio: "{count}/500" below textarea.
+      7. Client-side validation: name required, bio max 500, avatar_url starts with https://.
+
+      RULES:
+      - "use client" on account/page.tsx (already is)
+      - Named exports for hook
+      - next/image for avatar preview (with unoptimized prop for external URLs)
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Form validation client-side before API call
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add profile editing form to account page
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [profile-edit, account-subscription]
+
+  - id: bug-fixes-polish
+    title: "Bug fixes, error states, UI polish"
+    scope: frontend:buyer
+    prompt: |
+      Task: Audit and polish the buyer app — fix empty states, error states, loading skeletons,
+      form validation, and add toast notifications for mutations.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS, TanStack Query)
+      - Error utility: apps/buyer/lib/errors.ts — getErrorMessage(err, fallback?)
+      - Skeleton component: apps/buyer/components/CourseCardSkeleton.tsx
+      - All pages: /, /courses/[id], /courses/[id]/lessons/[lessonId], /enrollments, /badges,
+        /flashcards, /notifications, /onboarding, /register, /login, /pricing, /checkout,
+        /account, /forgot-password, /reset-password, /verify-email, /admin/teachers
+
+      AREAS TO AUDIT AND FIX:
+
+      1. Empty states — add friendly messages when lists are empty:
+         - /enrollments: "Вы ещё не записались на курсы. Найдите свой первый курс!"
+           with Link to / (catalog)
+         - /notifications: "Нет уведомлений" with subtle icon
+         - /flashcards: "Нет карточек для повторения сегодня. Хорошая работа!"
+         - /badges: "Начните учиться, чтобы получить первый значок" (if no badges)
+         - Course reviews section on /courses/[id]: "Пока нет отзывов. Будьте первым!"
+
+      2. Error boundaries — improve apps/buyer/app/error.tsx:
+         - Show "Что-то пошло не так" with error message
+         - "Попробовать снова" button calling reset()
+         - "На главную" link to /
+         - Branded: show "EduPlatform" text at top
+
+      3. Loading skeletons — ensure all route-level loading.tsx files exist and have proper shapes:
+         - /enrollments/loading.tsx — list of card skeletons
+         - /badges/loading.tsx — grid of badge skeletons
+         - /flashcards/loading.tsx — card skeleton
+         - /notifications/loading.tsx — list of notification skeletons
+         - /courses/[id]/loading.tsx — course detail skeleton
+         - /account/loading.tsx — profile sections skeleton
+         - Check each, create if missing, improve if too basic
+
+      4. Form validation — add client-side validation:
+         - /login: email format (includes @), password min 6 chars, show inline errors
+         - /register: name required, email format, password min 8 chars, confirm password match
+         - Review form on /courses/[id]: rating required (1-5), comment min 10 chars
+
+      5. Toast notifications for mutations:
+         - Create a simple toast component (or use existing patterns)
+         - Show success toast after: enroll in course, submit review, complete lesson, mark notification read
+         - Show error toast on mutation failures
+         - Toast: fixed bottom-right, auto-dismiss after 3s, green for success, red for error
+         - Implementation: useState in relevant pages, render a small fixed div
+
+      IMPLEMENTATION APPROACH:
+      1. Read each page file listed above.
+      2. For empty states: check the data array/list rendering — add conditional before the map()
+         that shows the empty state message when array is empty and not loading.
+      3. For error.tsx: read current file, enhance with branded layout and action buttons.
+      4. For loading.tsx files: check which exist, create missing ones with animate-pulse skeletons.
+      5. For form validation: add state for field errors, validate on submit, show inline error messages
+         below each input in red text.
+      6. For toasts: add a simple inline toast div per page (no global toast provider needed).
+         Pattern: const [toast, setToast] = useState<{msg:string, type:"success"|"error"} | null>(null)
+         On mutation success/error: setToast({...}), setTimeout(() => setToast(null), 3000).
+
+      RULES:
+      - Edit existing files only — minimize new component files
+      - Simple toast implementation (no external library, no global context)
+      - Tailwind CSS only
+      - next/link for navigation
+      - No new npm dependencies
+      - Do not change routing or API call logic
+      - Keep all existing functionality intact
+      - After ALL fixes: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): polish UI with empty states, error handling, validation, and toasts
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [responsive-mobile, paywall-ui, profile-edit-frontend]

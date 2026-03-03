@@ -1,0 +1,879 @@
+phase: "sprint-14"
+description: "Integrations & SSO — social login, webhooks, calendar, exports"
+
+tasks:
+  # ─── BACKEND: Identity — Google OAuth ──────────────────────────────────────
+
+  - id: google-oauth-backend
+    title: "Google OAuth2 login backend"
+    scope: backend:identity
+    prompt: |
+      Task: Add Google OAuth2 login to the Identity service.
+
+      CONTEXT:
+      - Identity service: services/py/identity/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing routes: app/routes/auth.py (register, login, /me, refresh, logout)
+      - Users table: id (UUID), email, password_hash, name, role, is_verified, email_verified, created_at
+      - Refresh tokens table: id, user_id, token, expires_at, created_at
+      - Clean Architecture: routes → services → domain ← repositories
+      - Domain entities are dataclass(frozen=True) or pydantic BaseModel
+      - JWT: HS256, claims: sub, iat, exp, role, is_verified, email_verified
+      - create_access_token() supports extra_claims for role/is_verified in JWT
+      - Tests use AsyncMock(spec=Repository), pytest-asyncio with asyncio_mode = "auto"
+      - Existing migrations: 001_users.sql through 006_password_reset.sql
+      - Config via pydantic BaseSettings + env vars
+
+      WHAT TO BUILD:
+
+      1. Migration: services/py/identity/migrations/007_oauth_providers.sql
+         CREATE TABLE IF NOT EXISTS oauth_providers (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+           provider VARCHAR(20) NOT NULL,  -- 'google', 'github'
+           provider_user_id VARCHAR(255) NOT NULL,
+           email VARCHAR(255),
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           UNIQUE(provider, provider_user_id),
+           UNIQUE(provider, user_id)
+         );
+         CREATE INDEX IF NOT EXISTS idx_oauth_providers_user_id ON oauth_providers(user_id);
+
+      2. Domain: Add OAuthProvider entity in app/domain/oauth.py:
+         - OAuthProvider: id, user_id, provider, provider_user_id, email, created_at
+         - OAuthLinkResult: user (User entity), access_token, refresh_token, is_new_user
+
+      3. Repository: app/repositories/oauth_repository.py
+         - OAuthRepositoryInterface (ABC):
+           - get_by_provider(provider: str, provider_user_id: str) → OAuthProvider | None
+           - get_by_user(user_id: UUID, provider: str) → OAuthProvider | None
+           - create(user_id: UUID, provider: str, provider_user_id: str, email: str | None) → OAuthProvider
+           - delete_by_user(user_id: UUID, provider: str) → None
+         - OAuthRepository implementation using asyncpg with parameterized queries
+
+      4. Service: Add google_login method to AuthService (or create OAuthService in app/services/oauth_service.py):
+         - google_login(id_token: str) → OAuthLinkResult
+           1. Verify id_token with Google: POST https://oauth2.googleapis.com/tokeninfo?id_token=...
+              OR use the google.oauth2.id_token module. Prefer httpx POST to googleapis for simplicity.
+              Validate: aud == GOOGLE_CLIENT_ID, email_verified == true
+           2. Extract: google_user_id (sub), email, name from token info
+           3. Check oauth_providers for existing link → if found, fetch user, create tokens, return
+           4. Check users by email → if found, link oauth provider to existing user, create tokens, return
+           5. If neither → create new user (role=student, email_verified=true, password_hash=null),
+              link oauth provider, create tokens, return with is_new_user=true
+         - Handle errors: invalid token → 401, Google API unreachable → 502
+
+      5. Routes: Add to app/routes/auth.py (or new app/routes/oauth.py):
+         - POST /auth/google  body: { id_token: str }
+           → { access_token, refresh_token, user: { id, email, name, role }, is_new_user }
+         - Register router in main app
+
+      6. Config: Add GOOGLE_CLIENT_ID: str = "" to Settings. When empty, the endpoint returns 501.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_oauth.py:
+      1. test_google_login_new_user — mock Google token verification, no existing user → creates user + oauth link
+      2. test_google_login_existing_oauth — mock Google verify, existing oauth link → returns existing user
+      3. test_google_login_existing_email — mock Google verify, email exists in users but no oauth link → links account
+      4. test_google_login_invalid_token — mock Google verify fails → 401
+      5. test_google_login_disabled — GOOGLE_CLIENT_ID is empty → 501
+      6. test_google_login_returns_tokens — response contains access_token, refresh_token, user dict
+
+      Mock the Google token verification (httpx call) using AsyncMock.
+      Mock OAuthRepository with AsyncMock(spec=OAuthRepositoryInterface).
+
+      RULES:
+      - NO storing Google tokens or secrets in the database
+      - password_hash can be NULL for OAuth-only users (ALTER COLUMN if needed in migration)
+      - Domain entities must NOT import from routes, services, repositories, or frameworks
+      - Routes must NOT access repositories directly
+      - Type hints on all public functions
+      - Async for all I/O operations
+      - Parameterized SQL queries only ($1, $2, ...)
+      - All tests must be independent, no order dependency
+
+      COMMIT:
+      feat(identity): add Google OAuth2 login
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+    depends_on: []
+
+  # ─── FRONTEND: Buyer — Google Sign-In ──────────────────────────────────────
+
+  - id: google-oauth-frontend
+    title: "Google Sign-In button on login and register pages"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add Google Sign-In button to the buyer app login and register pages.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS, TanStack Query, Radix UI)
+      - Auth hook: apps/buyer/hooks/use-auth.ts — exposes { user, token, loading, login, register, logout }
+      - Login page: apps/buyer/app/login/page.tsx
+      - Register page: apps/buyer/app/register/page.tsx
+      - API client: apps/buyer/lib/api.ts — namespace objects: identity, courses, enrollments, etc.
+      - Backend endpoint: POST /auth/google { id_token } → { access_token, refresh_token, user, is_new_user }
+      - Token stored in localStorage (same as regular login flow)
+
+      WHAT TO BUILD:
+
+      1. Install @react-oauth/google package:
+         cd apps/buyer && pnpm add @react-oauth/google
+
+      2. Create apps/buyer/components/google-sign-in-button.tsx:
+         - "use client" component
+         - Uses GoogleLogin from @react-oauth/google
+         - On success credential response, extract credential (id_token)
+         - POST to /auth/google via API client
+         - On success: store access_token and user in auth state (same flow as login)
+         - On error: show toast or inline error message
+         - Button text: "Войти через Google"
+
+      3. Create apps/buyer/components/oauth-providers.tsx:
+         - "use client" component that wraps GoogleOAuthProvider from @react-oauth/google
+         - Accepts children, renders GoogleOAuthProvider with clientId from env var
+         - NEXT_PUBLIC_GOOGLE_CLIENT_ID env var
+
+      4. Add GoogleSignInButton to login page below the regular login form:
+         - Visual separator: horizontal line with "или" text in the middle
+         - Google button centered below
+
+      5. Add GoogleSignInButton to register page below the register form:
+         - Same separator pattern
+
+      6. Update apps/buyer/lib/api.ts:
+         - Add identity.googleLogin(idToken: string) method
+         - POST /api/identity/auth/google { id_token: idToken }
+
+      7. Update use-auth.ts hook:
+         - Add googleLogin(idToken: string) method that calls API and stores token/user
+
+      IMPLEMENTATION APPROACH:
+      1. Add the package dependency
+      2. Create the components
+      3. Wire into existing pages
+      4. Ensure pnpm build passes
+
+      RULES:
+      - "use client" only where hooks/browser APIs are used
+      - Named exports ONLY (except Next.js page default exports)
+      - Tailwind CSS only, no inline styles
+      - next/link for navigation
+      - NEXT_PUBLIC_GOOGLE_CLIENT_ID must be read from process.env at runtime
+      - If GOOGLE_CLIENT_ID is not set, hide the Google button gracefully (don't crash)
+      - After implementation: cd apps/buyer && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(buyer): add Google Sign-In button to auth pages
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on:
+      - google-oauth-backend
+
+  # ─── BACKEND: Identity — GitHub OAuth ──────────────────────────────────────
+
+  - id: github-oauth-backend
+    title: "GitHub OAuth2 login backend"
+    scope: backend:identity
+    prompt: |
+      Task: Add GitHub OAuth2 login to the Identity service.
+
+      CONTEXT:
+      - Identity service: services/py/identity/ (FastAPI, asyncpg, Clean Architecture)
+      - OAuth infrastructure already exists from google-oauth-backend task:
+        - migrations/007_oauth_providers.sql — oauth_providers table (provider, provider_user_id, user_id, email)
+        - app/domain/oauth.py — OAuthProvider entity, OAuthLinkResult
+        - app/repositories/oauth_repository.py — OAuthRepositoryInterface + implementation
+        - app/routes/ — POST /auth/google endpoint pattern to follow
+      - The oauth_providers table already supports provider='github' (VARCHAR(20))
+      - Clean Architecture: routes → services → domain ← repositories
+      - Tests use AsyncMock(spec=Repository), pytest-asyncio with asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Service: Add github_login method (in OAuthService or AuthService, wherever Google login lives):
+         - github_login(code: str) → OAuthLinkResult
+           1. Exchange code for access_token: POST https://github.com/login/oauth/access_token
+              Body: { client_id, client_secret, code }
+              Headers: Accept: application/json
+              Returns: { access_token, token_type, scope }
+           2. Fetch user profile: GET https://api.github.com/user
+              Headers: Authorization: Bearer {access_token}, Accept: application/vnd.github+json
+              Returns: { id, login, email, name, avatar_url }
+           3. If email is null, fetch emails: GET https://api.github.com/user/emails
+              Find primary verified email
+           4. Same link/create logic as Google:
+              - Check oauth_providers for provider='github', provider_user_id=str(github_id)
+              - Check users by email
+              - Create new user if neither found (role=student, email_verified=true)
+           5. Create tokens, return OAuthLinkResult
+         - Handle errors: invalid code → 401, GitHub API unreachable → 502
+
+      2. Routes: Add endpoint:
+         - POST /auth/github  body: { code: str }
+           → { access_token, refresh_token, user: { id, email, name, role }, is_new_user }
+
+      3. Config: Add GITHUB_CLIENT_ID: str = "" and GITHUB_CLIENT_SECRET: str = "" to Settings.
+         When GITHUB_CLIENT_ID is empty, the endpoint returns 501.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_oauth.py (extend existing file):
+      1. test_github_login_new_user — mock GitHub token exchange + profile fetch, no existing user
+      2. test_github_login_existing_oauth — existing github oauth link → returns user
+      3. test_github_login_existing_email — email match → links account
+      4. test_github_login_invalid_code — mock exchange fails → 401
+      5. test_github_login_disabled — GITHUB_CLIENT_ID empty → 501
+      6. test_github_login_no_email_fetches_emails — email null in profile, fetches /user/emails
+
+      Mock httpx calls to GitHub API.
+
+      RULES:
+      - NEVER store GitHub access tokens in the database (only use them during the flow)
+      - Do NOT duplicate oauth link/create logic — reuse the shared method from Google flow
+        (extract a _link_or_create_user helper if not already done)
+      - Domain entities must NOT import from frameworks
+      - Parameterized SQL queries only
+      - All tests independent
+
+      COMMIT:
+      feat(identity): add GitHub OAuth2 login
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+    depends_on:
+      - google-oauth-backend
+
+  # ─── FRONTEND: Buyer — GitHub Sign-In ──────────────────────────────────────
+
+  - id: github-oauth-frontend
+    title: "GitHub login button with OAuth callback"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add GitHub login button and OAuth callback page to the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS, TanStack Query)
+      - Auth hook: apps/buyer/hooks/use-auth.ts
+      - Google Sign-In already added: components/google-sign-in-button.tsx, components/oauth-providers.tsx
+      - Login/register pages already have Google button with "или" separator
+      - API client: apps/buyer/lib/api.ts
+      - Backend: POST /auth/github { code } → { access_token, refresh_token, user, is_new_user }
+      - GitHub OAuth flow: redirect to github.com/login/oauth/authorize?client_id=...&redirect_uri=...
+        GitHub redirects back with ?code=... which we send to backend
+
+      WHAT TO BUILD:
+
+      1. Create apps/buyer/components/github-sign-in-button.tsx:
+         - "use client" component
+         - Renders a button styled like GitHub (dark bg, GitHub icon/logo as SVG, text "Войти через GitHub")
+         - On click: redirect to https://github.com/login/oauth/authorize?client_id={NEXT_PUBLIC_GITHUB_CLIENT_ID}&redirect_uri={origin}/auth/github/callback&scope=user:email
+         - If NEXT_PUBLIC_GITHUB_CLIENT_ID is not set, don't render
+
+      2. Create apps/buyer/app/auth/github/callback/page.tsx:
+         - "use client" page (default export for Next.js route)
+         - On mount, read ?code= from searchParams
+         - POST code to backend via API client
+         - On success: store tokens in auth state, redirect to / (or /onboarding if is_new_user)
+         - On error: show error message with "Попробовать снова" link back to /login
+         - Show loading spinner while exchanging code
+
+      3. Update apps/buyer/lib/api.ts:
+         - Add identity.githubLogin(code: string) method
+         - POST /api/identity/auth/github { code }
+
+      4. Update use-auth.ts:
+         - Add githubLogin(code: string) method
+
+      5. Add GitHubSignInButton to login and register pages:
+         - Below the Google button (stack vertically)
+         - Keep the same "или" separator above both OAuth buttons
+
+      IMPLEMENTATION APPROACH:
+      1. Create callback page first (handles the redirect)
+      2. Create button component
+      3. Wire into login/register pages
+      4. Update API client and auth hook
+      5. Ensure pnpm build passes
+
+      RULES:
+      - "use client" where needed
+      - Named exports (except page default exports)
+      - Tailwind CSS only
+      - Wrap callback page content in Suspense boundary (useSearchParams requires it for static generation)
+      - NEXT_PUBLIC_GITHUB_CLIENT_ID from process.env
+      - Graceful degradation if env var not set
+      - pnpm build must pass
+
+      COMMIT:
+      feat(buyer): add GitHub OAuth login button and callback
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on:
+      - github-oauth-backend
+
+  # ─── BACKEND: Notification — Webhook System ────────────────────────────────
+
+  - id: webhook-system
+    title: "Webhook delivery system for external integrations"
+    scope: backend:notification
+    prompt: |
+      Task: Build a webhook registration and delivery system in the Notification service.
+
+      CONTEXT:
+      - Notification service: services/py/notification/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing routes: app/routes/notifications.py (POST, GET /me, PATCH /:id/read, streak/flashcard reminders)
+      - Existing migrations: 001_notifications.sql through 004_flashcard_reminder_type.sql
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth: roles student/teacher/admin. Teachers and admins can register webhooks.
+      - Tests use AsyncMock(spec=Repository), pytest-asyncio with asyncio_mode = "auto"
+      - Domain entities are dataclass(frozen=True) or pydantic BaseModel
+
+      WHAT TO BUILD:
+
+      1. Migration: services/py/notification/migrations/005_webhooks.sql
+         CREATE TABLE IF NOT EXISTS webhooks (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           user_id UUID NOT NULL,
+           url VARCHAR(2048) NOT NULL,
+           events JSONB NOT NULL DEFAULT '[]',
+           secret VARCHAR(255) NOT NULL,
+           is_active BOOLEAN NOT NULL DEFAULT true,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX IF NOT EXISTS idx_webhooks_user_id ON webhooks(user_id);
+         CREATE INDEX IF NOT EXISTS idx_webhooks_is_active ON webhooks(is_active) WHERE is_active = true;
+
+         CREATE TABLE IF NOT EXISTS webhook_deliveries (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           webhook_id UUID NOT NULL REFERENCES webhooks(id) ON DELETE CASCADE,
+           event VARCHAR(100) NOT NULL,
+           payload JSONB NOT NULL,
+           status VARCHAR(20) NOT NULL DEFAULT 'pending',
+           status_code INT,
+           attempts INT NOT NULL DEFAULT 0,
+           max_attempts INT NOT NULL DEFAULT 3,
+           last_attempt_at TIMESTAMPTZ,
+           next_retry_at TIMESTAMPTZ,
+           response_body TEXT,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_webhook_id ON webhook_deliveries(webhook_id);
+         CREATE INDEX IF NOT EXISTS idx_webhook_deliveries_status ON webhook_deliveries(status)
+           WHERE status IN ('pending', 'retrying');
+
+      2. Domain: app/domain/webhook.py
+         - Webhook: id, user_id, url, events (list[str]), secret, is_active, created_at
+         - WebhookDelivery: id, webhook_id, event, payload (dict), status, status_code, attempts, max_attempts, last_attempt_at, next_retry_at, created_at
+         - DeliveryStatus enum: PENDING, SUCCESS, FAILED, RETRYING
+         - Supported events: "enrollment.created", "course.completed", "payment.processed", "review.created"
+
+      3. Repository: app/repositories/webhook_repository.py
+         - WebhookRepositoryInterface (ABC):
+           - create(user_id, url, events, secret) → Webhook
+           - get_by_user(user_id) → list[Webhook]
+           - get_by_id(webhook_id) → Webhook | None
+           - delete(webhook_id) → None
+           - get_active_for_event(event: str) → list[Webhook]
+           - create_delivery(webhook_id, event, payload) → WebhookDelivery
+           - update_delivery(delivery_id, status, status_code, attempts, next_retry_at, response_body) → None
+           - get_deliveries_by_webhook(webhook_id, limit, offset) → list[WebhookDelivery]
+           - get_pending_deliveries() → list[WebhookDelivery]
+
+      4. Service: app/services/webhook_service.py
+         - WebhookService:
+           - register_webhook(user_id, url, events) → Webhook
+             Validate URL (https only), validate events against allowed list.
+             Generate secret using secrets.token_hex(32).
+             Max 10 webhooks per user.
+           - list_webhooks(user_id) → list[Webhook]
+           - delete_webhook(user_id, webhook_id) → None
+             Verify ownership before deleting.
+           - get_deliveries(user_id, webhook_id, limit=20, offset=0) → list[WebhookDelivery]
+             Verify webhook ownership.
+           - deliver_event(event: str, payload: dict) → None
+             Find all active webhooks subscribed to this event.
+             For each: create delivery record, attempt POST to URL.
+             Signature: HMAC-SHA256(secret, json_payload) in X-Webhook-Signature header.
+             Content-Type: application/json.
+             Timeout: 10 seconds.
+             On success (2xx): mark delivery as SUCCESS.
+             On failure: mark as RETRYING, set next_retry_at with exponential backoff (30s, 120s, 480s).
+             After max_attempts: mark as FAILED.
+           - retry_pending_deliveries() → int
+             Fetch pending/retrying deliveries where next_retry_at <= now().
+             Attempt delivery again. Return count of retried.
+
+      5. Routes: app/routes/webhooks.py
+         - POST /webhooks { url, events } → Webhook (teacher/admin only)
+         - GET /webhooks/me → list[Webhook] (authenticated)
+         - GET /webhooks/{webhook_id}/deliveries?limit=20&offset=0 → list[WebhookDelivery] (owner only)
+         - DELETE /webhooks/{webhook_id} → 204 (owner only)
+         Register router in main app with prefix /webhooks.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_webhooks.py:
+      1. test_register_webhook_success — teacher creates webhook
+      2. test_register_webhook_invalid_url — non-https URL → 400
+      3. test_register_webhook_invalid_event — unsupported event → 400
+      4. test_register_webhook_max_limit — 11th webhook → 400
+      5. test_register_webhook_student_forbidden — student role → 403
+      6. test_list_webhooks — returns user's webhooks
+      7. test_delete_webhook_owner — owner deletes → 204
+      8. test_delete_webhook_not_owner — different user → 403 or 404
+      9. test_deliver_event_success — mock httpx POST returns 200 → delivery marked SUCCESS
+      10. test_deliver_event_failure — mock httpx POST raises → delivery marked RETRYING
+      11. test_deliver_event_signature — verify HMAC-SHA256 is correct
+      12. test_get_deliveries — returns delivery history for webhook
+
+      RULES:
+      - Webhook secrets are generated server-side, never client-supplied
+      - HTTPS URLs only (no HTTP) for webhook endpoints
+      - HMAC-SHA256 signature: hmac.new(secret.encode(), payload_bytes, hashlib.sha256).hexdigest()
+      - Never log webhook secrets or full payloads (may contain PII)
+      - Timeout on webhook delivery: 10 seconds max
+      - Domain entities must NOT import from frameworks
+      - Parameterized SQL queries only
+      - All tests independent
+
+      COMMIT:
+      feat(notification): add webhook registration and delivery system
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+    depends_on: []
+
+  # ─── FRONTEND: Seller — Webhook Management UI ─────────────────────────────
+
+  - id: webhook-management-ui
+    title: "Webhook management page in seller dashboard"
+    scope: frontend:seller
+    prompt: |
+      Task: Build a webhook management page in the seller dashboard.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, Tailwind CSS)
+      - Seller app is minimal — currently has layout.tsx, page.tsx, error.tsx, loading.tsx in app/
+      - Backend endpoints (notification service via API gateway):
+        - POST /api/notification/webhooks { url, events } → Webhook
+        - GET /api/notification/webhooks/me → list[Webhook]
+        - GET /api/notification/webhooks/{id}/deliveries → list[WebhookDelivery]
+        - DELETE /api/notification/webhooks/{id} → 204
+      - Webhook object: { id, url, events, is_active, created_at }
+      - WebhookDelivery: { id, event, payload, status, status_code, attempts, created_at }
+      - Supported events: enrollment.created, course.completed, payment.processed, review.created
+      - Auth token stored in localStorage (same pattern as buyer app)
+
+      WHAT TO BUILD:
+
+      1. Create apps/seller/lib/api.ts:
+         - Base API client with auth header from localStorage
+         - webhooks namespace: create, list, getDeliveries, delete
+
+      2. Create apps/seller/hooks/use-webhooks.ts:
+         - useWebhookList() — GET /webhooks/me
+         - useCreateWebhook() — mutation POST /webhooks
+         - useDeleteWebhook() — mutation DELETE /webhooks/{id}
+         - useWebhookDeliveries(webhookId) — GET /webhooks/{id}/deliveries
+
+      3. Create apps/seller/app/webhooks/page.tsx:
+         - Page title: "Вебхуки"
+         - "Добавить вебхук" button opens a form (inline or dialog):
+           - URL input (required, must start with https://)
+           - Event checkboxes: enrollment.created, course.completed, payment.processed, review.created
+           - "Создать" submit button
+         - List of existing webhooks as cards:
+           - URL (truncated if long)
+           - Events as small badges
+           - Created date
+           - "Удалить" button with confirmation
+           - "История доставок" expandable section showing last 20 deliveries:
+             - Event name, status (color coded: green=success, red=failed, yellow=pending), timestamp
+
+      4. Add navigation link to webhooks page from seller dashboard.
+
+      IMPLEMENTATION APPROACH:
+      1. Create API client and hooks
+      2. Build the page component
+      3. Wire navigation
+      4. Ensure pnpm build passes
+
+      RULES:
+      - "use client" where hooks/state are used
+      - Named exports (except page default exports)
+      - Tailwind CSS only
+      - Status colors: success=green-500, failed=red-500, pending=yellow-500, retrying=yellow-400
+      - Show webhook secret only once on creation (with copy button), never again
+      - Confirmation dialog before delete
+      - pnpm build must pass
+
+      COMMIT:
+      feat(seller): add webhook management page
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on:
+      - webhook-system
+
+  # ─── BACKEND: Learning — Calendar Export ───────────────────────────────────
+
+  - id: calendar-export
+    title: "iCalendar (.ics) export for study schedule"
+    scope: backend:learning
+    prompt: |
+      Task: Add iCalendar (.ics) export endpoint to the Learning service.
+
+      CONTEXT:
+      - Learning service: services/py/learning/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing routes: flashcards.py, quizzes.py, concepts.py, streaks.py, badges.py, etc.
+      - Flashcards use FSRS algorithm with due dates: flashcards table has due_date TIMESTAMPTZ
+      - Streaks table: user_id, current_streak, longest_streak, last_activity_date
+      - Existing migrations: 001_quizzes.sql through 008_xp_badges.sql
+      - JWT auth: user_id from token
+      - Clean Architecture: routes → services → domain ← repositories
+
+      WHAT TO BUILD:
+
+      1. Add icalendar dependency: Add "icalendar>=6.0.0" to the learning service's pyproject.toml
+         under [project.dependencies].
+
+      2. Repository: Add methods to existing FlashcardRepository (or create CalendarRepository):
+         - get_due_flashcards_schedule(user_id: UUID, days_ahead: int = 30) → list of { due_date, deck_name, count }
+           SELECT DATE(due_date) as due_date, d.name as deck_name, COUNT(*) as count
+           FROM flashcards f JOIN decks d ON f.deck_id = d.id
+           WHERE f.user_id = $1 AND f.due_date BETWEEN now() AND now() + interval '$2 days'
+           GROUP BY DATE(due_date), d.name
+           ORDER BY due_date
+
+      3. Service: app/services/calendar_service.py
+         - CalendarService:
+           - generate_ical(user_id: UUID) → bytes
+             1. Create iCalendar Calendar object with:
+                PRODID: -//EduPlatform//Study Schedule//EN
+                VERSION: 2.0
+                X-WR-CALNAME: EduPlatform Study Schedule
+             2. Add flashcard review events:
+                For each due_date group: VEVENT with
+                SUMMARY: "Повторение: {deck_name} ({count} карточек)"
+                DTSTART: due_date at 09:00 UTC
+                DURATION: PT30M
+                DESCRIPTION: "Повторите {count} флеш-карточек в колоде {deck_name}"
+                VALARM: 15 minutes before
+             3. Add daily streak reminder:
+                VEVENT recurring daily (RRULE:FREQ=DAILY)
+                SUMMARY: "EduPlatform: Не забудьте позаниматься!"
+                DTSTART: today at 19:00 UTC
+                DURATION: PT15M
+             4. Return calendar.to_ical()
+
+      4. Routes: app/routes/calendar.py
+         - GET /calendar/me.ics → Response with content_type="text/calendar"
+           Headers: Content-Disposition: attachment; filename="study-schedule.ics"
+           Requires authentication (JWT).
+         - GET /calendar/me/subscribe?token={calendar_token} → same .ics content
+           Uses a long-lived calendar-specific token (not JWT) so calendar apps can poll.
+           Generate token: POST /calendar/me/token → { calendar_token, subscribe_url }
+         Register router in main app with prefix /calendar.
+
+      5. Migration: services/py/learning/migrations/009_calendar_tokens.sql
+         CREATE TABLE IF NOT EXISTS calendar_tokens (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           user_id UUID NOT NULL,
+           token VARCHAR(64) NOT NULL UNIQUE,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX IF NOT EXISTS idx_calendar_tokens_token ON calendar_tokens(token);
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_calendar.py:
+      1. test_generate_ical_with_flashcards — mock repo returns due flashcards → valid ics bytes
+      2. test_generate_ical_empty — no flashcards → ics with only streak reminder
+      3. test_ical_contains_valarm — check VALARM in output
+      4. test_calendar_endpoint_returns_ics — GET /calendar/me.ics → 200, content-type text/calendar
+      5. test_calendar_endpoint_unauthenticated → 401
+      6. test_create_calendar_token — POST /calendar/me/token → returns token + subscribe_url
+      7. test_subscribe_with_valid_token — GET /calendar/me/subscribe?token=... → 200
+      8. test_subscribe_with_invalid_token → 401
+
+      RULES:
+      - Calendar tokens are NOT JWTs — use secrets.token_urlsafe(48)
+      - The .ics output must be valid iCalendar (parseable by any calendar app)
+      - No PII in calendar events (no email, no user names)
+      - Domain entities must NOT import from frameworks
+      - Parameterized SQL queries only
+      - All tests independent
+
+      COMMIT:
+      feat(learning): add iCalendar export for study schedule
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
+    depends_on: []
+
+  # ─── FRONTEND: Buyer — Calendar Integration ────────────────────────────────
+
+  - id: calendar-frontend
+    title: "Add to Calendar buttons for study schedule"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add calendar integration UI to the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind CSS, TanStack Query)
+      - Backend endpoints (learning service via API gateway):
+        - GET /api/learning/calendar/me.ics → .ics file download
+        - POST /api/learning/calendar/me/token → { calendar_token, subscribe_url }
+        - GET /api/learning/calendar/me/subscribe?token=... → .ics (for calendar apps)
+      - Existing pages: /flashcards, /courses, /badges
+      - Auth hook: apps/buyer/hooks/use-auth.ts
+
+      WHAT TO BUILD:
+
+      1. Create apps/buyer/hooks/use-calendar.ts:
+         - useDownloadCalendar() — fetches .ics file and triggers browser download
+         - useCalendarToken() — mutation POST /calendar/me/token, returns subscribe URL
+         - useCopySubscribeUrl() — copies subscribe URL to clipboard
+
+      2. Create apps/buyer/components/calendar-buttons.tsx:
+         - "use client" component
+         - "Скачать .ics" button — downloads .ics file
+         - "Подписаться на календарь" button — generates calendar token and shows:
+           - Subscribe URL (with copy button)
+           - Deep links:
+             * Google Calendar: https://calendar.google.com/calendar/r?cid=webcal://{subscribe_url}
+             * Apple Calendar: webcal://{subscribe_url}
+           - Instruction text: "Скопируйте ссылку и добавьте в ваше приложение календаря"
+
+      3. Add CalendarButtons to flashcards page:
+         - Small section at top: "Добавить расписание повторений в календарь"
+         - Render CalendarButtons component
+
+      4. Add CalendarButtons to a new apps/buyer/app/settings/page.tsx:
+         - Settings page with "Интеграции" section
+         - Calendar subscription management
+         - Link to settings from user menu/profile
+
+      IMPLEMENTATION APPROACH:
+      1. Create hook and component
+      2. Integrate into flashcards page
+      3. Create settings page
+      4. Ensure pnpm build passes
+
+      RULES:
+      - "use client" where hooks are used
+      - Named exports (except page default exports)
+      - Tailwind CSS only
+      - webcal:// protocol for Apple Calendar integration
+      - Subscribe URL should be shown only once and copyable (with visual feedback)
+      - pnpm build must pass
+
+      COMMIT:
+      feat(buyer): add calendar integration buttons
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on:
+      - calendar-export
+
+  # ─── BACKEND: Identity — Data Export (GDPR) ───────────────────────────────
+
+  - id: data-export
+    title: "GDPR-style user data export"
+    scope: backend:identity
+    prompt: |
+      Task: Add GDPR-style data export to the Identity service.
+
+      CONTEXT:
+      - Identity service: services/py/identity/ (FastAPI, asyncpg, Clean Architecture)
+      - Users table: id, email, password_hash, name, role, is_verified, email_verified, created_at
+      - Existing routes: auth.py (register, login, /me), admin.py
+      - Existing migrations: 001 through 007 (including oauth_providers from earlier task)
+      - Other services own their own data — Identity cannot read their DBs directly.
+        For MVP: export only Identity-owned data. Cross-service export is out of scope.
+      - Clean Architecture: routes → services → domain ← repositories
+      - Tests use AsyncMock(spec=Repository), pytest-asyncio with asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Migration: services/py/identity/migrations/008_data_exports.sql
+         CREATE TABLE IF NOT EXISTS data_exports (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+           status VARCHAR(20) NOT NULL DEFAULT 'pending',
+           file_path VARCHAR(512),
+           error_message TEXT,
+           requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           completed_at TIMESTAMPTZ,
+           expires_at TIMESTAMPTZ
+         );
+         CREATE INDEX IF NOT EXISTS idx_data_exports_user_id ON data_exports(user_id);
+
+      2. Domain: app/domain/data_export.py
+         - DataExport: id, user_id, status (pending/processing/completed/failed), file_path, requested_at, completed_at, expires_at
+         - ExportStatus enum: PENDING, PROCESSING, COMPLETED, FAILED
+
+      3. Repository: app/repositories/export_repository.py
+         - ExportRepositoryInterface (ABC):
+           - create(user_id: UUID) → DataExport
+           - get_by_id(export_id: UUID) → DataExport | None
+           - get_latest_by_user(user_id: UUID) → DataExport | None
+           - update_status(export_id: UUID, status: str, file_path: str | None, error: str | None) → None
+         - ExportRepository implementation
+
+      4. Service: app/services/export_service.py
+         - ExportService:
+           - request_export(user_id: UUID) → DataExport
+             1. Check rate limit: get_latest_by_user, if completed_at > now() - 24h → raise RateLimitError
+             2. Create export record with status=pending
+             3. Generate export synchronously (for MVP — no background workers):
+                - Fetch user profile (id, email, name, role, created_at)
+                - Fetch oauth_providers for user
+                - Fetch refresh_tokens count
+                - Package as JSON: { "exported_at": now, "user": {...}, "oauth_providers": [...], "session_count": N }
+             4. Write JSON to a temp path or return as bytes
+             5. Update export record: status=completed, completed_at=now, expires_at=now+7d
+             6. Return updated DataExport
+           - get_export_status(user_id: UUID, export_id: UUID) → DataExport
+             Verify user_id matches. Raise NotFoundError if not found.
+           - download_export(user_id: UUID, export_id: UUID) → bytes
+             Verify ownership, check status=completed and not expired.
+             Return the JSON bytes.
+
+      5. Routes: app/routes/exports.py
+         - POST /me/export → { export_id, status } (authenticated)
+         - GET /me/export/{export_id} → DataExport status (authenticated)
+         - GET /me/export/{export_id}/download → JSON file response (authenticated)
+         Register router in main app with prefix (under /me path).
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_exports.py:
+      1. test_request_export_success — creates export, returns completed status
+      2. test_request_export_rate_limited — recent export exists → 429
+      3. test_get_export_status — returns export info
+      4. test_get_export_status_not_owner → 404
+      5. test_download_export_success → 200, JSON content
+      6. test_download_export_expired → 410 (Gone)
+      7. test_download_export_not_completed → 409 (Conflict)
+      8. test_export_contains_user_data — verify JSON has user fields
+      9. test_export_excludes_password — verify password_hash is NOT in export
+
+      RULES:
+      - NEVER include password_hash in exported data
+      - NEVER include other users' data
+      - Rate limit: 1 export per 24 hours per user
+      - Export expires after 7 days
+      - JSON export content must be self-contained and human-readable
+      - No cross-service DB access — only Identity-owned data for now
+      - Domain entities must NOT import from frameworks
+      - Parameterized SQL queries only
+      - All tests independent
+
+      COMMIT:
+      feat(identity): add GDPR-style user data export
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+    depends_on:
+      - google-oauth-backend
+
+  # ─── BACKEND: Learning — Obsidian Export ───────────────────────────────────
+
+  - id: obsidian-export
+    title: "Export knowledge graph to Obsidian-compatible markdown"
+    scope: backend:learning
+    prompt: |
+      Task: Add Obsidian-compatible knowledge graph export to the Learning service.
+
+      CONTEXT:
+      - Learning service: services/py/learning/ (FastAPI, asyncpg, Clean Architecture)
+      - Concepts/Knowledge Graph tables (from 003_concepts.sql):
+        - concepts: id, course_id, name, description, created_at
+        - concept_prerequisites: concept_id, prerequisite_id (DAG edges)
+        - user_concept_mastery: user_id, concept_id, mastery_level (0.0–1.0), updated_at
+      - Flashcards tables (from 002_flashcards.sql):
+        - decks: id, user_id, course_id, name
+        - flashcards: id, deck_id, user_id, front, back, due_date, ...
+      - Existing routes: concepts.py (7 endpoints for concepts + mastery)
+      - Clean Architecture: routes → services → domain ← repositories
+      - Tests use AsyncMock(spec=Repository), pytest-asyncio with asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Repository: Add methods to ConceptRepository (or create ExportRepository):
+         - get_course_concepts_with_prerequisites(course_id: UUID) → list of { concept, prerequisites: list[str] }
+           SELECT c.id, c.name, c.description,
+                  COALESCE(array_agg(cp.name), '{}') as prerequisite_names
+           FROM concepts c
+           LEFT JOIN concept_prerequisites cr ON c.id = cr.concept_id
+           LEFT JOIN concepts cp ON cr.prerequisite_id = cp.id
+           WHERE c.course_id = $1
+           GROUP BY c.id, c.name, c.description
+         - get_user_mastery_for_course(user_id: UUID, course_id: UUID) → dict[concept_id, float]
+         - get_flashcards_for_concepts(user_id: UUID, concept_ids: list[UUID]) → dict[concept_id, list[Flashcard]]
+           For this, flashcards would need a concept_id link. If that doesn't exist,
+           match by deck's course_id and skip per-concept linking (simpler MVP approach).
+
+      2. Service: app/services/export_service.py
+         - ExportService (or add to existing ConceptService):
+           - export_obsidian(user_id: UUID, course_id: UUID) → bytes (ZIP)
+             1. Fetch all concepts for course with prerequisites
+             2. Fetch user mastery levels
+             3. Fetch flashcards for the course (grouped by deck or concept if linked)
+             4. For each concept, generate a markdown file:
+
+                Filename: "{concept_name}.md" (sanitize: replace /\:*?"<>| with -)
+
+                Content:
+                ```markdown
+                # {concept_name}
+
+                {concept_description}
+
+                ## Mastery
+                Level: {mastery_level * 100:.0f}%
+                Status: {"Mastered" if >= 0.8 else "Learning" if >= 0.3 else "New"}
+
+                ## Prerequisites
+                - [[{prerequisite_name_1}]]
+                - [[{prerequisite_name_2}]]
+
+                ## Related Flashcards
+                > **Q:** {flashcard_front}
+                > **A:** {flashcard_back}
+
+                ---
+
+                > **Q:** {flashcard_front_2}
+                > **A:** {flashcard_back_2}
+                ```
+
+             5. Create a ZIP archive using Python's zipfile module (in-memory, BytesIO)
+             6. Add an index file "_Index.md" with links to all concepts:
+                ```markdown
+                # {course_name} — Knowledge Graph
+
+                ## Concepts
+                - [[{concept_name_1}]] — {mastery}%
+                - [[{concept_name_2}]] — {mastery}%
+                ```
+             7. Return ZIP bytes
+
+      3. Routes: app/routes/exports.py
+         - GET /export/obsidian/course/{course_id} → StreamingResponse
+           Content-Type: application/zip
+           Content-Disposition: attachment; filename="knowledge-graph-{course_id}.zip"
+           Requires authentication.
+         Register router in main app with prefix /export.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_obsidian_export.py:
+      1. test_export_generates_zip — mock concepts, returns valid ZIP bytes
+      2. test_export_zip_contains_concept_files — ZIP has one .md per concept + _Index.md
+      3. test_concept_file_has_wikilinks — prerequisite names appear as [[wikilinks]]
+      4. test_concept_file_has_mastery — mastery percentage shown correctly
+      5. test_concept_file_has_flashcards — flashcard Q/A in blockquotes
+      6. test_export_empty_course — no concepts → ZIP with only _Index.md (empty list)
+      7. test_export_sanitizes_filenames — concept with special chars → safe filename
+      8. test_export_endpoint_unauthenticated → 401
+      9. test_export_endpoint_returns_zip → 200, content-type application/zip
+
+      Use zipfile.ZipFile with BytesIO for in-memory ZIP creation.
+      Parse the generated ZIP in tests to verify contents.
+
+      RULES:
+      - Filenames must be filesystem-safe (no /\:*?"<>| characters)
+      - [[wikilinks]] must use exact concept names (Obsidian resolves them by filename)
+      - UTF-8 encoding for all markdown files
+      - No PII in exported files (no email, no user ID in content)
+      - ZIP must be valid and openable by standard tools
+      - Domain entities must NOT import from frameworks
+      - Parameterized SQL queries only
+      - All tests independent
+
+      COMMIT:
+      feat(learning): add Obsidian-compatible knowledge graph export
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
+    depends_on: []

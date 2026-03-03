@@ -1,0 +1,1057 @@
+phase: "sprint-16"
+description: "Scale Infrastructure — Rust gateway, event bus, search, database scaling"
+
+tasks:
+  # ──────────────────────────────────────────────
+  # INFRA: PROTOBUF CONTRACTS
+  # ──────────────────────────────────────────────
+
+  - id: proto-contracts
+    title: "Define protobuf contracts for all services and events"
+    scope: infra
+    prompt: |
+      Task: Define protobuf contracts for all 7 Python services and domain events. These are the source of truth for inter-service communication.
+
+      CONTEXT:
+      - Proto directory exists at proto/ with .gitkeep placeholders:
+        proto/identity/v1/.gitkeep, proto/catalog/v1/.gitkeep, proto/orders/v1/.gitkeep, proto/events/v1/.gitkeep
+      - 7 Python services: identity (8001), course (8002), enrollment (8003), payment (8004), notification (8005), ai (8006), learning (8007)
+      - Services use Clean Architecture: routes → services → domain ← repositories
+      - Current endpoints documented in docs/architecture/02-API-REFERENCE.md
+      - JWT auth with claims: sub (user_id UUID), role (student/teacher/admin), is_verified, email_verified
+      - Domain roles: Student (default), Teacher (verified only), Admin
+
+      WHAT TO BUILD:
+      1. proto/identity/v1/identity.proto — proto3:
+         - service IdentityService with RPCs: Register, Login, GetMe, RefreshToken, VerifyEmail, ForgotPassword, ResetPassword, AdminGetUsers, AdminUpdateRole
+         - Messages: RegisterRequest/Response, LoginRequest/Response, User, TokenPair
+         - Role enum: ROLE_UNSPECIFIED, ROLE_STUDENT, ROLE_TEACHER, ROLE_ADMIN
+
+      2. proto/course/v1/course.proto — proto3:
+         - Rename from catalog/v1/ to course/v1/ (remove catalog .gitkeep, create course dir)
+         - service CourseService with RPCs: CreateCourse, GetCourse, ListCourses, UpdateCourse, DeleteCourse, CreateModule, CreateLesson, GetCurriculum, ListCategories, CreateReview, ListReviews
+         - Messages: Course, Module, Lesson, Review, Category, CourseFilter (level, category_id, is_free, price_min, price_max, sort_by)
+
+      3. proto/enrollment/v1/enrollment.proto — proto3:
+         - Rename from orders/v1/ to enrollment/v1/ (remove orders .gitkeep, create enrollment dir)
+         - service EnrollmentService with RPCs: Enroll, GetMyEnrollments, GetCourseEnrollmentCount, UpdateLessonProgress, GetLessonProgress
+         - Messages: Enrollment, LessonProgress
+
+      4. proto/payment/v1/payment.proto — proto3:
+         - service PaymentService with RPCs: CreatePayment, GetPayment, GetMyPayments, GetEarningsSummary, GetMyEarnings, RequestPayout, GetMyPayouts
+         - Messages: Payment, EarningsSummary, Earning, Payout
+
+      5. proto/notification/v1/notification.proto — proto3:
+         - service NotificationService with RPCs: CreateNotification, GetMyNotifications, MarkAsRead, SendStreakReminders, SendFlashcardReminders
+         - Messages: Notification
+
+      6. proto/ai/v1/ai.proto — proto3:
+         - service AIService with RPCs: GenerateQuiz, GenerateSummary, TutorChat, TutorFeedback, GetMyCredits
+         - Messages: Quiz, Summary, ChatMessage, CreditStatus
+
+      7. proto/learning/v1/learning.proto — proto3:
+         - service LearningService with RPCs covering 29 endpoints:
+           Quizzes (CreateQuiz, GetQuiz, ListMyQuizzes, SubmitQuiz),
+           Flashcards (CreateDeck, GetDeck, ListMyDecks, ReviewFlashcard),
+           Concepts (CreateConcept, GetConcept, ListConcepts, GetKnowledgeGraph, LinkConcepts, GetConceptMastery, UpdateConceptMastery),
+           Streaks (GetMyStreak, UpdateStreak),
+           Leaderboard (GetLeaderboard, GetMyRank, GetCourseLeaderboard, GetWeeklyLeaderboard, GetAllTimeLeaderboard),
+           Discussions (CreateThread, GetThread, ListThreads, CreateReply, ListReplies),
+           XP (GetMyXP), Badges (GetMyBadges)
+         - Messages: Quiz, QuizSubmission, FlashcardDeck, Flashcard, Concept, KnowledgeGraph, Streak, LeaderboardEntry, Discussion, Reply, XPStatus, Badge
+
+      8. proto/events/v1/events.proto — proto3:
+         - Domain events (all with: string event_id, string aggregate_id, google.protobuf.Timestamp timestamp, int32 version):
+           EnrollmentCreated (user_id, course_id)
+           LessonCompleted (user_id, course_id, lesson_id)
+           QuizSubmitted (user_id, quiz_id, course_id, score)
+           PaymentProcessed (user_id, payment_id, amount, currency)
+           CoursePublished (course_id, teacher_id, title)
+           UserRegistered (user_id, email, role)
+         - Subject naming convention: domain.event_name (e.g., "enrollment.created")
+
+      9. proto/buf.yaml — buf configuration for linting and breaking change detection
+
+      IMPLEMENTATION APPROACH:
+      1. Remove .gitkeep files from existing proto dirs
+      2. Create new directory structure matching service names
+      3. Write each .proto file with proto3 syntax
+      4. Use google.protobuf.Timestamp for datetime fields
+      5. Use google.protobuf.Empty where no request/response body needed
+      6. Add buf.yaml for proto linting
+
+      RULES:
+      - proto3 syntax only
+      - Package naming: eduplatform.<service>.v1
+      - All IDs are string (UUIDs as strings)
+      - Timestamps use google.protobuf.Timestamp
+      - Enums start with UNSPECIFIED = 0
+      - Fields use snake_case
+      - RPCs use PascalCase
+      - Events are past tense (enrollment.created, not enrollment.create)
+      - No business logic in proto — pure contract definitions
+      - Backward compatible: only add fields, never remove
+
+      COMMIT: feat(proto): define protobuf contracts for all services and events
+    test: "echo 'manual verification required'"
+    depends_on: []
+
+  # ──────────────────────────────────────────────
+  # BACKEND (RUST): API GATEWAY SCAFFOLD
+  # ──────────────────────────────────────────────
+
+  - id: api-gateway-scaffold
+    title: "Scaffold Rust API gateway with reverse proxy routing"
+    scope: backend:rs:api-gateway
+    prompt: |
+      Task: Scaffold the Rust API gateway at services/rs/api-gateway/ with Axum, proxying requests to Python backend services.
+
+      CONTEXT:
+      - Placeholder exists: services/rs/api-gateway/src/.gitkeep
+      - 7 Python backend services running on ports 8001-8007
+      - Gateway will be the single entry point for all client traffic on port 9000
+      - Rust stack: axum, tokio, serde, reqwest, tower
+      - Current frontend calls Python services directly — gateway will sit in front
+      - Proto contracts defined in proto/ (from proto-contracts task)
+      - Target: > 5000 RPS, p99 < 50ms
+
+      WHAT TO BUILD:
+      1. services/rs/api-gateway/Cargo.toml:
+         - Package name: api-gateway
+         - Edition 2021
+         - Dependencies: axum 0.7, tokio (full features), serde (derive), serde_json, reqwest (rustls-tls), tower 0.4, tower-http 0.5 (cors, trace, compression), tracing, tracing-subscriber, thiserror, anyhow, dotenvy
+         - Dev dependencies: axum-test or tower::ServiceExt for testing
+
+      2. services/rs/api-gateway/src/config.rs:
+         - AppConfig struct loaded from env vars:
+           PORT (default 9000), HOST (default 0.0.0.0)
+           IDENTITY_URL (default http://localhost:8001)
+           COURSE_URL (default http://localhost:8002)
+           ENROLLMENT_URL (default http://localhost:8003)
+           PAYMENT_URL (default http://localhost:8004)
+           NOTIFICATION_URL (default http://localhost:8005)
+           AI_URL (default http://localhost:8006)
+           LEARNING_URL (default http://localhost:8007)
+           CORS_ORIGINS (comma-separated, default http://localhost:3000)
+           LOG_LEVEL (default info)
+
+      3. services/rs/api-gateway/src/routes/mod.rs — Route table:
+         - /health → 200 OK {"status": "healthy", "service": "api-gateway"}
+         - /api/identity/* → proxy to IDENTITY_URL
+         - /api/courses/* → proxy to COURSE_URL (note: /api/courses maps to course service)
+         - /api/enrollments/* → proxy to ENROLLMENT_URL
+         - /api/payments/* → proxy to PAYMENT_URL
+         - /api/notifications/* → proxy to NOTIFICATION_URL
+         - /api/ai/* → proxy to AI_URL
+         - /api/learning/* → proxy to LEARNING_URL
+
+      4. services/rs/api-gateway/src/proxy.rs:
+         - Generic proxy handler: receives request, forwards to upstream service
+         - Preserves: method, headers, query params, body
+         - Passes through: Authorization header, Content-Type
+         - Adds: X-Request-Id (UUID v4), X-Forwarded-For
+         - Strips /api/{service} prefix before forwarding (e.g., /api/courses/courses → /courses)
+         - Returns upstream response as-is (status, headers, body)
+         - Timeout: 30s per upstream request
+         - Error handling: 502 Bad Gateway if upstream unreachable, 504 Gateway Timeout if timeout
+
+      5. services/rs/api-gateway/src/main.rs:
+         - Load config, init tracing
+         - Build router with all routes
+         - Add middleware layers: CORS, request tracing, response compression
+         - Bind to HOST:PORT, serve with graceful shutdown (tokio signal)
+
+      6. Tests in services/rs/api-gateway/src/routes/mod.rs or tests/:
+         - Health check returns 200
+         - Unknown path returns 404
+         - Config loads defaults correctly
+
+      IMPLEMENTATION APPROACH:
+      1. Remove .gitkeep from services/rs/api-gateway/src/
+      2. Create Cargo.toml with all dependencies
+      3. Implement config.rs with env var loading
+      4. Implement proxy.rs with generic forwarding logic
+      5. Implement routes/mod.rs with path-based routing
+      6. Implement main.rs wiring everything together
+      7. Add unit tests for config and route matching
+      8. Verify: cargo build, cargo test, cargo clippy -- -D warnings
+
+      RULES:
+      - #![deny(clippy::all)] in main.rs
+      - All errors use thiserror for library types, anyhow for application
+      - Async everywhere (tokio runtime)
+      - No unwrap() in production code — proper error handling
+      - reqwest client should be shared (clone is cheap, it uses Arc internally)
+      - Graceful shutdown on SIGTERM/SIGINT
+      - Structured logging with tracing
+      - Response times logged for every proxied request
+
+      COMMIT: feat(api-gateway): scaffold Rust API gateway with reverse proxy routing
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on:
+      - proto-contracts
+
+  # ──────────────────────────────────────────────
+  # BACKEND (RUST): GATEWAY JWT AUTH MIDDLEWARE
+  # ──────────────────────────────────────────────
+
+  - id: gateway-auth-middleware
+    title: "JWT validation middleware for API gateway"
+    scope: backend:rs:api-gateway
+    prompt: |
+      Task: Add JWT validation middleware to the Rust API gateway that decodes tokens and passes user claims as headers to upstream services.
+
+      CONTEXT:
+      - API gateway at services/rs/api-gateway/ (from api-gateway-scaffold task)
+      - Python services currently validate JWT themselves using HS256 with a shared JWT_SECRET
+      - JWT payload structure: { "sub": "uuid", "role": "student|teacher|admin", "is_verified": true/false, "email_verified": true/false, "exp": unix_timestamp }
+      - JWT_SECRET is the same across all services (shared secret)
+      - Python identity service creates tokens in services/py/identity/app/services/auth_service.py
+
+      WHAT TO BUILD:
+      1. Add dependency to Cargo.toml: jsonwebtoken 9
+
+      2. services/rs/api-gateway/src/middleware/auth.rs:
+         - JwtClaims struct: sub (String), role (String), is_verified (bool), email_verified (bool), exp (u64)
+         - AuthConfig: jwt_secret (from JWT_SECRET env var), public_paths (Vec of path patterns)
+         - auth_middleware function (axum middleware::from_fn):
+           a) Check if request path matches any public path → skip auth, pass through
+           b) Extract Authorization header → "Bearer <token>"
+           c) Decode JWT with HS256 using JWT_SECRET
+           d) Validate expiration
+           e) On success: inject headers into request before forwarding:
+              X-User-Id: claims.sub
+              X-User-Role: claims.role
+              X-User-Verified: claims.is_verified (as "true"/"false")
+              X-Email-Verified: claims.email_verified (as "true"/"false")
+           f) On failure: return 401 {"error": "Invalid or expired token"}
+
+      3. Public paths (no auth required):
+         - GET /health
+         - POST /api/identity/register
+         - POST /api/identity/login
+         - POST /api/identity/refresh
+         - POST /api/identity/forgot-password
+         - POST /api/identity/reset-password
+         - GET /api/identity/verify-email
+         - GET /api/courses/courses (list courses — public catalog)
+         - GET /api/courses/courses/* (get course detail — public)
+         - GET /api/courses/categories (list categories — public)
+
+      4. Update main.rs to add auth middleware layer to the router (before proxy, after CORS)
+
+      5. Tests:
+         - Valid token → request passes with X-User-* headers
+         - Expired token → 401
+         - Missing Authorization header on protected route → 401
+         - Missing Authorization header on public route → passes through
+         - Malformed token → 401
+         - Wrong secret → 401
+
+      IMPLEMENTATION APPROACH:
+      1. Add jsonwebtoken to Cargo.toml
+      2. Create middleware/mod.rs and middleware/auth.rs
+      3. Define claims struct and validation logic
+      4. Implement axum middleware function
+      5. Configure public paths list
+      6. Wire into router in main.rs
+      7. Write comprehensive tests
+
+      RULES:
+      - Use jsonwebtoken crate with HS256 algorithm
+      - Same JWT_SECRET env var that Python services use
+      - Public paths are configurable, not hardcoded (loaded at startup, but defaults provided)
+      - Middleware must be fast — no I/O, just CPU crypto
+      - Claims headers MUST match what Python services expect (check identity service code)
+      - Log auth failures at WARN level with request path (no token content in logs)
+      - Never log the JWT secret or token values
+
+      COMMIT: feat(api-gateway): add JWT validation middleware with claim forwarding
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on:
+      - api-gateway-scaffold
+
+  # ──────────────────────────────────────────────
+  # BACKEND (RUST): GATEWAY RATE LIMITER
+  # ──────────────────────────────────────────────
+
+  - id: gateway-rate-limiter
+    title: "Redis-backed rate limiting in API gateway"
+    scope: backend:rs:api-gateway
+    prompt: |
+      Task: Add Redis-backed rate limiting to the Rust API gateway using a sliding window algorithm.
+
+      CONTEXT:
+      - API gateway at services/rs/api-gateway/ (from api-gateway-scaffold + gateway-auth-middleware tasks)
+      - Redis already used by Python services for caching (REDIS_URL env var, typically redis://localhost:6379)
+      - Python identity service has rate limiting: 100/min global, 10/min login, 5/min register
+      - Gateway rate limiting replaces per-service rate limiting (single enforcement point)
+
+      WHAT TO BUILD:
+      1. Add dependencies to Cargo.toml: redis 0.25 (with tokio-comp and connection-manager features)
+
+      2. services/rs/api-gateway/src/middleware/rate_limit.rs:
+         - RateLimiter struct: redis connection pool, rate limit configs
+         - RateLimitConfig: path_pattern (String), max_requests (u32), window_seconds (u32)
+         - Default configs:
+           a) Global: 100 requests/minute per IP for all paths
+           b) Login: 10 requests/minute per IP for POST /api/identity/login
+           c) Register: 5 requests/minute per IP for POST /api/identity/register
+           d) AI endpoints: 30 requests/minute per IP for /api/ai/*
+         - Sliding window algorithm using Redis sorted sets:
+           Key: "ratelimit:{ip}:{path_group}:{window_id}"
+           a) ZREMRANGEBYSCORE to remove expired entries
+           b) ZCARD to count entries in current window
+           c) If count >= max_requests → reject with 429
+           d) ZADD to add current request timestamp
+           e) EXPIRE on the key to auto-cleanup
+         - rate_limit_middleware function (axum middleware):
+           a) Extract client IP from X-Forwarded-For or socket addr
+           b) Find matching rate limit config (most specific first)
+           c) Check rate limit via Redis
+           d) On allowed: add headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+           e) On exceeded: return 429 Too Many Requests with Retry-After header and JSON error body
+
+      3. Update config.rs:
+         - Add REDIS_URL (default redis://localhost:6379)
+         - Add RATE_LIMIT_ENABLED (default true)
+
+      4. Update main.rs to add rate limit middleware layer (before auth, after CORS)
+
+      5. Tests:
+         - Request within limit → passes with rate limit headers
+         - Request exceeding limit → 429 with Retry-After
+         - Redis unavailable → fail open (allow request, log error)
+         - Different paths have different limits
+         - Rate limit resets after window expires
+
+      IMPLEMENTATION APPROACH:
+      1. Add redis dependency to Cargo.toml
+      2. Implement sliding window algorithm with Redis sorted sets
+      3. Create rate limit middleware
+      4. Wire into router
+      5. Write tests (use mock Redis or in-memory fallback for unit tests)
+
+      RULES:
+      - Sliding window, not fixed window (prevents burst at window boundary)
+      - Fail open if Redis is down — never block requests due to rate limiter failure
+      - Log rate limit violations at WARN level with IP and path
+      - Never log full IP in production (last octet masked) — but for now, full IP is acceptable in dev
+      - Rate limit keys expire automatically (TTL = window_seconds + buffer)
+      - Redis operations must be non-blocking and fast (< 5ms)
+      - Connection pooling for Redis (use deadpool-redis or redis connection manager)
+
+      COMMIT: feat(api-gateway): add Redis-backed sliding window rate limiting
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on:
+      - api-gateway-scaffold
+
+  # ──────────────────────────────────────────────
+  # BACKEND (RUST): SEARCH SERVICE SCAFFOLD
+  # ──────────────────────────────────────────────
+
+  - id: search-service-scaffold
+    title: "Scaffold Rust search service with Meilisearch integration"
+    scope: backend:rs:search
+    prompt: |
+      Task: Scaffold the Rust search service at services/rs/search/ integrating with Meilisearch for full-text course search.
+
+      CONTEXT:
+      - Placeholder exists: services/rs/search/src/.gitkeep
+      - Course service (Python, port 8002) has ILIKE-based search — works but doesn't scale
+      - Meilisearch will be added to Docker Compose (meilisearch-integration task, port 7700)
+      - Course DB: PostgreSQL on port 5434, tables: courses, modules, lessons, categories, reviews
+      - Course table columns: id (UUID), teacher_id, title, description, level (beginner/intermediate/advanced), category_id, price, is_free, is_published, avg_rating, review_count, created_at, updated_at
+      - Search service will run on port 9001
+      - Proto contracts in proto/course/v1/course.proto define CourseFilter message
+
+      WHAT TO BUILD:
+      1. services/rs/search/Cargo.toml:
+         - Package name: search-service
+         - Edition 2021
+         - Dependencies: axum 0.7, tokio (full), serde (derive), serde_json, meilisearch-sdk 0.27, sqlx 0.7 (with postgres, runtime-tokio, tls-rustls, uuid, chrono), tracing, tracing-subscriber, thiserror, anyhow, dotenvy, uuid (v4, serde)
+         - Dev dependencies: axum-test or similar
+
+      2. services/rs/search/src/config.rs:
+         - SearchConfig: PORT (9001), HOST, MEILISEARCH_URL (http://localhost:7700), MEILISEARCH_API_KEY, COURSE_DATABASE_URL (postgres://course:course@localhost:5434/course), LOG_LEVEL
+
+      3. services/rs/search/src/services/indexer.rs:
+         - CourseDocument struct (for Meilisearch): id, teacher_id, title, description, level, category_name, price, is_free, avg_rating, review_count, created_at
+         - sync_courses(): Connect to course-db via sqlx, SELECT published courses JOIN categories, transform to CourseDocument, batch upsert into Meilisearch "courses" index
+         - Called on startup and via admin endpoint
+
+      4. services/rs/search/src/services/searcher.rs:
+         - SearchQuery struct: query (String), filters (optional: level, category, is_free, price_min, price_max), sort_by (optional: relevance, rating, newest, price_asc, price_desc), page, per_page
+         - SearchResult: hits (Vec<CourseDocument>), total_hits, page, per_page, processing_time_ms
+         - search_courses(query: SearchQuery) → SearchResult: Build Meilisearch query with filters and sort, execute, return results
+
+      5. services/rs/search/src/routes/mod.rs:
+         - POST /search/courses — body: SearchQuery → SearchResult
+         - POST /search/reindex — admin endpoint: trigger sync_courses(), return count indexed
+         - GET /health — 200 OK
+
+      6. services/rs/search/src/main.rs:
+         - Load config, init tracing
+         - Connect to Meilisearch, configure index settings
+         - Run initial sync on startup (background task, don't block server start)
+         - Build router, serve on HOST:PORT
+
+      7. Tests:
+         - SearchQuery serialization/deserialization
+         - Filter building logic
+         - Health check
+         - Config defaults
+
+      IMPLEMENTATION APPROACH:
+      1. Remove .gitkeep from services/rs/search/src/
+      2. Create Cargo.toml
+      3. Implement config, then services (indexer, searcher), then routes, then main
+      4. Index settings configured in code: searchable attributes (title, description), filterable (level, category_name, is_free, price), sortable (avg_rating, review_count, created_at, price)
+      5. Write unit tests for serialization and filter logic
+
+      RULES:
+      - #![deny(clippy::all)] in main.rs
+      - No unwrap() in production code
+      - sqlx for PostgreSQL access (read-only, search service never writes to course-db)
+      - Meilisearch SDK for search operations
+      - Async everywhere
+      - Structured logging with tracing
+      - Reindex is idempotent (upsert, not insert)
+      - Search response includes processing_time_ms for observability
+
+      COMMIT: feat(search): scaffold Rust search service with Meilisearch integration
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/search && cargo test && cargo clippy -- -D warnings"
+    depends_on:
+      - proto-contracts
+
+  # ──────────────────────────────────────────────
+  # INFRA: MEILISEARCH IN DOCKER COMPOSE
+  # ──────────────────────────────────────────────
+
+  - id: meilisearch-integration
+    title: "Add Meilisearch to Docker Compose with index configuration"
+    scope: infra
+    prompt: |
+      Task: Add Meilisearch to both Docker Compose files (dev and prod) for full-text search.
+
+      CONTEXT:
+      - docker-compose.dev.yml and docker-compose.prod.yml at project root
+      - Dev compose has: 6 PostgreSQL DBs (5433-5438), Redis (6379), 7 Python services (8001-8007)
+      - Prod compose has same services + Prometheus, Grafana, Cadvisor monitoring
+      - Meilisearch is used by the Rust search service (port 9001)
+      - Course data to be indexed: title, description, level, category, price, rating
+      - Meilisearch official Docker image: getmeili/meilisearch:v1.6
+
+      WHAT TO BUILD:
+      1. Add to docker-compose.dev.yml:
+         meilisearch:
+           image: getmeili/meilisearch:v1.6
+           environment:
+             MEILI_ENV: development
+             MEILI_MASTER_KEY: dev-master-key-change-in-production
+             MEILI_NO_ANALYTICS: true
+           ports:
+             - "7700:7700"
+           volumes:
+             - meilisearch-data:/meili_data
+           healthcheck:
+             test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+             interval: 10s
+             timeout: 5s
+             retries: 5
+
+      2. Add to docker-compose.prod.yml:
+         meilisearch:
+           image: getmeili/meilisearch:v1.6
+           environment:
+             MEILI_ENV: production
+             MEILI_MASTER_KEY: ${MEILISEARCH_MASTER_KEY}
+             MEILI_NO_ANALYTICS: true
+           volumes:
+             - meilisearch-data:/meili_data
+           healthcheck:
+             test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+             interval: 10s
+             timeout: 5s
+             retries: 5
+           # No port exposed in prod — only internal access via search service
+
+      3. Add meilisearch-data volume to both compose files
+
+      4. Update seed script (tools/seed/ or docker compose seed profile) to index courses into Meilisearch after seeding course-db:
+         - After course seed data is inserted, call Meilisearch API to create "courses" index
+         - Configure index: searchable attributes [title, description], filterable [level, category_name, is_free, price], sortable [avg_rating, review_count, created_at, price]
+         - Insert course documents from course-db
+
+      5. Add MEILISEARCH_URL=http://meilisearch:7700 and MEILISEARCH_API_KEY to search service environment in compose files
+
+      IMPLEMENTATION APPROACH:
+      1. Edit docker-compose.dev.yml — add meilisearch service and volume
+      2. Edit docker-compose.prod.yml — add meilisearch service and volume
+      3. Update any seed scripts to include Meilisearch indexing
+      4. Verify compose files are valid YAML
+
+      RULES:
+      - Use specific Meilisearch version tag (v1.6), not :latest
+      - Dev uses hardcoded master key, prod uses env variable
+      - Healthcheck required for both environments
+      - Volume for persistent data
+      - Prod does NOT expose port 7700 externally
+      - Meilisearch data volume separate from PostgreSQL volumes
+
+      COMMIT: chore(infra): add Meilisearch to Docker Compose for full-text search
+    test: "echo 'manual verification required'"
+    depends_on: []
+
+  # ──────────────────────────────────────────────
+  # INFRA: NATS JETSTREAM EVENT BUS
+  # ──────────────────────────────────────────────
+
+  - id: nats-event-bus
+    title: "Add NATS JetStream event bus with Python publisher/subscriber"
+    scope: infra
+    prompt: |
+      Task: Add NATS JetStream to Docker Compose and create Python helper library for publishing and subscribing to domain events.
+
+      CONTEXT:
+      - Docker Compose files at project root (dev and prod)
+      - Python shared library at libs/py/common/ (installable via hatchling, used by all services)
+      - Current inter-service communication: notification service receives direct POST calls
+      - Target: async event-driven architecture where services publish events and others subscribe
+      - Events defined in proto/events/v1/events.proto (from proto-contracts task)
+      - NATS JetStream provides at-least-once delivery with consumer groups
+      - Python services use asyncio
+
+      WHAT TO BUILD:
+      1. Add to docker-compose.dev.yml:
+         nats:
+           image: nats:2.10-alpine
+           command: ["--jetstream", "--store_dir", "/data", "-p", "4222", "-m", "8222"]
+           ports:
+             - "4222:4222"   # Client connections
+             - "8222:8222"   # Monitoring/management
+           volumes:
+             - nats-data:/data
+           healthcheck:
+             test: ["CMD", "nats-server", "--signal", "ldm"]
+             interval: 10s
+             timeout: 5s
+             retries: 5
+
+      2. Add same to docker-compose.prod.yml (no monitoring port exposed)
+
+      3. Add nats-data volume to both compose files
+
+      4. libs/py/common/app/events/__init__.py — Event bus module:
+
+      5. libs/py/common/app/events/publisher.py:
+         - class NatsPublisher:
+           - __init__(self, nats_url: str = "nats://localhost:4222")
+           - async connect() → establishes NATS connection and JetStream context
+           - async publish(subject: str, event: dict) → publishes event as JSON to JetStream
+             - subject format: "events.{domain}.{action}" (e.g., "events.enrollment.created")
+             - event dict must contain: event_id (UUID), aggregate_id, timestamp (ISO), version, data
+           - async close() → gracefully close connection
+           - Context manager support (__aenter__, __aexit__)
+
+      6. libs/py/common/app/events/subscriber.py:
+         - class NatsSubscriber:
+           - __init__(self, nats_url: str = "nats://localhost:4222", consumer_group: str = "default")
+           - async connect() → establishes NATS connection and JetStream context
+           - async subscribe(subject: str, handler: Callable[[dict], Awaitable[None]], durable_name: str | None = None):
+             - Creates/binds to durable consumer for the subject
+             - Delivers to consumer group (queue group for load balancing)
+             - On message: deserialize JSON, call handler, ack on success, nack on exception
+           - async close() → gracefully close connection and drain subscriptions
+           - Context manager support
+
+      7. libs/py/common/app/events/schemas.py:
+         - Pydantic models for each event type matching proto definitions:
+           BaseEvent: event_id (UUID auto-generated), aggregate_id (str), timestamp (datetime, default now), version (int, default 1)
+           EnrollmentCreatedEvent(BaseEvent): user_id, course_id
+           LessonCompletedEvent(BaseEvent): user_id, course_id, lesson_id
+           QuizSubmittedEvent(BaseEvent): user_id, quiz_id, course_id, score (float)
+           PaymentProcessedEvent(BaseEvent): user_id, payment_id, amount (Decimal), currency (str)
+           CoursePublishedEvent(BaseEvent): course_id, teacher_id, title
+           UserRegisteredEvent(BaseEvent): user_id, email, role
+
+      8. Add nats-py>=2.7.0 to libs/py/common/ dependencies (pyproject.toml)
+
+      9. libs/py/common/app/events/stream.py:
+         - ensure_streams() function: creates JetStream streams on startup
+           Stream "EVENTS": subjects ["events.>"], retention: limits, max_age: 7 days, storage: file
+         - Called once during service startup
+
+      IMPLEMENTATION APPROACH:
+      1. Add NATS to both Docker Compose files
+      2. Add nats-py dependency to common library
+      3. Create events module with publisher, subscriber, schemas, stream setup
+      4. Write unit tests for event serialization and publisher/subscriber logic
+      5. Integration can be tested with NATS running in Docker
+
+      RULES:
+      - At-least-once delivery — handlers MUST be idempotent
+      - Consumer groups ensure each event processed once per service (not per instance)
+      - Durable consumers survive service restarts
+      - Events are JSON-serialized (not protobuf binary for now — simpler debugging)
+      - Publisher must handle NATS connection failure gracefully (log error, don't crash service)
+      - event_id is UUID v4 for deduplication
+      - All event schemas are Pydantic BaseModel with json_schema_extra for documentation
+      - Stream retention: 7 days max age, after which events are purged
+      - Add NATS_URL env var to service configurations
+
+      COMMIT: feat(infra): add NATS JetStream event bus with Python publisher/subscriber library
+    test: "echo 'manual verification required'"
+    depends_on:
+      - proto-contracts
+
+  # ──────────────────────────────────────────────
+  # BACKEND: EVENT HANDLERS IN NOTIFICATION SERVICE
+  # ──────────────────────────────────────────────
+
+  - id: event-handlers
+    title: "Migrate notification service to consume NATS events"
+    scope: backend:notification
+    prompt: |
+      Task: Migrate the notification service from direct POST API calls to consuming NATS JetStream events for triggering notifications.
+
+      CONTEXT:
+      - Notification service at services/py/notification/ (port 8005, FastAPI)
+      - Currently: other services POST to /notifications to create notifications
+      - NATS event bus available (from nats-event-bus task) with NatsPublisher/NatsSubscriber in libs/py/common/
+      - Event schemas in libs/py/common/app/events/schemas.py
+      - Notification service has: routes/, services/, domain/, repositories/
+      - NotificationService creates notifications in DB and (currently) logs to stdout
+      - Tests: 28 existing tests in services/py/notification/tests/
+      - Clean Architecture: routes → services → domain ← repositories
+
+      WHAT TO BUILD:
+      1. services/py/notification/app/events/__init__.py — Event consumer module
+
+      2. services/py/notification/app/events/handlers.py:
+         - Each handler is an async function that receives an event dict and creates appropriate notification:
+
+         a) handle_enrollment_created(event: dict):
+            - Extract user_id, course_id from event data
+            - Create notification: type="enrollment", title="Welcome to your new course!", body="You've enrolled in {course_title}. Start learning now!"
+            - Note: course_title may need to be included in event or fetched (prefer including in event)
+
+         b) handle_lesson_completed(event: dict):
+            - Extract user_id, course_id, lesson_id
+            - Create notification: type="progress", title="Lesson completed!", body="Great job! Keep going."
+            - Check if all lessons in course completed → send "Course completed! Congratulations!" notification
+
+         c) handle_quiz_submitted(event: dict):
+            - Extract user_id, quiz_id, score
+            - If score >= 0.9: notification type="achievement", title="Quiz Ace!", body="You scored {score*100}%!"
+            - If score < 0.5: notification type="encouragement", title="Keep practicing!", body="Review the material and try again."
+
+         d) handle_payment_processed(event: dict):
+            - Extract user_id, payment_id, amount, currency
+            - Create notification: type="payment", title="Payment confirmed", body="Your payment of {amount} {currency} has been processed."
+
+      3. services/py/notification/app/events/consumer.py:
+         - class EventConsumer:
+           - Uses NatsSubscriber from common library
+           - consumer_group = "notification-service"
+           - subscribe_all(): Subscribe to relevant event subjects:
+             "events.enrollment.created" → handle_enrollment_created
+             "events.lesson.completed" → handle_lesson_completed
+             "events.quiz.submitted" → handle_quiz_submitted
+             "events.payment.processed" → handle_payment_processed
+           - Deduplication: check event_id against processed_events table or in-memory set (with TTL)
+           - Error handling: log errors, nack for retry, dead-letter after 3 attempts
+
+      4. services/py/notification/app/events/idempotency.py:
+         - IdempotencyChecker class:
+           - Uses notification-db to track processed event_ids
+           - CREATE TABLE IF NOT EXISTS processed_events (event_id UUID PRIMARY KEY, processed_at TIMESTAMPTZ DEFAULT NOW())
+           - is_processed(event_id) → bool
+           - mark_processed(event_id) → None
+           - Cleanup: DELETE WHERE processed_at < NOW() - INTERVAL '7 days'
+
+      5. Update services/py/notification/app/main.py (or lifespan):
+         - On startup: connect EventConsumer, subscribe_all()
+         - On shutdown: close EventConsumer gracefully
+         - Keep existing POST /notifications endpoint (backward compatible during migration)
+
+      6. Add NATS_URL to notification service config (default nats://localhost:4222)
+
+      7. Migration file: create processed_events table
+
+      8. Tests (TDD):
+         - test_handle_enrollment_created: mock NotificationService, verify notification created with correct type/title
+         - test_handle_payment_processed: verify payment receipt notification
+         - test_handle_quiz_submitted_high_score: verify achievement notification for score >= 0.9
+         - test_handle_quiz_submitted_low_score: verify encouragement notification for score < 0.5
+         - test_idempotency: same event_id processed twice → only one notification created
+         - test_consumer_subscribes_to_all_subjects: verify 4 subscriptions created
+
+      IMPLEMENTATION APPROACH:
+      1. Write failing tests first (TDD)
+      2. Create migration for processed_events table
+      3. Implement IdempotencyChecker
+      4. Implement event handlers
+      5. Implement EventConsumer
+      6. Wire into service lifespan
+      7. Run all tests (existing 28 + new event tests)
+
+      RULES:
+      - TDD mandatory: write failing test first, then implement
+      - Idempotent handlers: same event processed twice = same result (no duplicate notifications)
+      - Keep existing POST endpoint working (backward compatible)
+      - Handlers must not import from routes/ (Clean Architecture)
+      - Event handlers use NotificationService (service layer), not repository directly
+      - AsyncMock(spec=NatsSubscriber) for unit tests
+      - All new tests independent, no shared state
+      - Log every event received and processed (structured logging)
+
+      COMMIT: feat(notification): migrate to NATS event consumption with idempotent handlers
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+    depends_on:
+      - nats-event-bus
+
+  # ──────────────────────────────────────────────
+  # INFRA: PGBOUNCER CONNECTION POOLING
+  # ──────────────────────────────────────────────
+
+  - id: pgbouncer-connection-pooling
+    title: "Add PgBouncer connection pooling for all PostgreSQL databases"
+    scope: infra
+    prompt: |
+      Task: Add PgBouncer as a connection pooler in front of all PostgreSQL instances to handle connection scaling.
+
+      CONTEXT:
+      - 6 PostgreSQL databases: identity-db (5433), course-db (5434), enrollment-db (5435), payment-db (5436), notification-db (5437), learning-db (5438)
+      - Each Python service connects directly to its PostgreSQL via asyncpg
+      - Docker Compose files at project root (dev and prod)
+      - Current: each service creates its own connection pool (typically 10-20 connections)
+      - Problem at scale: 10 instances × 20 connections = 200 connections per DB, PostgreSQL default max is 100
+      - PgBouncer in transaction pooling mode: many client connections → few server connections
+
+      WHAT TO BUILD:
+      1. deploy/docker/pgbouncer/ directory:
+
+      2. deploy/docker/pgbouncer/pgbouncer.ini:
+         [databases]
+         identity = host=identity-db port=5432 dbname=identity
+         course = host=course-db port=5432 dbname=course
+         enrollment = host=enrollment-db port=5432 dbname=enrollment
+         payment = host=payment-db port=5432 dbname=payment
+         notification = host=notification-db port=5432 dbname=notification
+         learning = host=learning-db port=5432 dbname=learning
+
+         [pgbouncer]
+         listen_addr = 0.0.0.0
+         listen_port = 6432
+         auth_type = md5
+         auth_file = /etc/pgbouncer/userlist.txt
+         pool_mode = transaction
+         default_pool_size = 20
+         min_pool_size = 5
+         max_client_conn = 1000
+         max_db_connections = 100
+         server_idle_timeout = 300
+         client_idle_timeout = 600
+         log_connections = 0
+         log_disconnections = 0
+         stats_period = 60
+         admin_users = pgbouncer
+
+      3. deploy/docker/pgbouncer/userlist.txt:
+         "identity" "identity"
+         "course" "course"
+         "enrollment" "enrollment"
+         "payment" "payment"
+         "notification" "notification"
+         "learning" "learning"
+
+      4. Add to docker-compose.dev.yml:
+         pgbouncer:
+           image: edoburu/pgbouncer:1.22.0
+           volumes:
+             - ./deploy/docker/pgbouncer/pgbouncer.ini:/etc/pgbouncer/pgbouncer.ini:ro
+             - ./deploy/docker/pgbouncer/userlist.txt:/etc/pgbouncer/userlist.txt:ro
+           ports:
+             - "6432:6432"
+           depends_on:
+             identity-db: { condition: service_healthy }
+             course-db: { condition: service_healthy }
+             enrollment-db: { condition: service_healthy }
+             payment-db: { condition: service_healthy }
+             notification-db: { condition: service_healthy }
+             learning-db: { condition: service_healthy }
+           healthcheck:
+             test: ["CMD-SHELL", "pg_isready -h localhost -p 6432 -U pgbouncer -d pgbouncer || exit 1"]
+             interval: 10s
+             timeout: 5s
+             retries: 5
+
+      5. Add same to docker-compose.prod.yml
+
+      6. Update Python service DATABASE_URL environment variables to point to PgBouncer:
+         - Old: postgres://identity:identity@identity-db:5432/identity
+         - New: postgres://identity:identity@pgbouncer:6432/identity
+         - Do this for all 6 services in both compose files
+         - Keep direct DB URLs as fallback env var (DIRECT_DATABASE_URL) for migrations
+
+      7. Update service Dockerfiles or entrypoints:
+         - Migrations run against DIRECT_DATABASE_URL (direct to PostgreSQL, not through PgBouncer)
+         - Application runtime uses DATABASE_URL (through PgBouncer)
+         - PgBouncer transaction pooling doesn't support prepared statements well — ensure asyncpg uses simple query protocol or statement_cache_size=0
+
+      IMPLEMENTATION APPROACH:
+      1. Create PgBouncer config files
+      2. Add PgBouncer service to both compose files
+      3. Update all service DATABASE_URL to go through PgBouncer
+      4. Add DIRECT_DATABASE_URL for migrations
+      5. Note about asyncpg statement_cache_size=0 for PgBouncer compatibility
+
+      RULES:
+      - Transaction pooling mode (not session) for max efficiency
+      - max_db_connections must not exceed PostgreSQL max_connections (default 100)
+      - max_client_conn = 1000 to handle many service instances
+      - Auth type md5 (matches PostgreSQL default)
+      - All services MUST go through PgBouncer for runtime queries
+      - Migrations MUST go directly to PostgreSQL (DDL doesn't work well through PgBouncer)
+      - Use specific PgBouncer image version, not :latest
+      - Healthcheck required
+      - PgBouncer depends_on all DB services being healthy
+
+      COMMIT: chore(infra): add PgBouncer connection pooling for all databases
+    test: "echo 'manual verification required'"
+    depends_on: []
+
+  # ──────────────────────────────────────────────
+  # INFRA: READ REPLICAS FOR HIGH-READ DATABASES
+  # ──────────────────────────────────────────────
+
+  - id: read-replicas
+    title: "Configure PostgreSQL read replicas for course-db and learning-db"
+    scope: infra
+    prompt: |
+      Task: Set up PostgreSQL streaming replication with read replicas for course-db and learning-db (highest read load services).
+
+      CONTEXT:
+      - course-db: most read queries (catalog browsing, search fallback, course details) — port 5434
+      - learning-db: second highest reads (leaderboards, XP, badges, flashcard reviews) — port 5438
+      - Docker Compose files at project root
+      - PostgreSQL 16 Alpine images used
+      - PgBouncer added (from pgbouncer-connection-pooling task) — replicas need PgBouncer entries too
+      - Python services use asyncpg for DB access
+
+      WHAT TO BUILD:
+      1. deploy/docker/postgres-replica/setup-replica.sh:
+         - Shell script that configures a PostgreSQL replica:
+           a) Wait for primary to be ready
+           b) pg_basebackup from primary
+           c) Configure recovery.conf / standby.signal
+           d) Start in hot standby mode
+
+      2. deploy/docker/postgres-replica/primary-init.sh:
+         - Configures primary PostgreSQL for replication:
+           a) Create replication user
+           b) Update pg_hba.conf to allow replication connections
+           c) Set wal_level=replica, max_wal_senders=3, hot_standby=on
+
+      3. Add to docker-compose.dev.yml:
+         course-db-replica:
+           image: postgres:16-alpine
+           environment:
+             POSTGRES_DB: course
+             POSTGRES_USER: course
+             POSTGRES_PASSWORD: course
+             PGUSER: replicator
+             PGPASSWORD: replicator_password
+           volumes:
+             - course-db-replica-data:/var/lib/postgresql/data
+             - ./deploy/docker/postgres-replica/setup-replica.sh:/docker-entrypoint-initdb.d/setup-replica.sh
+           depends_on:
+             course-db: { condition: service_healthy }
+           ports:
+             - "5444:5432"
+           command: >
+             bash -c "
+             until pg_isready -h course-db -p 5432 -U course; do sleep 1; done;
+             pg_basebackup -h course-db -D /var/lib/postgresql/data -U replicator -Fp -Xs -P -R;
+             postgres
+             "
+
+         learning-db-replica:
+           image: postgres:16-alpine
+           environment:
+             POSTGRES_DB: learning
+             POSTGRES_USER: learning
+             POSTGRES_PASSWORD: learning
+             PGUSER: replicator
+             PGPASSWORD: replicator_password
+           volumes:
+             - learning-db-replica-data:/var/lib/postgresql/data
+             - ./deploy/docker/postgres-replica/setup-replica.sh:/docker-entrypoint-initdb.d/setup-replica.sh
+           depends_on:
+             learning-db: { condition: service_healthy }
+           ports:
+             - "5448:5432"
+           command: >
+             bash -c "
+             until pg_isready -h learning-db -p 5432 -U learning; do sleep 1; done;
+             pg_basebackup -h learning-db -D /var/lib/postgresql/data -U replicator -Fp -Xs -P -R;
+             postgres
+             "
+
+      4. Update primary course-db and learning-db in docker-compose.dev.yml:
+         - Add init script to create replication user and configure WAL
+         - Volume mount: ./deploy/docker/postgres-replica/primary-init.sh:/docker-entrypoint-initdb.d/01-init-replication.sh
+
+      5. Add same replica services to docker-compose.prod.yml
+
+      6. Update PgBouncer config (deploy/docker/pgbouncer/pgbouncer.ini):
+         - Add read-replica entries:
+           course_readonly = host=course-db-replica port=5432 dbname=course
+           learning_readonly = host=learning-db-replica port=5432 dbname=learning
+
+      7. Add READ_DATABASE_URL env var to course and learning services:
+         - course: READ_DATABASE_URL=postgres://course:course@pgbouncer:6432/course_readonly
+         - learning: READ_DATABASE_URL=postgres://learning:learning@pgbouncer:6432/learning_readonly
+
+      8. Update libs/py/common/ — add read replica support:
+         - libs/py/common/app/database.py (or similar):
+           - ReadWritePool class: primary_pool (write), replica_pool (read)
+           - Methods: get_write_pool(), get_read_pool()
+           - If READ_DATABASE_URL not set, read_pool falls back to primary pool
+           - Usage: repositories use read_pool for SELECT, write_pool for INSERT/UPDATE/DELETE
+
+      IMPLEMENTATION APPROACH:
+      1. Create replication setup scripts
+      2. Update primary DB configs for WAL replication
+      3. Add replica services to compose files
+      4. Update PgBouncer with replica entries
+      5. Add READ_DATABASE_URL to service configs
+      6. Create ReadWritePool helper in common library
+      7. Document: replicas have eventual consistency (small lag acceptable for reads)
+
+      RULES:
+      - Streaming replication (synchronous for dev simplicity, async in prod for performance)
+      - Replicas are read-only — any write attempt will fail with clear error
+      - Replication lag monitoring: add pg_stat_replication check to health endpoints
+      - Fallback: if replica is down, read from primary (ReadWritePool handles this)
+      - Replication user has minimal permissions (REPLICATION role only)
+      - Replica data volumes are separate from primary
+      - Primary init script is idempotent (IF NOT EXISTS for replication user)
+
+      COMMIT: chore(infra): add PostgreSQL read replicas for course-db and learning-db
+    test: "echo 'manual verification required'"
+    depends_on:
+      - pgbouncer-connection-pooling
+
+  # ──────────────────────────────────────────────
+  # INFRA: KUBERNETES MANIFESTS
+  # ──────────────────────────────────────────────
+
+  - id: k8s-manifests
+    title: "Kubernetes deployment manifests for all services"
+    scope: infra
+    prompt: |
+      Task: Create Kubernetes manifests for deploying the entire platform to a Kubernetes cluster.
+
+      CONTEXT:
+      - deploy/k8s/base/.gitkeep exists — use deploy/k8s/ as the manifest directory
+      - Services to deploy: 7 Python (identity, course, enrollment, payment, notification, ai, learning), 2 Rust (api-gateway, search), 2 Next.js (buyer, seller)
+      - Infrastructure: 6 PostgreSQL DBs, Redis, Meilisearch, NATS, PgBouncer
+      - Monitoring: Prometheus, Grafana
+      - Current Docker images defined in deploy/docker/*.Dockerfile
+      - API gateway is the single ingress point (port 9000)
+      - Services communicate internally via ClusterIP services
+
+      WHAT TO BUILD:
+      1. deploy/k8s/namespace.yaml:
+         - Namespace: eduplatform
+
+      2. deploy/k8s/configmaps/:
+         - common-config.yaml: shared env vars (NATS_URL, REDIS_URL, LOG_LEVEL)
+         - per-service configs where needed
+
+      3. deploy/k8s/secrets/:
+         - common-secrets.yaml: JWT_SECRET, MEILISEARCH_MASTER_KEY (placeholder, use kubectl create secret in prod)
+         - database-secrets.yaml: DB credentials per service
+
+      4. deploy/k8s/services/ — one file per service, each containing Deployment + Service + HPA:
+
+         a) api-gateway.yaml:
+            - Deployment: image api-gateway, port 9000, replicas 2
+            - Service: ClusterIP, port 9000
+            - HPA: min 2, max 10, target CPU 70%, target memory 80%
+            - Resources: requests (128Mi/100m), limits (512Mi/500m)
+            - Env from configmap + secrets
+            - Readiness probe: /health, liveness probe: /health
+            - Anti-affinity: spread across nodes
+
+         b) identity.yaml through learning.yaml (7 Python services):
+            - Deployment: image {service}, port 800X, replicas 2
+            - Service: ClusterIP, port 800X
+            - HPA: min 2, max 8, target CPU 70%
+            - Resources: requests (256Mi/200m), limits (1Gi/1000m)
+            - Env: DATABASE_URL, READ_DATABASE_URL (where applicable), REDIS_URL, NATS_URL, JWT_SECRET
+            - Readiness probe: /health, liveness probe: /health
+            - Init container: run migrations before starting
+
+         c) search.yaml:
+            - Deployment: image search-service, port 9001, replicas 2
+            - Service: ClusterIP, port 9001
+            - HPA: min 2, max 6, target CPU 70%
+            - Env: MEILISEARCH_URL, COURSE_DATABASE_URL
+
+         d) buyer.yaml and seller.yaml (Next.js apps):
+            - Deployment: image buyer/seller, port 3000/3001, replicas 2
+            - Service: ClusterIP
+            - HPA: min 2, max 6
+
+      5. deploy/k8s/infrastructure/:
+         a) postgres.yaml: StatefulSet for each DB with PVC (10Gi each)
+         b) redis.yaml: Deployment with PVC (5Gi)
+         c) meilisearch.yaml: Deployment with PVC (10Gi)
+         d) nats.yaml: StatefulSet with PVC (5Gi), JetStream enabled
+         e) pgbouncer.yaml: Deployment (no PVC, stateless)
+
+      6. deploy/k8s/ingress.yaml:
+         - Ingress (nginx): routes all traffic through api-gateway
+         - Host: eduplatform.example.com (configurable)
+         - TLS: cert-manager annotation for Let's Encrypt
+         - Paths:
+           /api/* → api-gateway:9000
+           / → buyer:3000
+           /seller/* → seller:3001
+
+      7. deploy/k8s/monitoring/:
+         - prometheus.yaml: Deployment + ConfigMap + Service
+         - grafana.yaml: Deployment + PVC + Service
+
+      8. deploy/k8s/kustomization.yaml:
+         - Kustomize base that includes all manifests
+         - Allows overlays for dev/staging/prod environments
+
+      IMPLEMENTATION APPROACH:
+      1. Remove .gitkeep from deploy/k8s/base/
+      2. Create directory structure: namespace, configmaps, secrets, services, infrastructure, monitoring
+      3. Write manifests for each component
+      4. Create kustomization.yaml to tie everything together
+      5. Validate manifests are correct YAML with proper API versions
+
+      RULES:
+      - Use current stable API versions (apps/v1, v1, networking.k8s.io/v1, autoscaling/v2)
+      - Every Deployment has readiness AND liveness probes
+      - Every Deployment has resource requests AND limits
+      - HPA on all application services (not infrastructure)
+      - StatefulSets for stateful services (PostgreSQL, NATS)
+      - Deployments for stateless services (Python, Rust, PgBouncer)
+      - Secrets use stringData (plain text, Kubernetes base64-encodes automatically)
+      - All resources in eduplatform namespace
+      - Labels: app.kubernetes.io/name, app.kubernetes.io/component, app.kubernetes.io/part-of=eduplatform
+      - Anti-affinity for critical services (gateway, identity) to spread across nodes
+      - PVCs use standard StorageClass (cloud provider specific, configurable)
+      - Init containers for migration in Python services
+      - No hardcoded image tags — use placeholder :latest, override in CI/CD
+
+      COMMIT: feat(deploy): add Kubernetes manifests for full platform deployment
+    test: "echo 'manual verification required'"
+    depends_on: []

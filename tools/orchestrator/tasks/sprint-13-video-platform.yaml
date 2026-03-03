@@ -1,0 +1,1085 @@
+phase: "sprint-13"
+description: "Video & Media Platform — upload, transcode, stream, thumbnails, transcription"
+
+tasks:
+  # ─── BACKEND: Course — Storage & Upload ────────────────────────────────────────
+
+  - id: video-storage-adapter
+    title: "S3-compatible video storage adapter (MinIO/S3)"
+    scope: backend:course
+    prompt: |
+      Task: Build an S3-compatible storage adapter for the Course service — abstraction for file upload/download/delete with MinIO (dev) and AWS S3 (prod).
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - Config via pydantic BaseSettings + env vars in app/config.py
+      - Common lib at libs/py/common/ (config, errors, security, database, health)
+      - Existing adapters pattern: services use dependency injection via FastAPI Depends()
+      - Global service instance via lifespan + getter function pattern in app/main.py
+      - The adapter lives in the adapters/ layer (like repositories — infrastructure concern)
+
+      WHAT TO BUILD:
+
+      1. Abstract interface: app/domain/video_storage.py
+         from abc import ABC, abstractmethod
+
+         class VideoStoragePort(ABC):
+             @abstractmethod
+             async def upload_file(self, key: str, data: bytes, content_type: str) -> str:
+                 """Upload file to storage. Returns the S3 key."""
+                 ...
+             @abstractmethod
+             async def get_presigned_url(self, key: str, expires_in: int = 3600) -> str:
+                 """Generate a presigned URL for downloading a file."""
+                 ...
+             @abstractmethod
+             async def delete_file(self, key: str) -> bool:
+                 """Delete a file from storage. Returns True if deleted."""
+                 ...
+             @abstractmethod
+             async def upload_file_stream(self, key: str, stream, content_type: str, size: int) -> str:
+                 """Upload file from stream (for large files). Returns the S3 key."""
+                 ...
+
+      2. S3 implementation: app/repositories/s3_storage.py
+         S3VideoStorage(VideoStoragePort):
+         - Uses httpx for S3-compatible API calls (no boto3 dependency — keep it minimal)
+         - Implements AWS Signature V4 for request signing
+         - Methods:
+           upload_file() — PUT object
+           get_presigned_url() — generate signed URL with expiry
+           delete_file() — DELETE object
+           upload_file_stream() — PUT with chunked transfer for large files
+         - Constructor takes: endpoint, access_key, secret_key, bucket, region
+
+      3. Config: add to app/config.py
+         S3_ENDPOINT: str = "http://localhost:9000"  # MinIO default
+         S3_ACCESS_KEY: str = "minioadmin"
+         S3_SECRET_KEY: str = "minioadmin"
+         S3_BUCKET: str = "course-videos"
+         S3_REGION: str = "us-east-1"
+
+      4. Integration in app/main.py lifespan:
+         Create S3VideoStorage instance, store on app.state
+         Add get_video_storage() getter function
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_video_storage.py:
+      1. test_upload_file — mocks httpx, verifies PUT request with correct key and content type
+      2. test_get_presigned_url — verifies URL contains signature and expiry params
+      3. test_delete_file — mocks httpx DELETE, verifies correct key
+      4. test_upload_file_stream — mocks httpx, verifies chunked upload
+      5. test_upload_file_httpx_error — verifies error handling on network failure
+
+      Use AsyncMock to mock httpx.AsyncClient. Do NOT call real S3.
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain interface (VideoStoragePort) in app/domain/ — no framework imports
+      - Implementation in app/repositories/ (infrastructure layer)
+      - Use httpx (already a project dependency) — do NOT add boto3
+      - AWS Signature V4 signing: implement minimal version or use a lightweight helper
+      - All methods async
+      - Type hints on all public functions
+      - Error handling: raise appropriate errors from common lib on failure
+      - Config via pydantic BaseSettings
+      - No global variables — dependency injection only
+
+      COMMIT:
+      feat(course): add S3-compatible video storage adapter
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on: []
+
+  - id: video-upload-endpoint
+    title: "Video upload endpoint with DB record and S3 storage"
+    scope: backend:course
+    prompt: |
+      Task: Build the video upload endpoint — teachers upload video files, stored in S3 with metadata in the database.
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - course-db on port 5434, migrations in services/py/course/migrations/ (currently 001-007)
+      - VideoStoragePort interface in app/domain/video_storage.py (from video-storage-adapter task)
+      - S3VideoStorage implementation in app/repositories/s3_storage.py
+      - get_video_storage() getter in app/main.py
+      - JWT auth with role (student/teacher/admin) and is_verified
+      - Teacher ownership check pattern: service verifies teacher_id from JWT
+      - Clean Architecture: routes → services → domain ← repositories
+      - asyncpg.UniqueViolationError → ConflictError pattern
+
+      WHAT TO BUILD:
+
+      1. Migration: migrations/008_videos.sql
+         CREATE TABLE IF NOT EXISTS videos (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           teacher_id UUID NOT NULL,
+           filename VARCHAR(500) NOT NULL,
+           original_filename VARCHAR(500) NOT NULL,
+           s3_key VARCHAR(1000) NOT NULL UNIQUE,
+           status VARCHAR(20) NOT NULL DEFAULT 'uploaded'
+             CHECK (status IN ('uploaded', 'processing', 'ready', 'failed')),
+           duration_seconds INT,
+           size_bytes BIGINT NOT NULL,
+           mime_type VARCHAR(100) NOT NULL,
+           width INT,
+           height INT,
+           thumbnail_url TEXT,
+           transcript_url TEXT,
+           hls_manifest_key VARCHAR(1000),
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX idx_videos_teacher ON videos(teacher_id);
+         CREATE INDEX idx_videos_status ON videos(status);
+
+      2. Domain entity: app/domain/video.py
+         @dataclass(frozen=True)
+         class Video:
+             id: UUID
+             teacher_id: UUID
+             filename: str
+             original_filename: str
+             s3_key: str
+             status: str  # uploaded | processing | ready | failed
+             duration_seconds: int | None
+             size_bytes: int
+             mime_type: str
+             width: int | None
+             height: int | None
+             thumbnail_url: str | None
+             transcript_url: str | None
+             hls_manifest_key: str | None
+             created_at: datetime
+             updated_at: datetime
+
+      3. Repository: app/repositories/video_repo.py
+         VideoRepository(pool):
+         - create_video(teacher_id, filename, original_filename, s3_key, size_bytes, mime_type) -> Video
+         - get_video(video_id) -> Video | None
+         - get_videos_by_teacher(teacher_id, limit=20, offset=0) -> list[Video]
+         - update_video_status(video_id, status) -> Video | None
+         - update_video_metadata(video_id, duration_seconds, width, height) -> Video | None
+         - update_video_thumbnail(video_id, thumbnail_url) -> Video | None
+         - update_video_transcript(video_id, transcript_url) -> Video | None
+         - update_video_hls(video_id, hls_manifest_key) -> Video | None
+         - delete_video(video_id) -> bool
+
+      4. Service: app/services/video_service.py
+         VideoService(video_repo, video_storage):
+         - upload_video(teacher_id, file: UploadFile) -> dict
+           Validates: teacher is verified, file is video (mime_type starts with video/),
+           file size <= 2GB. Generates S3 key: videos/{teacher_id}/{uuid}/{original_filename}.
+           Uploads to S3 via storage adapter. Creates DB record with status=uploaded.
+           Returns: { video: Video, playback_url: presigned_url }
+         - get_video(video_id, teacher_id=None) -> dict
+           If teacher_id provided, verifies ownership. Returns video + presigned URL.
+         - list_teacher_videos(teacher_id, limit, offset) -> list[dict]
+           Each with presigned playback URL.
+         - delete_video(teacher_id, video_id) -> None
+           Owner check. Deletes from S3 + DB.
+
+      5. Routes: app/routes/videos.py
+         - POST /videos/upload (multipart/form-data, teacher, verified) -> 201 { video, playback_url }
+         - GET /videos/{video_id} (teacher, owner) -> { video, playback_url }
+         - GET /videos/me (teacher) -> paginated list
+         - DELETE /videos/{video_id} (teacher, owner) -> 204
+         Register router in app/main.py
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_videos.py:
+      1. test_upload_video_success — teacher uploads, gets video record + URL
+      2. test_upload_video_not_teacher → 403
+      3. test_upload_video_not_verified → 403
+      4. test_upload_video_invalid_mime → 400 (not a video file)
+      5. test_upload_video_too_large → 400 (>2GB)
+      6. test_get_video_owner → success
+      7. test_get_video_not_owner → 403
+      8. test_list_teacher_videos → paginated list
+      9. test_delete_video_owner → 204
+      10. test_delete_video_not_owner → 403
+
+      Mock VideoStoragePort and VideoRepository with AsyncMock(spec=...).
+
+      RULES:
+      - Domain: no framework imports
+      - Parameterized SQL ($1, $2, ...)
+      - Owner check: video.teacher_id == JWT teacher_id
+      - Teacher must be verified (is_verified=true)
+      - Max file size: 2GB (2 * 1024 * 1024 * 1024 bytes)
+      - Allowed mime types: video/mp4, video/webm, video/quicktime, video/x-msvideo
+      - S3 key format: videos/{teacher_id}/{uuid}/{filename}
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(course): add video upload endpoint with S3 storage
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on:
+      - video-storage-adapter
+
+  # ─── BACKEND: Course — Transcoding & Thumbnails ────────────────────────────────
+
+  - id: video-transcode-worker
+    title: "Background video transcoding to HLS (480p/720p/1080p)"
+    scope: backend:course
+    prompt: |
+      Task: Build a background video transcoding service that converts uploaded videos to HLS format with multiple quality levels.
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - Video entity in app/domain/video.py with status: uploaded → processing → ready | failed
+      - VideoRepository in app/repositories/video_repo.py with update_video_status(), update_video_hls(), update_video_metadata()
+      - VideoStoragePort in app/domain/video_storage.py for uploading HLS files to S3
+      - Videos are uploaded to S3 with s3_key: videos/{teacher_id}/{uuid}/{filename}
+      - ffmpeg is assumed to be available in the Docker container (add to Dockerfile later in infra task)
+      - The worker runs as a background task triggered after video upload
+
+      WHAT TO BUILD:
+
+      1. Domain value objects: add to app/domain/video.py
+         @dataclass(frozen=True)
+         class TranscodeProfile:
+             name: str       # "480p", "720p", "1080p"
+             width: int      # 854, 1280, 1920
+             height: int     # 480, 720, 1080
+             bitrate: str    # "1000k", "2500k", "5000k"
+             audio_bitrate: str  # "128k"
+
+         TRANSCODE_PROFILES = [
+             TranscodeProfile("480p", 854, 480, "1000k", "128k"),
+             TranscodeProfile("720p", 1280, 720, "2500k", "128k"),
+             TranscodeProfile("1080p", 1920, 1080, "5000k", "192k"),
+         ]
+
+      2. Service: app/services/transcode_service.py
+         TranscodeService(video_repo, video_storage):
+         - async transcode(video_id: UUID) -> None
+           1. Get video from DB, verify status == "uploaded"
+           2. Update status to "processing"
+           3. Download original video from S3 to temp directory
+           4. Probe video with ffprobe: get duration, width, height
+           5. Update video metadata (duration_seconds, width, height)
+           6. For each TranscodeProfile where profile.height <= original height:
+              Run ffmpeg to create HLS segments:
+              ffmpeg -i input.mp4 -vf scale={width}:{height} -c:v libx264 -b:v {bitrate}
+                     -c:a aac -b:a {audio_bitrate} -hls_time 10 -hls_list_size 0
+                     -hls_segment_filename '{output_dir}/{name}_%03d.ts' {output_dir}/{name}.m3u8
+           7. Create master playlist (.m3u8) referencing all quality levels
+           8. Upload all HLS files (master + per-quality playlists + .ts segments) to S3
+              Key: videos/{teacher_id}/{uuid}/hls/master.m3u8
+           9. Update video: hls_manifest_key, status = "ready"
+           10. Clean up temp files
+           On any error: set status = "failed", log error, clean up temp
+
+         - _run_ffmpeg(args: list[str]) -> tuple[int, str, str]
+           Runs ffmpeg via asyncio.create_subprocess_exec
+           Returns (return_code, stdout, stderr)
+
+         - _probe_video(filepath: str) -> dict
+           Runs ffprobe -v quiet -print_format json -show_format -show_streams
+           Returns parsed JSON with duration, width, height
+
+      3. Background task trigger: in video_service.py upload_video() method
+         After successful upload + DB insert, schedule transcode as background task:
+         asyncio.create_task(transcode_service.transcode(video_id))
+         (Fire-and-forget; status tracked in DB)
+
+      4. Status endpoint: add to routes/videos.py
+         GET /videos/{video_id}/status -> { status, duration_seconds, hls_url }
+         (Returns current transcoding status; hls_url is presigned URL to master.m3u8 when ready)
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_transcode.py:
+      1. test_transcode_success — mock ffmpeg + ffprobe + storage, verify status transitions
+      2. test_transcode_updates_metadata — verify duration/width/height set from ffprobe
+      3. test_transcode_creates_master_playlist — verify master.m3u8 content
+      4. test_transcode_skips_higher_profiles — 720p video only gets 480p + 720p, not 1080p
+      5. test_transcode_handles_ffmpeg_failure — status set to "failed"
+      6. test_transcode_handles_ffprobe_failure — status set to "failed"
+      7. test_transcode_wrong_status — video not in "uploaded" status → skip
+      8. test_get_video_status_ready — returns hls_url when ready
+
+      Mock asyncio.create_subprocess_exec for ffmpeg/ffprobe calls.
+      Mock VideoStoragePort for upload calls.
+
+      RULES:
+      - ffmpeg calls via asyncio.create_subprocess_exec (not subprocess.run — async!)
+      - Always clean up temp files in finally block (use tempfile.mkdtemp)
+      - Status transitions: uploaded → processing → ready | failed (never skip)
+      - Only transcode to profiles where profile.height <= original video height
+      - HLS segment duration: 10 seconds
+      - Master playlist format follows standard HLS spec (#EXTM3U, #EXT-X-STREAM-INF)
+      - Parameterized SQL, type hints, async I/O
+      - Domain objects (TranscodeProfile) — no framework imports
+
+      COMMIT:
+      feat(course): add HLS video transcoding worker with multi-quality output
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on:
+      - video-upload-endpoint
+
+  - id: video-thumbnail-generator
+    title: "Auto-generate video thumbnails at 10% mark"
+    scope: backend:course
+    prompt: |
+      Task: Auto-generate a thumbnail image from an uploaded video at the 10% duration mark using ffmpeg.
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - Video entity in app/domain/video.py with thumbnail_url field
+      - VideoRepository with update_video_thumbnail(video_id, thumbnail_url)
+      - VideoStoragePort for uploading thumbnail to S3
+      - TranscodeService in app/services/transcode_service.py already probes video for duration
+      - ffmpeg available via asyncio.create_subprocess_exec (pattern from transcode_service)
+      - Videos stored in S3 at: videos/{teacher_id}/{uuid}/{filename}
+
+      WHAT TO BUILD:
+
+      1. Service: app/services/thumbnail_service.py
+         ThumbnailService(video_repo, video_storage):
+         - async generate_thumbnail(video_id: UUID) -> str | None
+           1. Get video from DB
+           2. Download original video from S3 to temp file (or use the already-downloaded file during transcode)
+           3. Calculate timestamp: duration_seconds * 0.1 (10% mark). Fallback to 1s if no duration.
+           4. Run ffmpeg to extract single frame as JPEG:
+              ffmpeg -i input.mp4 -ss {timestamp} -vframes 1 -q:v 2 -f image2 thumbnail.jpg
+           5. Upload thumbnail.jpg to S3 at: videos/{teacher_id}/{uuid}/thumbnail.jpg
+           6. Get presigned URL for the thumbnail
+           7. Update video record: thumbnail_url = S3 key (not presigned URL — generate fresh on access)
+           8. Clean up temp files
+           9. Return thumbnail S3 key
+           On error: log warning, return None (thumbnail is non-critical)
+
+         - async get_thumbnail_url(video_id: UUID) -> str | None
+           Get video, if thumbnail_url exists, generate presigned URL and return.
+
+      2. Integration with transcode pipeline:
+         In TranscodeService.transcode(), after probing video (step 4), call:
+         await thumbnail_service.generate_thumbnail(video_id)
+         This runs as part of the transcode flow (before HLS encoding, after we know duration).
+
+      3. Route addition: in routes/videos.py
+         GET /videos/{video_id}/thumbnail → redirect to presigned thumbnail URL (302)
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_thumbnail.py:
+      1. test_generate_thumbnail_success — mock ffmpeg, verify S3 upload with correct key
+      2. test_generate_thumbnail_at_10_percent — 100s video → extracts at 10s
+      3. test_generate_thumbnail_no_duration_fallback — no duration → extracts at 1s
+      4. test_generate_thumbnail_ffmpeg_failure — returns None, no crash
+      5. test_generate_thumbnail_updates_video — verify update_video_thumbnail called
+      6. test_get_thumbnail_url — returns presigned URL
+      7. test_get_thumbnail_url_no_thumbnail — returns None
+
+      RULES:
+      - ffmpeg via asyncio.create_subprocess_exec
+      - Thumbnail format: JPEG, quality 2 (high quality)
+      - Always clean up temp files in finally block
+      - Non-critical: failure returns None, does not crash transcode pipeline
+      - S3 key: videos/{teacher_id}/{uuid}/thumbnail.jpg
+      - Type hints, async I/O
+      - Independent tests with mocked dependencies
+
+      COMMIT:
+      feat(course): add automatic video thumbnail generation
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on:
+      - video-transcode-worker
+
+  # ─── BACKEND: Course — Lesson-Video Linking ────────────────────────────────────
+
+  - id: lesson-video-attachment
+    title: "Link videos to lessons with presigned playback URLs"
+    scope: backend:course
+    prompt: |
+      Task: Allow teachers to attach videos to lessons, and serve playback URLs to students.
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing lessons table (see migrations/002_modules_lessons.sql): id, module_id, title, content, "order", etc.
+      - Video entity + videos table with id, teacher_id, s3_key, status, hls_manifest_key, thumbnail_url
+      - VideoRepository with get_video(video_id)
+      - VideoStoragePort with get_presigned_url(key)
+      - Existing lesson routes at app/routes/lessons.py or similar
+      - Existing LessonRepository and LessonService
+      - Teacher ownership: lessons belong to modules → modules belong to courses → courses belong to teacher
+
+      WHAT TO BUILD:
+
+      1. Migration: migrations/009_lesson_video.sql
+         ALTER TABLE lessons ADD COLUMN IF NOT EXISTS video_id UUID REFERENCES videos(id) ON DELETE SET NULL;
+         CREATE INDEX IF NOT EXISTS idx_lessons_video ON lessons(video_id) WHERE video_id IS NOT NULL;
+
+      2. Update domain: ensure Lesson entity includes video_id: UUID | None field
+
+      3. Update LessonRepository:
+         - update_lesson_video(lesson_id, video_id: UUID | None) -> Lesson | None
+           Sets or clears the video_id on a lesson.
+
+      4. Update LessonService:
+         - attach_video(teacher_id, lesson_id, video_id) -> Lesson
+           Validates: teacher owns the course (via module → course → teacher_id check),
+           video exists + status == "ready" + video.teacher_id == teacher_id.
+           Calls update_lesson_video.
+         - detach_video(teacher_id, lesson_id) -> Lesson
+           Owner check. Sets video_id = NULL.
+
+      5. Update routes:
+         - PUT /lessons/{lesson_id}/video { video_id } → 200 (teacher, owner)
+         - DELETE /lessons/{lesson_id}/video → 200 (teacher, owner)
+         - GET /lessons/{lesson_id} — enrich response: if lesson has video_id and video status=="ready",
+           include video_playback_url (presigned HLS URL) and thumbnail_url in response.
+           For non-ready videos, include video_status.
+
+      6. Response enrichment: when returning a lesson with a video, include:
+         {
+           ...lesson_fields,
+           video: {
+             id, status, duration_seconds, thumbnail_url,
+             playback_url: presigned_url_to_hls_manifest (only if status == "ready"),
+           } | null
+         }
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_lesson_video.py:
+      1. test_attach_video_success — teacher attaches ready video to lesson
+      2. test_attach_video_not_owner_of_course → 403
+      3. test_attach_video_not_owner_of_video → 403
+      4. test_attach_video_not_ready → 400 (video still processing)
+      5. test_attach_video_not_found → 404
+      6. test_detach_video_success — removes video from lesson
+      7. test_detach_video_not_owner → 403
+      8. test_get_lesson_with_video — returns enriched response with playback URL
+      9. test_get_lesson_without_video — video field is null
+      10. test_get_lesson_with_processing_video — includes status but no playback URL
+
+      RULES:
+      - video_id FK with ON DELETE SET NULL (lesson survives if video deleted)
+      - Teacher must own BOTH the lesson's course AND the video
+      - Only "ready" videos can be attached (prevents broken playback)
+      - Presigned URLs regenerated on each request (not stored in DB)
+      - Parameterized SQL ($1, $2, ...)
+      - Type hints, async I/O
+      - Do NOT modify existing lesson creation/update flows — add separate attach/detach endpoints
+
+      COMMIT:
+      feat(course): add video attachment to lessons with presigned playback URLs
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on:
+      - video-upload-endpoint
+
+  # ─── BACKEND: Enrollment — Video Progress ──────────────────────────────────────
+
+  - id: video-progress-tracking
+    title: "Track video watch progress per student with auto-completion"
+    scope: backend:enrollment
+    prompt: |
+      Task: Track video watch progress for enrolled students. Auto-mark lesson as completed when video watched >= 90%.
+
+      CONTEXT:
+      - Enrollment service: services/py/enrollment/ (FastAPI, asyncpg, Clean Architecture)
+      - enrollment-db on port 5435, migrations in services/py/enrollment/migrations/ (currently 001-004)
+      - Existing tables: enrollments (id, user_id, course_id, status, completed_lessons, total_lessons),
+        lesson_progress (id, enrollment_id, lesson_id, completed, completed_at)
+      - Existing ProgressService in app/services/ handles lesson completion
+      - Existing ProgressRepository in app/repositories/progress_repo.py
+      - JWT auth: user_id from token, role = student
+      - Enrollment check: student must be enrolled in the course to track progress
+
+      WHAT TO BUILD:
+
+      1. Migration: migrations/005_video_progress.sql
+         CREATE TABLE IF NOT EXISTS video_progress (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           user_id UUID NOT NULL,
+           video_id UUID NOT NULL,
+           lesson_id UUID NOT NULL,
+           enrollment_id UUID NOT NULL REFERENCES enrollments(id) ON DELETE CASCADE,
+           current_second INT NOT NULL DEFAULT 0,
+           total_seconds INT NOT NULL,
+           completed BOOLEAN NOT NULL DEFAULT false,
+           updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           UNIQUE(user_id, video_id)
+         );
+         CREATE INDEX idx_vp_user ON video_progress(user_id);
+         CREATE INDEX idx_vp_enrollment ON video_progress(enrollment_id);
+
+      2. Domain entity: app/domain/video_progress.py
+         @dataclass(frozen=True)
+         class VideoProgress:
+             id: UUID
+             user_id: UUID
+             video_id: UUID
+             lesson_id: UUID
+             enrollment_id: UUID
+             current_second: int
+             total_seconds: int
+             completed: bool
+             updated_at: datetime
+
+      3. Repository: app/repositories/video_progress_repo.py
+         VideoProgressRepository(pool):
+         - upsert_progress(user_id, video_id, lesson_id, enrollment_id, current_second, total_seconds) -> VideoProgress
+           INSERT ... ON CONFLICT (user_id, video_id)
+           DO UPDATE SET current_second = GREATEST(current_second, $val), total_seconds = $val, updated_at = now()
+           (never go backwards — only update if current_second is higher)
+         - get_progress(user_id, video_id) -> VideoProgress | None
+         - get_progress_for_enrollment(enrollment_id) -> list[VideoProgress]
+         - mark_completed(user_id, video_id) -> VideoProgress | None
+
+      4. Service: app/services/video_progress_service.py
+         VideoProgressService(video_progress_repo, progress_repo, enrollment_repo):
+         - update_progress(user_id, video_id, lesson_id, course_id, current_second, total_seconds) -> VideoProgress
+           1. Verify enrollment exists for user + course
+           2. Upsert video progress
+           3. Check if current_second / total_seconds >= 0.9
+           4. If >= 90% and not already completed:
+              - Mark video progress as completed
+              - Mark lesson as completed in lesson_progress (reuse existing progress service logic)
+           5. Return video progress
+         - get_progress(user_id, video_id) -> VideoProgress | None
+         - get_enrollment_video_progress(user_id, course_id) -> list[VideoProgress]
+
+      5. Routes: app/routes/video_progress.py
+         - POST /progress/videos/{video_id} { lesson_id, course_id, current_second, total_seconds } → 200
+           (student, must be enrolled)
+         - GET /progress/videos/{video_id} → VideoProgress | 404
+         - GET /progress/videos/course/{course_id} → list[VideoProgress]
+           (all video progress for a course enrollment)
+         Register in app/main.py
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_video_progress.py:
+      1. test_update_progress_success — student updates watch position
+      2. test_update_progress_not_enrolled → 403
+      3. test_update_progress_never_goes_backwards — current_second only increases
+      4. test_auto_complete_at_90_percent — watching 90% marks lesson complete
+      5. test_no_complete_below_90_percent — watching 80% does not mark complete
+      6. test_no_double_completion — already completed, updating to 95% doesn't re-complete
+      7. test_get_progress — returns current watch state
+      8. test_get_progress_not_found → 404
+      9. test_get_enrollment_video_progress — list all video progress for course
+
+      RULES:
+      - Progress only goes forward (GREATEST in SQL) — cannot rewind progress
+      - Auto-complete threshold: 90% (current_second / total_seconds >= 0.9)
+      - Student must be enrolled to track progress
+      - Upsert pattern: INSERT ON CONFLICT UPDATE
+      - Lesson completion reuses existing progress logic (don't duplicate)
+      - Parameterized SQL ($1, $2, ...)
+      - Type hints, async I/O
+      - Independent tests
+
+      COMMIT:
+      feat(enrollment): add video watch progress tracking with auto-completion
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/enrollment && uv run --package enrollment pytest tests/ -v"
+    depends_on: []
+
+  # ─── FRONTEND: Buyer — Video Player ────────────────────────────────────────────
+
+  - id: video-player-component
+    title: "HLS video player with quality selector and keyboard shortcuts"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build a reusable VideoPlayer component using HLS.js for adaptive bitrate streaming.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - Components at apps/buyer/components/
+      - Uses Radix UI for headless accessible primitives
+      - Only named exports, no default exports
+      - "use client" only when hooks/event handlers needed
+      - Package manager: pnpm
+      - Existing API client at apps/buyer/lib/api.ts
+      - TanStack Query hooks at apps/buyer/hooks/
+
+      WHAT TO BUILD:
+
+      1. Install hls.js: pnpm add hls.js (in apps/buyer/)
+
+      2. Component: apps/buyer/components/VideoPlayer.tsx ("use client")
+         Props interface:
+         interface VideoPlayerProps {
+           src: string;              // HLS manifest URL (.m3u8)
+           poster?: string;          // Thumbnail URL
+           onProgress?: (currentSecond: number, totalSeconds: number) => void;
+           onComplete?: () => void;  // Fires when >= 90% watched
+           initialPosition?: number; // Resume position in seconds
+           className?: string;
+         }
+
+         Features:
+         a) HLS.js integration:
+            - Initialize Hls instance, attach to <video> element
+            - Fallback: if browser supports HLS natively (Safari), use <video src> directly
+            - Clean up Hls instance on unmount
+
+         b) Custom controls overlay (Tailwind styled):
+            - Play/Pause button (large center overlay + bottom bar)
+            - Progress bar: clickable/draggable seek bar, shows buffered ranges
+            - Time display: current / total (formatted as mm:ss or hh:mm:ss)
+            - Volume slider with mute toggle
+            - Quality selector dropdown: Auto, 480p, 720p, 1080p
+              (reads available levels from hls.levels, sets hls.currentLevel)
+            - Playback speed selector: 0.5x, 0.75x, 1x, 1.25x, 1.5x, 2x
+            - Fullscreen toggle button
+            - Controls auto-hide after 3s of inactivity, show on mouse move
+
+         c) Keyboard shortcuts (when player is focused):
+            - Space / K = toggle play/pause
+            - F = toggle fullscreen
+            - Left arrow = skip back 10s
+            - Right arrow = skip forward 10s
+            - Up arrow = volume up 10%
+            - Down arrow = volume down 10%
+            - M = toggle mute
+            - < / > = decrease/increase playback speed
+
+         d) Progress tracking:
+            - Call onProgress callback every 5 seconds during playback
+            - If initialPosition provided, seek to it on load
+            - Call onComplete when currentTime / duration >= 0.9
+
+      3. Hook: apps/buyer/hooks/use-video-progress.ts
+         useVideoProgress(videoId: string, lessonId: string, courseId: string)
+         - Calls POST /progress/videos/{videoId} every 30 seconds with debounce
+         - Returns { currentSecond, completed } from GET on mount
+         - Provides onProgress and onComplete callbacks for VideoPlayer
+
+      IMPLEMENTATION APPROACH:
+      1. Create VideoPlayer.tsx with HLS.js setup first
+      2. Add custom controls UI with Tailwind
+      3. Implement keyboard shortcuts
+      4. Add quality and speed selectors
+      5. Create use-video-progress hook
+      6. Test: pnpm build must pass
+
+      RULES:
+      - "use client" directive required (hooks, event handlers, browser APIs)
+      - Named export only: export function VideoPlayer(...)
+      - Props via interface, not type
+      - Tailwind CSS only — no CSS modules
+      - Radix UI for dropdown menus (quality, speed selectors)
+      - Responsive: works on mobile and desktop
+      - Accessibility: keyboard navigation, aria labels on controls
+      - Clean up HLS instance and event listeners on unmount
+      - No <img> tags — use next/image if showing poster
+      - Handle edge cases: source not ready, network error, format not supported
+
+      COMMIT:
+      feat(buyer): add HLS video player with adaptive streaming and custom controls
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: lesson-video-ui
+    title: "Integrate video player into lesson page"
+    scope: frontend:buyer
+    prompt: |
+      Task: Integrate the VideoPlayer component into the lesson detail page, with progress auto-save.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - VideoPlayer component at apps/buyer/components/VideoPlayer.tsx
+      - useVideoProgress hook at apps/buyer/hooks/use-video-progress.ts
+      - Lesson page likely at apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx (check actual path)
+      - API client at apps/buyer/lib/api.ts — check how lessons are fetched
+      - Existing hooks in apps/buyer/hooks/ — check for use-progress, use-courses, etc.
+      - Lessons now have video field: { id, status, duration_seconds, thumbnail_url, playback_url } | null
+      - TanStack Query for server state
+
+      WHAT TO BUILD:
+
+      1. Update lesson page (apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx):
+         - If lesson has video with playback_url, render VideoPlayer above lesson text content
+         - Pass src={lesson.video.playback_url}, poster={lesson.video.thumbnail_url}
+         - Connect to useVideoProgress hook for auto-save
+         - Show video status badge if video is processing ("Video is being prepared...")
+         - Lesson text content renders below the video
+
+      2. Layout structure:
+         ```
+         ┌─────────────────────────────────┐
+         │         VideoPlayer              │  ← 16:9 aspect ratio container
+         │   (if lesson has video)          │
+         ├─────────────────────────────────┤
+         │  Lesson Title                   │
+         │  Lesson text content            │  ← Scrollable
+         │  (markdown/rich text)           │
+         └─────────────────────────────────┘
+         ```
+
+      3. Progress integration:
+         - useVideoProgress returns { currentSecond, onProgress, onComplete }
+         - Pass initialPosition={currentSecond} to VideoPlayer for resume
+         - onProgress auto-saves every 30s via the hook
+         - onComplete triggers lesson completion UI update (invalidate TanStack Query)
+
+      4. Update API client types (apps/buyer/lib/api.ts or types file):
+         Add video field to Lesson type:
+         video: {
+           id: string;
+           status: "uploaded" | "processing" | "ready" | "failed";
+           duration_seconds: number | null;
+           thumbnail_url: string | null;
+           playback_url: string | null;
+         } | null;
+
+      5. Loading / error states:
+         - Skeleton loader for video area while lesson loads
+         - Error boundary if video fails to load
+         - Fallback message if video status is "failed"
+
+      IMPLEMENTATION APPROACH:
+      1. Update Lesson type definition with video field
+      2. Modify lesson page to conditionally render VideoPlayer
+      3. Wire up useVideoProgress hook
+      4. Add loading and error states
+      5. Test: pnpm build must pass
+
+      RULES:
+      - Server Component for the page, "use client" for VideoPlayer wrapper if needed
+      - Named exports only
+      - Tailwind CSS only
+      - next/image for thumbnails
+      - Responsive layout: full-width video on mobile, constrained on desktop
+      - Skeleton loading state while data fetches
+      - Handle all video statuses gracefully (uploaded, processing, ready, failed)
+      - Don't break existing lesson page functionality — video is additive
+
+      COMMIT:
+      feat(buyer): integrate video player into lesson page with progress tracking
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on:
+      - video-player-component
+      - lesson-video-attachment
+
+  # ─── FRONTEND: Seller — Video Upload UI ────────────────────────────────────────
+
+  - id: seller-video-upload-ui
+    title: "Video upload UI in seller dashboard with drag-and-drop"
+    scope: frontend:seller
+    prompt: |
+      Task: Build the video upload and management UI in the seller (teacher) dashboard.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - Components at apps/seller/components/
+      - Seller dashboard manages courses, modules, lessons
+      - API endpoints (from Course service):
+        POST /videos/upload (multipart/form-data) → { video, playback_url }
+        GET /videos/me → paginated list of teacher's videos
+        GET /videos/{id}/status → { status, duration_seconds, hls_url }
+        PUT /lessons/{id}/video { video_id } → attach video to lesson
+        DELETE /lessons/{id}/video → detach video
+      - JWT auth: teacher role, is_verified
+      - Package manager: pnpm
+
+      WHAT TO BUILD:
+
+      1. Component: apps/seller/components/VideoUploader.tsx ("use client")
+         Props:
+         interface VideoUploaderProps {
+           onUploadComplete: (video: Video) => void;
+           className?: string;
+         }
+
+         Features:
+         a) Drag-and-drop zone:
+            - Visual drop area with dashed border
+            - Accept: video/mp4, video/webm, video/quicktime
+            - Max size: 2GB (show error if exceeded)
+            - Also supports click-to-browse file picker
+
+         b) Upload progress:
+            - Progress bar during upload (use XMLHttpRequest or fetch with ReadableStream for progress)
+            - Show file name, size, percentage
+            - Cancel button during upload
+
+         c) Processing status:
+            - After upload, poll GET /videos/{id}/status every 5 seconds
+            - Show status indicator: "Uploading..." → "Processing..." → "Ready"
+            - Show spinner during processing
+            - Show checkmark when ready
+            - Show error icon + retry option if failed
+
+         d) Video preview:
+            - When ready, show thumbnail preview
+            - Display duration, resolution info
+
+      2. Component: apps/seller/components/VideoSelector.tsx ("use client")
+         Props:
+         interface VideoSelectorProps {
+           lessonId: string;
+           currentVideoId?: string;
+           onVideoAttached: (videoId: string) => void;
+           onVideoDetached: () => void;
+         }
+
+         Features:
+         - Lists teacher's ready videos (GET /videos/me?status=ready)
+         - Each video shows: thumbnail, filename, duration, resolution
+         - Select button to attach video to lesson (PUT /lessons/{id}/video)
+         - Detach button if lesson already has video (DELETE /lessons/{id}/video)
+         - "Upload New" button opens VideoUploader inline
+
+      3. Integration page: apps/seller/app/courses/[id]/lessons/[lessonId]/page.tsx
+         (or wherever lesson editing happens in seller app)
+         - Add VideoSelector section to lesson edit form
+         - Show current attached video with thumbnail
+         - Allow swapping or removing video
+
+      4. Videos library page: apps/seller/app/videos/page.tsx
+         - List all teacher's uploaded videos
+         - Show status, thumbnail, duration for each
+         - Upload new video button → VideoUploader
+         - Delete video option
+
+      IMPLEMENTATION APPROACH:
+      1. Build VideoUploader component with drag-and-drop + upload progress
+      2. Build VideoSelector for lesson-video attachment
+      3. Create videos library page
+      4. Integrate VideoSelector into lesson edit page
+      5. Test: pnpm build must pass
+
+      RULES:
+      - "use client" for interactive components
+      - Named exports only
+      - Tailwind CSS only
+      - File size validation client-side before upload
+      - Polling for status with cleanup on unmount (clearInterval)
+      - Accessible: drag-and-drop has keyboard alternative (file input)
+      - Show human-readable file sizes (MB, GB)
+      - Handle network errors gracefully with retry option
+      - Use TanStack Query for fetching video lists (if available in seller app)
+      - Progress via XMLHttpRequest.upload.onprogress (fetch doesn't support upload progress natively)
+
+      COMMIT:
+      feat(seller): add video upload UI with drag-and-drop and processing status
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on:
+      - video-upload-endpoint
+
+  # ─── BACKEND: Course — Transcription ───────────────────────────────────────────
+
+  - id: video-auto-transcription
+    title: "Auto-generate subtitles/transcript from video via Whisper API"
+    scope: backend:course
+    prompt: |
+      Task: Auto-generate subtitles and searchable transcripts from uploaded videos using an external speech-to-text API.
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - Video entity with transcript_url field, VideoRepository with update_video_transcript()
+      - VideoStoragePort for uploading VTT files to S3
+      - TranscodeService runs after video upload — transcription should run after/alongside transcode
+      - ffmpeg available for audio extraction
+      - Config via pydantic BaseSettings + env vars
+
+      WHAT TO BUILD:
+
+      1. Config: add to app/config.py
+         TRANSCRIPTION_API_URL: str = ""  # e.g., OpenAI Whisper API or Google Speech-to-Text
+         TRANSCRIPTION_API_KEY: str = ""
+         TRANSCRIPTION_ENABLED: bool = False  # disabled by default until API key configured
+
+      2. Domain: app/domain/transcription.py
+         @dataclass(frozen=True)
+         class TranscriptSegment:
+             start_seconds: float
+             end_seconds: float
+             text: str
+
+         @dataclass(frozen=True)
+         class Transcript:
+             video_id: UUID
+             language: str
+             segments: list[TranscriptSegment]
+
+      3. Port: app/domain/transcription.py
+         class TranscriptionPort(ABC):
+             @abstractmethod
+             async def transcribe(self, audio_data: bytes, language: str = "auto") -> Transcript:
+                 """Send audio to transcription service, return timed segments."""
+                 ...
+
+      4. Adapter: app/repositories/whisper_transcription.py
+         WhisperTranscriptionAdapter(TranscriptionPort):
+         - Uses httpx to call transcription API (OpenAI-compatible Whisper endpoint)
+         - POST /v1/audio/transcriptions with multipart audio file
+         - Parses response into TranscriptSegment list
+         - Handles rate limits, retries (max 3), timeouts (5 min per request)
+
+      5. Service: app/services/transcription_service.py
+         TranscriptionService(video_repo, video_storage, transcription_adapter):
+         - async generate_transcript(video_id: UUID) -> str | None
+           1. Check TRANSCRIPTION_ENABLED — skip if false
+           2. Get video from DB
+           3. Download video from S3 to temp file
+           4. Extract audio via ffmpeg: ffmpeg -i input.mp4 -vn -acodec pcm_s16le -ar 16000 -ac 1 audio.wav
+           5. Call transcription_adapter.transcribe(audio_bytes)
+           6. Convert TranscriptSegment list to WebVTT format:
+              WEBVTT
+
+              00:00:01.000 --> 00:00:04.500
+              Hello and welcome to this lesson.
+
+              00:00:05.000 --> 00:00:08.200
+              Today we'll learn about...
+           7. Upload VTT file to S3: videos/{teacher_id}/{uuid}/subtitles.vtt
+           8. Update video.transcript_url with S3 key
+           9. Return S3 key
+           On error: log warning, return None (non-critical)
+
+         - _to_vtt(segments: list[TranscriptSegment]) -> str
+           Pure function: convert segments to WebVTT string format.
+           Format timestamps as HH:MM:SS.mmm
+
+         - async get_transcript_url(video_id: UUID) -> str | None
+           Get video, generate presigned URL for transcript VTT.
+
+      6. Integration with transcode pipeline:
+         In TranscodeService.transcode(), after successful transcode, if TRANSCRIPTION_ENABLED:
+         await transcription_service.generate_transcript(video_id)
+
+      7. Route addition: in routes/videos.py
+         GET /videos/{video_id}/transcript → presigned URL to VTT file (or 404 if no transcript)
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_transcription.py:
+      1. test_generate_transcript_success — mock API, verify VTT upload to S3
+      2. test_generate_transcript_disabled — TRANSCRIPTION_ENABLED=False → skip, return None
+      3. test_transcription_api_failure — returns None, no crash
+      4. test_to_vtt_format — pure function test, verify WebVTT format
+      5. test_to_vtt_timestamps — verify HH:MM:SS.mmm formatting
+      6. test_to_vtt_empty_segments — empty list → minimal valid VTT
+      7. test_generate_transcript_extracts_audio — verify ffmpeg called with correct args
+      8. test_get_transcript_url — returns presigned URL
+      9. test_get_transcript_url_no_transcript — returns None
+
+      Focus on _to_vtt() as a pure function — easiest to test thoroughly.
+      Mock httpx for API calls, mock subprocess for ffmpeg.
+
+      RULES:
+      - TranscriptionPort in domain layer — no framework imports
+      - Implementation in repositories layer (external dependency)
+      - VTT format must be valid WebVTT (starts with WEBVTT header)
+      - Timestamps in HH:MM:SS.mmm format
+      - Non-critical: failure doesn't crash the pipeline
+      - Feature flag: TRANSCRIPTION_ENABLED (default false)
+      - Audio extraction: 16kHz mono WAV (optimal for speech-to-text)
+      - Max audio duration: skip if video > 4 hours (API limits)
+      - Clean up temp files in finally block
+      - Type hints, async I/O
+
+      COMMIT:
+      feat(course): add automatic video transcription with WebVTT output
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on:
+      - video-transcode-worker
+
+  # ─── FRONTEND: Buyer — Subtitles UI ────────────────────────────────────────────
+
+  - id: video-subtitles-ui
+    title: "Subtitles toggle and searchable transcript panel in video player"
+    scope: frontend:buyer
+    prompt: |
+      Task: Add subtitle support and a searchable transcript panel to the VideoPlayer component.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - VideoPlayer component at apps/buyer/components/VideoPlayer.tsx
+      - Uses HLS.js for streaming, custom controls overlay
+      - Videos now have transcript_url (presigned URL to .vtt file) from the API
+      - Lesson page at apps/buyer/app/courses/[id]/lessons/[lessonId]/page.tsx
+      - WebVTT format: timestamped text segments
+
+      WHAT TO BUILD:
+
+      1. Update VideoPlayer props:
+         interface VideoPlayerProps {
+           src: string;
+           poster?: string;
+           subtitleSrc?: string;       // URL to .vtt file
+           onProgress?: (currentSecond: number, totalSeconds: number) => void;
+           onComplete?: () => void;
+           initialPosition?: number;
+           className?: string;
+         }
+
+      2. Subtitle rendering in VideoPlayer:
+         - Add <track> element to <video> with kind="subtitles" and src={subtitleSrc}
+         - Subtitle toggle button in controls bar (CC icon)
+         - Toggle shows/hides subtitles
+         - Subtitles rendered as overlay text at bottom of video (styled with Tailwind)
+         - Default: subtitles off
+
+      3. TranscriptPanel component: apps/buyer/components/TranscriptPanel.tsx ("use client")
+         Props:
+         interface TranscriptPanelProps {
+           vttUrl: string;
+           currentTime: number;
+           onSeek: (seconds: number) => void;
+           className?: string;
+         }
+
+         Features:
+         a) Parse VTT file:
+            - Fetch and parse .vtt file into segments: { start, end, text }[]
+            - Handle parsing edge cases (empty lines, multi-line cues)
+
+         b) Scrollable transcript list:
+            - Each segment shown as a clickable row: [timestamp] text
+            - Currently active segment highlighted (based on currentTime)
+            - Auto-scroll to keep active segment visible
+
+         c) Search within transcript:
+            - Search input at top of panel
+            - Filter/highlight matching segments
+            - Click match → onSeek(segment.start) → video jumps to that position
+
+         d) Layout: side panel on desktop, collapsible below video on mobile
+
+      4. Integration in lesson page:
+         - If lesson.video.transcript_url exists, show TranscriptPanel
+         - Desktop layout:
+           ```
+           ┌────────────────────────┬──────────────┐
+           │     VideoPlayer        │  Transcript   │
+           │                        │  Panel        │
+           │                        │  (scrollable) │
+           ├────────────────────────┴──────────────┤
+           │  Lesson content                        │
+           └────────────────────────────────────────┘
+           ```
+         - Mobile: transcript panel below video, collapsible accordion
+
+      5. VTT parser utility: apps/buyer/lib/vtt-parser.ts
+         export function parseVTT(vttText: string): VTTSegment[]
+         interface VTTSegment { start: number; end: number; text: string; }
+         Parse WebVTT format, convert timestamps to seconds.
+
+      IMPLEMENTATION APPROACH:
+      1. Create VTT parser utility with tests
+      2. Add subtitle track to VideoPlayer
+      3. Build TranscriptPanel component
+      4. Integrate into lesson page layout
+      5. Test: pnpm build must pass
+
+      RULES:
+      - "use client" for interactive components
+      - Named exports only
+      - Tailwind CSS only
+      - VTT parser is a pure function — no side effects
+      - Responsive: side panel on desktop (lg:), below on mobile
+      - Accessibility: transcript is screen-reader friendly (semantic HTML)
+      - Auto-scroll uses scrollIntoView with smooth behavior
+      - Search is client-side (VTT files are small, no need for server search)
+      - Handle missing/invalid VTT gracefully (show message, don't crash)
+      - Keyboard shortcut: C = toggle subtitles (add to VideoPlayer shortcuts)
+
+      COMMIT:
+      feat(buyer): add video subtitles and searchable transcript panel
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on:
+      - video-player-component
+      - video-auto-transcription

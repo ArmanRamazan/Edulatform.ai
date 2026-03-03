@@ -1,0 +1,850 @@
+phase: "sprint-15"
+description: "Enterprise & Teams — organizations, bulk enrollment, team analytics"
+
+tasks:
+  # ─── BACKEND: Identity — Organization Model ───────────────────────────────────
+
+  - id: organization-model
+    title: "Organization domain model, migration, and CRUD endpoints"
+    scope: backend:identity
+    prompt: |
+      Task: Add organization support to the Identity service — create/read/update organizations.
+
+      CONTEXT:
+      - Identity service: services/py/identity/ (FastAPI, asyncpg, Clean Architecture)
+      - identity-db on port 5433
+      - Users table has: id UUID, email, password_hash, name, role (student/teacher/admin), is_verified, email_verified, created_at
+      - UserRole is a StrEnum in app/domain/user.py with values: student, teacher, admin
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth with role, is_verified, email_verified in extra_claims
+      - Tests: AsyncMock(spec=Repository), pytest-asyncio, asyncio_mode = "auto"
+      - Existing patterns: app/routes/, app/services/, app/domain/, app/repositories/
+      - Paginated responses use { items: [...], total: int }
+
+      WHAT TO BUILD:
+
+      1. Migration: services/py/identity/migrations/
+         CREATE TYPE org_member_role AS ENUM ('owner', 'admin', 'member');
+
+         CREATE TABLE organizations (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           name VARCHAR(200) NOT NULL,
+           slug VARCHAR(200) NOT NULL UNIQUE,
+           logo_url TEXT,
+           is_active BOOLEAN NOT NULL DEFAULT true,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+         CREATE INDEX idx_organizations_slug ON organizations(slug);
+
+         CREATE TABLE organization_members (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+           user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+           role org_member_role NOT NULL DEFAULT 'member',
+           joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           UNIQUE(org_id, user_id)
+         );
+         CREATE INDEX idx_org_members_org ON organization_members(org_id);
+         CREATE INDEX idx_org_members_user ON organization_members(user_id);
+
+      2. Domain: app/domain/organization.py
+         - OrgMemberRole(StrEnum): owner, admin, member
+         - Organization entity (dataclass frozen=True): id, name, slug, logo_url, is_active, created_at
+         - OrganizationMember entity (dataclass frozen=True): id, org_id, user_id, role, joined_at
+         - Pydantic models: OrganizationCreate(name, slug, logo_url?), OrganizationUpdate(name?, logo_url?),
+           OrganizationResponse(id, name, slug, logo_url, is_active, created_at),
+           OrgMemberResponse(id, org_id, user_id, role, joined_at)
+
+      3. Repository: app/repositories/organization_repository.py (ABC + SQL):
+         - create_organization(name, slug, logo_url) → Organization
+         - get_organization_by_id(org_id) → Organization | None
+         - get_organization_by_slug(slug) → Organization | None
+         - update_organization(org_id, name, logo_url) → Organization
+         - add_member(org_id, user_id, role) → OrganizationMember
+         - get_member(org_id, user_id) → OrganizationMember | None
+         - list_members(org_id, limit, offset) → list[OrganizationMember]
+         - count_members(org_id) → int
+         All SQL uses parameterized queries ($1, $2, ...).
+
+      4. Service: app/services/organization_service.py
+         - create_organization(user_id, name, slug, logo_url) → Organization
+           Creates the org, then adds the creator as owner member.
+           Validates: slug is URL-safe (lowercase alphanumeric + hyphens), 3-100 chars.
+           Catches asyncpg.UniqueViolationError → ConflictError("Organization with this slug already exists").
+         - get_organization(slug) → Organization — raises NotFoundError if not found or inactive
+         - get_organization_by_id(org_id) → Organization — raises NotFoundError
+         - update_organization(user_id, org_id, name, logo_url) → Organization
+           Only org owner or admin can update. Check via get_member.
+           Raises ForbiddenError if not owner/admin.
+         - get_my_organizations(user_id, limit, offset) → list with total
+           Query organization_members WHERE user_id, join organizations.
+
+      5. Routes: app/routes/organizations.py
+         - POST /organizations { name, slug, logo_url? } → 201 OrganizationResponse (authenticated)
+         - GET /organizations/{slug} → OrganizationResponse (public)
+         - PATCH /organizations/{org_id} { name?, logo_url? } → OrganizationResponse (org owner/admin)
+         - GET /organizations/me → paginated list of user's organizations (authenticated)
+         Register router in main app.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_organizations.py:
+      1. test_create_organization_success — user creates org, becomes owner
+      2. test_create_organization_duplicate_slug → 409 ConflictError
+      3. test_create_organization_invalid_slug → 400 (special chars, too short)
+      4. test_get_organization_by_slug_success
+      5. test_get_organization_not_found → 404
+      6. test_update_organization_as_owner — success
+      7. test_update_organization_as_admin — success
+      8. test_update_organization_not_member → 403
+      9. test_get_my_organizations — returns user's orgs
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Domain entities: no framework imports (except dataclasses, enum, uuid, datetime, pydantic for models)
+      - Parameterized SQL ($1, $2, ...)
+      - Slug validation: lowercase, alphanumeric + hyphens, 3-100 chars, no leading/trailing hyphens
+      - asyncpg.UniqueViolationError → ConflictError
+      - Async I/O, type hints on all public functions
+      - All tests independent, no order dependency
+      - Do NOT modify UserRole enum — org_member_role is a separate concept
+
+      COMMIT:
+      feat(identity): add organization model and CRUD endpoints
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+    depends_on: []
+
+  # ─── BACKEND: Identity — Organization Member Management ────────────────────────
+
+  - id: org-member-management
+    title: "Organization member invite, manage, and remove"
+    scope: backend:identity
+    prompt: |
+      Task: Add member management for organizations — invite by email, list, update role, remove.
+
+      CONTEXT:
+      - Identity service: services/py/identity/ (FastAPI, asyncpg, Clean Architecture)
+      - identity-db on port 5433
+      - Organizations and organization_members tables already exist (from organization-model task).
+      - Organization entity, OrganizationMember entity, OrgMemberRole enum (owner/admin/member) in app/domain/organization.py
+      - OrganizationRepository with create_organization, get_organization_by_id, add_member, get_member, list_members
+      - OrganizationService with create_organization, get_organization, update_organization
+      - JWT auth with user_id, role, is_verified
+      - Tests: AsyncMock(spec=Repository), pytest-asyncio, asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Migration: services/py/identity/migrations/
+         CREATE TABLE org_invitations (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           org_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+           email VARCHAR(255) NOT NULL,
+           role org_member_role NOT NULL DEFAULT 'member',
+           token_hash VARCHAR(255) NOT NULL,
+           expires_at TIMESTAMPTZ NOT NULL,
+           accepted_at TIMESTAMPTZ,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           UNIQUE(org_id, email)
+         );
+         CREATE INDEX idx_org_invitations_org ON org_invitations(org_id);
+         CREATE INDEX idx_org_invitations_token ON org_invitations(token_hash);
+
+      2. Domain: Add to app/domain/organization.py:
+         - OrgInvitation entity (dataclass frozen=True): id, org_id, email, role, token_hash, expires_at, accepted_at, created_at
+         - InviteMemberRequest(BaseModel): email (EmailStr), role (OrgMemberRole, default member)
+         - OrgInvitationResponse(BaseModel): id, org_id, email, role, expires_at, accepted_at, created_at
+         - UpdateMemberRoleRequest(BaseModel): role (OrgMemberRole)
+
+      3. Repository: Add to OrganizationRepository:
+         - create_invitation(org_id, email, role, token_hash, expires_at) → OrgInvitation
+         - get_invitation_by_token_hash(token_hash) → OrgInvitation | None
+         - get_pending_invitations(org_id, limit, offset) → list[OrgInvitation]
+         - mark_invitation_accepted(invitation_id) → None
+         - update_member_role(org_id, user_id, role) → OrganizationMember
+         - remove_member(org_id, user_id) → bool
+         - get_member_with_user(org_id, user_id) → dict with member + user info
+
+      4. Service: Add to OrganizationService:
+         - invite_member(actor_id, org_id, email, role) → OrgInvitationResponse
+           Only owner/admin can invite. Owner can invite admin/member. Admin can only invite member.
+           Generates a random token (secrets.token_urlsafe(32)), stores bcrypt hash.
+           Sets expires_at to 7 days from now.
+           Returns invitation with the raw token (not hash) so it can be sent via email.
+           Catches UniqueViolationError → ConflictError("Invitation already sent to this email").
+         - accept_invitation(token: str) → OrganizationMember
+           Finds invitation by token hash, validates not expired and not already accepted.
+           Looks up user by email. If user exists, adds as member with invited role.
+           Marks invitation accepted. Raises NotFoundError if token invalid/expired.
+         - list_invitations(actor_id, org_id, limit, offset) → paginated
+           Only owner/admin can list.
+         - update_member_role(actor_id, org_id, target_user_id, new_role) → OrganizationMember
+           Only owner can change roles. Cannot change own role. Cannot promote to owner.
+           Raises ForbiddenError for unauthorized actions.
+         - remove_member(actor_id, org_id, target_user_id) → None
+           Owner can remove anyone except self. Admin can remove members only.
+           Member cannot remove anyone. Raises ForbiddenError for unauthorized.
+
+      5. Routes: app/routes/organizations.py (add to existing router)
+         - POST /organizations/{org_id}/members/invite { email, role } → 201 OrgInvitationResponse
+         - POST /organizations/invitations/accept { token: str } → 200 OrgMemberResponse (public or authenticated)
+         - GET /organizations/{org_id}/invitations?limit=20&offset=0 → paginated (org admin/owner)
+         - GET /organizations/{org_id}/members?limit=20&offset=0 → paginated OrgMemberResponse (org member)
+         - PATCH /organizations/{org_id}/members/{user_id} { role } → OrgMemberResponse (org owner)
+         - DELETE /organizations/{org_id}/members/{user_id} → 204 (org owner/admin)
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_org_members.py:
+      1. test_invite_member_as_owner — success, returns token
+      2. test_invite_member_as_admin — success for member role
+      3. test_invite_admin_as_admin → 403 (admin can't invite admin)
+      4. test_invite_member_as_member → 403
+      5. test_invite_duplicate_email → 409
+      6. test_accept_invitation_success — user becomes org member
+      7. test_accept_invitation_expired → 404
+      8. test_accept_invitation_already_accepted → 404
+      9. test_list_invitations_as_owner — success
+      10. test_update_member_role_as_owner — success
+      11. test_update_member_role_as_admin → 403
+      12. test_remove_member_as_owner — success
+      13. test_remove_member_as_admin_remove_member — success
+      14. test_remove_member_as_member → 403
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Token stored as bcrypt hash, raw token returned only on creation
+      - Invitation expires in 7 days
+      - Permission hierarchy: owner > admin > member
+      - Owner cannot be removed or demoted
+      - Cannot have two owners (owner role is unique per org)
+      - asyncpg.UniqueViolationError → ConflictError
+      - Parameterized SQL ($1, $2, ...)
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(identity): add organization member management and invitations
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+    depends_on: [organization-model]
+
+  # ─── BACKEND: Enrollment — Bulk Enrollment ─────────────────────────────────────
+
+  - id: bulk-enrollment
+    title: "Bulk enrollment endpoint for organizations"
+    scope: backend:enrollment
+    prompt: |
+      Task: Add bulk enrollment endpoint — org admin enrolls multiple members in a course at once.
+
+      CONTEXT:
+      - Enrollment service: services/py/enrollment/ (FastAPI, asyncpg, Clean Architecture)
+      - enrollment-db on port 5435
+      - Existing: enrollments table (id, student_id, course_id, payment_id, status, enrolled_at, total_lessons)
+      - EnrollmentStatus: enrolled, in_progress, completed
+      - EnrollmentRepository has: create(student_id, course_id, ...) → Enrollment
+      - Duplicate enrollment caught via asyncpg.UniqueViolationError → ConflictError
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth with user_id, role, is_verified
+      - Tests: AsyncMock(spec=Repository), pytest-asyncio, asyncio_mode = "auto"
+      - The enrollment service does NOT access the identity DB directly.
+        Org membership validation must be done by the caller (API gateway or frontend).
+        This endpoint trusts the caller to provide valid user_ids.
+
+      WHAT TO BUILD:
+
+      1. Domain: Add to app/domain/enrollment.py:
+         - BulkEnrollmentRequest(BaseModel): course_id (UUID), user_ids (list[UUID])
+           Validator: user_ids length 1-500, no duplicates.
+         - BulkEnrollmentResult(BaseModel): user_id (UUID), success (bool), error (str | None)
+         - BulkEnrollmentResponse(BaseModel): course_id (UUID), total (int), succeeded (int),
+           failed (int), results (list[BulkEnrollmentResult])
+
+      2. Repository: Add to EnrollmentRepository:
+         - bulk_create(course_id, user_ids, total_lessons) → list[BulkEnrollmentResult]
+           Iterates user_ids, attempts create for each. On UniqueViolationError,
+           records as failed with "Already enrolled". On other error, records failure.
+           Does NOT use a single transaction — partial success is allowed.
+
+      3. Service: Add to EnrollmentService:
+         - bulk_enroll(course_id, user_ids, total_lessons=0) → BulkEnrollmentResponse
+           Validates: user_ids not empty, max 500.
+           Calls repository bulk_create.
+           Returns summary with per-user results.
+
+      4. Routes: app/routes/enrollments.py (add to existing router)
+         - POST /enrollments/bulk { course_id, user_ids } → 200 BulkEnrollmentResponse
+           Requires authenticated user (any role — authorization is caller's responsibility).
+           Returns 200 even if some enrollments fail (partial success).
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_bulk_enrollment.py:
+      1. test_bulk_enroll_all_success — 3 users, all succeed
+      2. test_bulk_enroll_partial_failure — 1 already enrolled, 2 succeed
+      3. test_bulk_enroll_empty_list → 400
+      4. test_bulk_enroll_too_many → 400 (>500)
+      5. test_bulk_enroll_duplicate_user_ids → 400
+      6. test_bulk_enroll_single_user — works with 1 user
+      7. test_bulk_enroll_unauthenticated → 401
+
+      Then implement. Then refactor.
+
+      RULES:
+      - Partial success: return 200 with per-user results, not 500 on first failure
+      - Max 500 user_ids per request
+      - No duplicate user_ids in request (validate in pydantic model)
+      - asyncpg.UniqueViolationError per user → record as failed, continue
+      - Parameterized SQL ($1, $2, ...)
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(enrollment): add bulk enrollment endpoint for organizations
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/enrollment && uv run --package enrollment pytest tests/ -v"
+    depends_on: []
+
+  # ─── BACKEND: Payment — Team Subscription ──────────────────────────────────────
+
+  - id: team-subscription
+    title: "Team subscription model and seat management"
+    scope: backend:payment
+    prompt: |
+      Task: Add team/organization subscription support to the Payment service.
+
+      CONTEXT:
+      - Payment service: services/py/payment/ (FastAPI, asyncpg, Clean Architecture)
+      - payment-db on port 5436
+      - Existing tables: payments, subscription_plans, user_subscriptions, teacher_earnings, payouts
+      - SubscriptionPlan entity: id, name, stripe_price_id, price_monthly, price_yearly, ai_credits_daily, features, created_at
+      - UserSubscription entity: id, user_id, plan_id, plan_name, stripe_subscription_id, stripe_customer_id, status, current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at
+      - SubscriptionStatus: active, canceled, past_due
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth with user_id, role, is_verified
+      - Tests: AsyncMock(spec=Repository), pytest-asyncio, asyncio_mode = "auto"
+
+      WHAT TO BUILD:
+
+      1. Migration: services/py/payment/migrations/
+         CREATE TABLE team_subscriptions (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           org_id UUID NOT NULL,
+           plan_id UUID NOT NULL REFERENCES subscription_plans(id),
+           seats_purchased INT NOT NULL CHECK (seats_purchased >= 1),
+           seats_used INT NOT NULL DEFAULT 0 CHECK (seats_used >= 0),
+           status VARCHAR(20) NOT NULL DEFAULT 'active',
+           stripe_subscription_id VARCHAR(255),
+           current_period_start TIMESTAMPTZ,
+           current_period_end TIMESTAMPTZ,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           UNIQUE(org_id)
+         );
+         CREATE INDEX idx_team_subs_org ON team_subscriptions(org_id);
+         CREATE INDEX idx_team_subs_status ON team_subscriptions(status);
+
+      2. Domain: app/domain/team_subscription.py
+         - TeamSubscription entity (dataclass frozen=True): id, org_id, plan_id, seats_purchased,
+           seats_used, status (SubscriptionStatus), stripe_subscription_id, current_period_start,
+           current_period_end, created_at, updated_at
+         - TeamSubscriptionCreate(BaseModel): org_id (UUID), plan_id (UUID), seats_purchased (int, ge=1)
+         - TeamSubscriptionResponse(BaseModel): id, org_id, plan_id, seats_purchased, seats_used,
+           status, current_period_start, current_period_end, created_at
+         - AdjustSeatsRequest(BaseModel): seats_purchased (int, ge=1)
+
+      3. Repository: app/repositories/team_subscription_repository.py (ABC + SQL):
+         - create_team_subscription(org_id, plan_id, seats_purchased) → TeamSubscription
+         - get_by_org_id(org_id) → TeamSubscription | None
+         - get_by_id(sub_id) → TeamSubscription | None
+         - update_seats(org_id, seats_purchased) → TeamSubscription
+         - update_seats_used(org_id, seats_used) → TeamSubscription
+         - update_status(org_id, status) → TeamSubscription
+         All SQL parameterized ($1, $2, ...).
+
+      4. Service: app/services/team_subscription_service.py
+         - create_team_subscription(org_id, plan_id, seats_purchased) → TeamSubscription
+           Validates plan exists. Catches UniqueViolationError → ConflictError("Team subscription already exists for this organization").
+           Sets current_period_start = now, current_period_end = now + 30 days (mock).
+         - get_team_subscription(org_id) → TeamSubscription
+           Raises NotFoundError if not found.
+         - adjust_seats(org_id, new_seats) → TeamSubscription
+           Validates: new_seats >= seats_used (can't reduce below active members).
+           Raises ValidationError if new_seats < seats_used.
+         - increment_seats_used(org_id) → TeamSubscription
+           Raises ValidationError("No seats available") if seats_used >= seats_purchased.
+         - decrement_seats_used(org_id) → TeamSubscription
+           Raises ValidationError if seats_used <= 0.
+
+      5. Routes: app/routes/team_subscriptions.py
+         - POST /subscriptions/team { org_id, plan_id, seats_purchased } → 201 TeamSubscriptionResponse (authenticated)
+         - GET /subscriptions/team/{org_id} → TeamSubscriptionResponse (authenticated)
+         - PATCH /subscriptions/team/{org_id}/seats { seats_purchased } → TeamSubscriptionResponse (authenticated)
+         Register router in main app.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_team_subscriptions.py:
+      1. test_create_team_subscription_success
+      2. test_create_team_subscription_duplicate_org → 409
+      3. test_get_team_subscription_success
+      4. test_get_team_subscription_not_found → 404
+      5. test_adjust_seats_increase — success
+      6. test_adjust_seats_decrease — success when seats_used allows
+      7. test_adjust_seats_below_used → 400
+      8. test_increment_seats_used_success
+      9. test_increment_seats_used_no_available → 400
+      10. test_decrement_seats_used_success
+
+      Then implement. Then refactor.
+
+      RULES:
+      - org_id is stored but NOT validated against identity service (cross-service validation is caller's responsibility)
+      - seats_purchased must always be >= seats_used
+      - Mock billing: no actual Stripe calls, just track seats and period
+      - asyncpg.UniqueViolationError → ConflictError
+      - Parameterized SQL ($1, $2, ...)
+      - Async I/O, type hints
+      - Independent tests
+
+      COMMIT:
+      feat(payment): add team subscription with seat management
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/payment && uv run --package payment pytest tests/ -v"
+    depends_on: []
+
+  # ─── BACKEND: Learning — Team Analytics ────────────────────────────────────────
+
+  - id: team-analytics-backend
+    title: "Team learning analytics endpoints"
+    scope: backend:learning
+    prompt: |
+      Task: Add team/organization learning analytics to the Learning service.
+
+      CONTEXT:
+      - Learning service: services/py/learning/ (FastAPI, asyncpg, Clean Architecture)
+      - learning-db on port 5438
+      - Existing tables: quizzes, quiz_submissions, flashcards, flashcard_reviews, concepts, concept_mastery,
+        streaks, leaderboard, discussions, xp_events, badges
+      - XP events track: lesson_complete(10xp), quiz_submit(20xp), flashcard_review(5xp)
+      - Streaks track daily activity
+      - Quiz submissions have score field
+      - Clean Architecture: routes → services → domain ← repositories
+      - JWT auth with user_id, role
+      - Tests: AsyncMock(spec=Repository), pytest-asyncio, asyncio_mode = "auto"
+      - The learning service does NOT have access to organization/membership data.
+        Team analytics endpoints receive a list of user_ids as query parameter
+        (the caller resolves org members from identity service).
+
+      WHAT TO BUILD:
+
+      1. Domain: app/domain/team_analytics.py
+         - TeamOverview(BaseModel): total_members (int), active_this_week (int),
+           avg_quiz_score (float), total_xp (int), quizzes_completed (int),
+           flashcards_reviewed (int), top_learners (list[TopLearner])
+         - TopLearner(BaseModel): user_id (UUID), total_xp (int), quizzes_completed (int),
+           current_streak (int)
+         - MemberStats(BaseModel): user_id (UUID), total_xp (int), quizzes_completed (int),
+           avg_quiz_score (float | None), flashcards_reviewed (int), current_streak (int),
+           last_active (datetime | None)
+         - TeamMemberStatsResponse(BaseModel): items (list[MemberStats]), total (int)
+
+      2. Repository: app/repositories/team_analytics_repository.py (ABC + SQL):
+         - get_team_overview(user_ids: list[UUID]) → dict
+           Aggregates across user_ids:
+           - active_this_week: COUNT DISTINCT user_id from xp_events WHERE created_at > now() - 7 days
+           - avg_quiz_score: AVG(score) from quiz_submissions WHERE user_id IN (...)
+           - total_xp: SUM from xp_events
+           - quizzes_completed: COUNT from quiz_submissions
+           - flashcards_reviewed: COUNT from flashcard_reviews
+         - get_top_learners(user_ids: list[UUID], limit=10) → list[dict]
+           Top users by total XP, include quizzes_completed and current streak
+         - get_member_stats(user_ids: list[UUID], limit=20, offset=0) → list[dict]
+           Per-member breakdown: total_xp, quizzes_completed, avg_quiz_score,
+           flashcards_reviewed, current_streak, last_active (max created_at from xp_events)
+         - count_members_with_activity(user_ids: list[UUID]) → int
+         Use ANY($1::uuid[]) for filtering by user_ids array in SQL.
+
+      3. Service: app/services/team_analytics_service.py
+         - get_team_overview(user_ids: list[UUID]) → TeamOverview
+           Validates user_ids not empty, max 1000.
+           Calls repository, assembles TeamOverview with top_learners.
+         - get_member_stats(user_ids: list[UUID], limit=20, offset=0) → TeamMemberStatsResponse
+           Validates user_ids. Returns paginated per-member stats.
+
+      4. Routes: app/routes/team_analytics.py
+         - GET /analytics/team?user_ids=uuid1,uuid2,... → TeamOverview
+           Query param user_ids is comma-separated UUIDs. Authenticated.
+         - GET /analytics/team/members?user_ids=uuid1,uuid2,...&limit=20&offset=0 → TeamMemberStatsResponse
+           Authenticated.
+         Register router in main app.
+
+      IMPLEMENTATION APPROACH:
+      TDD — write failing tests FIRST in tests/test_team_analytics.py:
+      1. test_get_team_overview_success — mock returns aggregated data
+      2. test_get_team_overview_empty_user_ids → 400
+      3. test_get_team_overview_too_many_users → 400 (>1000)
+      4. test_get_member_stats_success — returns per-member data
+      5. test_get_member_stats_pagination — limit/offset work
+      6. test_get_top_learners_in_overview — top learners included
+      7. test_team_analytics_unauthenticated → 401
+
+      Then implement. Then refactor.
+
+      RULES:
+      - user_ids passed as query parameter, NOT looked up from org membership (service boundary)
+      - SQL uses ANY($1::uuid[]) for array filtering, parameterized
+      - Max 1000 user_ids per request
+      - Async I/O, type hints
+      - Independent tests
+      - No new tables — read-only aggregation of existing data
+
+      COMMIT:
+      feat(learning): add team learning analytics endpoints
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
+    depends_on: []
+
+  # ─── FRONTEND: Buyer — Organization Dashboard ─────────────────────────────────
+
+  - id: org-dashboard-frontend
+    title: "Organization dashboard page with info, members, and stats"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build the organization dashboard page at /org/[slug] in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - API client in apps/buyer/lib/api.ts — typed namespace objects with fetch calls
+      - TanStack Query hooks in apps/buyer/hooks/ for server state
+      - Radix UI for headless accessible primitives
+      - Server Components by default, "use client" only when hooks/events needed
+      - Only named exports, no default exports, no index.tsx barrels
+      - Existing patterns: apps/buyer/app/(main)/courses/, apps/buyer/app/(main)/dashboard/
+
+      WHAT TO BUILD:
+
+      1. API client: apps/buyer/lib/api.ts — add organizations namespace:
+         - organizations.getBySlug(slug: string) → OrganizationResponse
+         - organizations.getMembers(orgId: string, limit?, offset?) → PaginatedResponse<OrgMemberResponse>
+         - organizations.getMyOrgs() → PaginatedResponse<OrganizationResponse>
+         Types: OrganizationResponse { id, name, slug, logo_url, is_active, created_at },
+         OrgMemberResponse { id, org_id, user_id, role, joined_at }
+
+      2. TanStack Query hook: apps/buyer/hooks/use-organizations.ts
+         - useOrganization(slug: string) — query for org by slug
+         - useOrgMembers(orgId: string, limit?, offset?) — query for member list
+         - useMyOrganizations() — query for current user's orgs
+
+      3. Page: apps/buyer/app/(main)/org/[slug]/page.tsx (Server Component wrapper)
+         - Fetch org data by slug via server-side fetch
+         - Pass to client OrgDashboard component
+
+      4. Component: apps/buyer/app/(main)/org/[slug]/org-dashboard.tsx ("use client")
+         - Header: org name, logo (next/image or placeholder), slug, created date
+         - Stats row: total members, active this week (placeholder until analytics connected)
+         - Member list: table with name placeholder (user_id), role badge, joined date
+         - Pagination for members (20 per page)
+         - "Manage Members" button visible only for owner/admin role (determine from member list)
+         - Sidebar navigation: Overview, Members, Analytics, Billing (links to sub-pages)
+
+      5. Layout: apps/buyer/app/(main)/org/[slug]/layout.tsx
+         - Sidebar with org navigation links
+         - Main content area
+
+      6. Loading: apps/buyer/app/(main)/org/[slug]/loading.tsx — skeleton UI
+
+      IMPLEMENTATION APPROACH:
+      - Create route group and pages
+      - Add API client methods
+      - Create TanStack Query hooks
+      - Build dashboard component with Tailwind styling
+      - Add loading skeleton
+      - Verify with pnpm build
+
+      RULES:
+      - Server Components by default, "use client" only for interactive parts
+      - next/image for logo, next/link for navigation
+      - Only named exports
+      - Tailwind CSS only, no CSS modules
+      - Loading skeleton at route level
+      - No fetch in client components — use TanStack Query hooks
+
+      COMMIT:
+      feat(buyer): add organization dashboard page
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [organization-model, team-analytics-backend]
+
+  # ─── FRONTEND: Buyer — Member Invite UI ────────────────────────────────────────
+
+  - id: org-member-invite-ui
+    title: "Member invitation flow: invite form, pending list, accept page"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build the member invitation UI for organizations in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - Organization dashboard already exists at apps/buyer/app/(main)/org/[slug]/
+      - API client in apps/buyer/lib/api.ts with organizations namespace
+      - TanStack Query hooks in apps/buyer/hooks/use-organizations.ts
+      - Radix UI for headless accessible primitives
+      - Backend endpoints (from org-member-management):
+        POST /organizations/{org_id}/members/invite { email, role }
+        POST /organizations/invitations/accept { token }
+        GET /organizations/{org_id}/invitations?limit&offset
+        GET /organizations/{org_id}/members?limit&offset
+        PATCH /organizations/{org_id}/members/{user_id} { role }
+        DELETE /organizations/{org_id}/members/{user_id}
+
+      WHAT TO BUILD:
+
+      1. API client: apps/buyer/lib/api.ts — add to organizations namespace:
+         - organizations.inviteMember(orgId, email, role) → OrgInvitationResponse
+         - organizations.acceptInvitation(token) → OrgMemberResponse
+         - organizations.getInvitations(orgId, limit?, offset?) → PaginatedResponse<OrgInvitationResponse>
+         - organizations.updateMemberRole(orgId, userId, role) → OrgMemberResponse
+         - organizations.removeMember(orgId, userId) → void
+         Types: OrgInvitationResponse { id, org_id, email, role, expires_at, accepted_at, created_at }
+
+      2. TanStack Query hooks: apps/buyer/hooks/use-organizations.ts — add:
+         - useInviteMember() — mutation
+         - useAcceptInvitation() — mutation
+         - useOrgInvitations(orgId) — query
+         - useUpdateMemberRole() — mutation
+         - useRemoveMember() — mutation
+
+      3. Members page: apps/buyer/app/(main)/org/[slug]/members/page.tsx
+         - Tab layout: "Members" | "Pending Invitations"
+         - Members tab: table (user_id, role, joined_at), role dropdown for owner to change roles,
+           remove button with confirmation dialog
+         - Invitations tab: table (email, role, expires_at, status), visible for owner/admin
+         - Invite form at top: email input + role select (member/admin) + "Send Invite" button
+         - Success/error toast notifications
+         - Pagination for both tabs
+
+      4. Accept invitation page: apps/buyer/app/(main)/org/invite/[token]/page.tsx
+         - Reads token from URL params
+         - Shows org name, invited role
+         - "Accept Invitation" button → calls acceptInvitation mutation
+         - On success: redirect to /org/[slug]
+         - On error: show "Invitation expired or invalid" message
+
+      5. Loading: apps/buyer/app/(main)/org/[slug]/members/loading.tsx — skeleton
+
+      IMPLEMENTATION APPROACH:
+      - Add API methods and types
+      - Create TanStack Query mutations and queries
+      - Build members management page with tabs
+      - Build invitation acceptance page
+      - Add toast notifications for actions
+      - Verify with pnpm build
+
+      RULES:
+      - "use client" for interactive components (forms, tabs, buttons)
+      - Optimistic updates for role changes and removals
+      - Confirmation dialog before removing member (Radix AlertDialog)
+      - Only named exports
+      - Tailwind CSS only
+      - next/link for navigation
+
+      COMMIT:
+      feat(buyer): add organization member invite and management UI
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [org-member-management, org-dashboard-frontend]
+
+  # ─── FRONTEND: Buyer — Bulk Enrollment UI ──────────────────────────────────────
+
+  - id: bulk-enrollment-ui
+    title: "Bulk enrollment page for org admins"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build the bulk enrollment page for organization admins in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - Organization dashboard at apps/buyer/app/(main)/org/[slug]/
+      - API client in apps/buyer/lib/api.ts
+      - Existing hooks: use-courses.ts (useCourseCatalog), use-organizations.ts (useOrgMembers)
+      - Backend: POST /enrollments/bulk { course_id, user_ids } → BulkEnrollmentResponse
+      - BulkEnrollmentResponse: { course_id, total, succeeded, failed, results: [{ user_id, success, error }] }
+      - Radix UI for headless primitives
+
+      WHAT TO BUILD:
+
+      1. API client: apps/buyer/lib/api.ts — add to enrollments namespace:
+         - enrollments.bulkEnroll(courseId, userIds) → BulkEnrollmentResponse
+         Types: BulkEnrollmentResult { user_id, success, error }, BulkEnrollmentResponse { course_id, total, succeeded, failed, results }
+
+      2. TanStack Query hook: apps/buyer/hooks/use-enrollments.ts — add:
+         - useBulkEnroll() — mutation, invalidates enrollment queries on success
+
+      3. Page: apps/buyer/app/(main)/org/[slug]/enroll/page.tsx ("use client")
+         - Step 1: Course selection
+           Search input that filters courses (use existing useCourseCatalog hook).
+           Display course cards in a grid. Click to select one. Show selected course highlighted.
+         - Step 2: Member selection
+           Load org members via useOrgMembers. Display as checkbox list.
+           "Select All" / "Deselect All" buttons. Show count of selected.
+         - Step 3: Confirmation & Submit
+           Summary: course name, number of members selected.
+           "Enroll All" button with confirmation dialog.
+           While loading: progress spinner with "Enrolling members..." text.
+         - Step 4: Results
+           Success/failure summary: green count for succeeded, red for failed.
+           Expandable list of per-member results.
+           Failures show error reason.
+           "Done" button → navigate back to org dashboard.
+
+      4. Loading: apps/buyer/app/(main)/org/[slug]/enroll/loading.tsx — skeleton
+
+      IMPLEMENTATION APPROACH:
+      - Add API method and type
+      - Add mutation hook
+      - Build multi-step enrollment page
+      - Add confirmation dialog before submission
+      - Show results with success/failure breakdown
+      - Verify with pnpm build
+
+      RULES:
+      - "use client" for the page (multi-step form with state)
+      - Max 500 members selectable (match backend limit)
+      - Confirmation dialog required before bulk action (Radix AlertDialog)
+      - Show individual results — don't hide failures
+      - Only named exports
+      - Tailwind CSS only
+      - next/link for navigation, next/image for course thumbnails
+
+      COMMIT:
+      feat(buyer): add bulk enrollment page for organizations
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [bulk-enrollment, org-dashboard-frontend]
+
+  # ─── FRONTEND: Buyer — Team Analytics Dashboard ────────────────────────────────
+
+  - id: team-analytics-dashboard
+    title: "Team analytics page with charts and stats"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build the team analytics dashboard at /org/[slug]/analytics in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - Organization dashboard at apps/buyer/app/(main)/org/[slug]/
+      - API client in apps/buyer/lib/api.ts
+      - Backend endpoints (from team-analytics-backend):
+        GET /analytics/team?user_ids=uuid1,uuid2,... → TeamOverview
+        GET /analytics/team/members?user_ids=uuid1,uuid2,...&limit&offset → TeamMemberStatsResponse
+      - TeamOverview: { total_members, active_this_week, avg_quiz_score, total_xp, quizzes_completed, flashcards_reviewed, top_learners }
+      - TopLearner: { user_id, total_xp, quizzes_completed, current_streak }
+      - MemberStats: { user_id, total_xp, quizzes_completed, avg_quiz_score, flashcards_reviewed, current_streak, last_active }
+      - Radix UI, dynamic imports for heavy components
+
+      WHAT TO BUILD:
+
+      1. API client: apps/buyer/lib/api.ts — add analytics namespace:
+         - analytics.getTeamOverview(userIds: string[]) → TeamOverview
+         - analytics.getTeamMemberStats(userIds: string[], limit?, offset?) → TeamMemberStatsResponse
+         Types matching backend responses.
+
+      2. TanStack Query hook: apps/buyer/hooks/use-team-analytics.ts
+         - useTeamOverview(userIds: string[]) — query, staleTime 5 min
+         - useTeamMemberStats(userIds: string[], limit?, offset?) — query
+
+      3. Page: apps/buyer/app/(main)/org/[slug]/analytics/page.tsx ("use client")
+         - First fetches org members to get user_ids, then passes to analytics queries
+         - Stats cards row: total members, active this week, avg quiz score, total XP
+         - Charts section (use dynamic import for chart library — recharts):
+           a. Bar chart: "Activity This Week" — quizzes completed, flashcards reviewed
+           b. Top performers table: top 10 learners by XP, columns: rank, user_id, total_xp, quizzes, streak
+         - Member stats table: paginated, sortable columns (xp, quiz score, streak, last active)
+         - Date range is informational only (analytics shows all-time for now)
+
+      4. Loading: apps/buyer/app/(main)/org/[slug]/analytics/loading.tsx — skeleton with chart placeholders
+
+      IMPLEMENTATION APPROACH:
+      - Add API methods and types
+      - Create TanStack Query hooks
+      - Build analytics page with stats cards
+      - Add recharts bar chart via dynamic import (next/dynamic)
+      - Build top performers and member stats tables
+      - Add loading skeleton
+      - Verify with pnpm build
+
+      RULES:
+      - Dynamic import for recharts (import("recharts")) to keep bundle size small
+      - "use client" for the analytics page (interactive charts)
+      - Only named exports
+      - Tailwind CSS only
+      - Responsive: cards stack on mobile, side-by-side on desktop
+      - Tables use Tailwind for styling, not a table library
+      - If recharts is not installed, add it: cd apps/buyer && pnpm add recharts
+
+      COMMIT:
+      feat(buyer): add team analytics dashboard with charts
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [team-analytics-backend, org-dashboard-frontend]
+
+  # ─── FRONTEND: Buyer — Organization Billing ────────────────────────────────────
+
+  - id: org-billing-ui
+    title: "Organization billing page: plan, seats, invoices"
+    scope: frontend:buyer
+    prompt: |
+      Task: Build the organization billing page at /org/[slug]/billing in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, TypeScript, Tailwind CSS)
+      - Organization dashboard at apps/buyer/app/(main)/org/[slug]/
+      - API client in apps/buyer/lib/api.ts
+      - Backend endpoints (from team-subscription):
+        POST /subscriptions/team { org_id, plan_id, seats_purchased }
+        GET /subscriptions/team/{org_id} → TeamSubscriptionResponse
+        PATCH /subscriptions/team/{org_id}/seats { seats_purchased }
+      - TeamSubscriptionResponse: { id, org_id, plan_id, seats_purchased, seats_used, status, current_period_start, current_period_end, created_at }
+      - Existing: subscription plan listing from payment service
+      - Radix UI for headless primitives
+
+      WHAT TO BUILD:
+
+      1. API client: apps/buyer/lib/api.ts — add to subscriptions namespace (or create):
+         - subscriptions.getTeamSubscription(orgId) → TeamSubscriptionResponse | null
+         - subscriptions.createTeamSubscription(orgId, planId, seats) → TeamSubscriptionResponse
+         - subscriptions.adjustSeats(orgId, seats) → TeamSubscriptionResponse
+         - subscriptions.getPlans() → SubscriptionPlan[] (if not already exists)
+         Types: TeamSubscriptionResponse matching backend.
+
+      2. TanStack Query hooks: apps/buyer/hooks/use-team-billing.ts
+         - useTeamSubscription(orgId) — query
+         - useCreateTeamSubscription() — mutation
+         - useAdjustSeats() — mutation, invalidates team subscription query
+
+      3. Page: apps/buyer/app/(main)/org/[slug]/billing/page.tsx ("use client")
+         - If no subscription: "Choose a Plan" section
+           Display available plans as cards. Select plan → choose initial seats → create subscription.
+         - If has subscription:
+           a. Current plan card: plan name, status badge (active/canceled/past_due), period dates
+           b. Seats usage: progress bar showing seats_used / seats_purchased
+              "Adjust Seats" button → opens slider/input to change seat count
+              Cannot reduce below seats_used (show validation message)
+           c. Cost summary: price per seat × seats = monthly total (calculated client-side from plan price)
+           d. Next billing date: current_period_end formatted
+           e. Billing history: placeholder section "Coming soon" (no backend endpoint yet)
+
+      4. Loading: apps/buyer/app/(main)/org/[slug]/billing/loading.tsx — skeleton
+
+      IMPLEMENTATION APPROACH:
+      - Add API methods and types
+      - Create TanStack Query hooks
+      - Build billing page with conditional rendering (no sub vs active sub)
+      - Add seat adjustment with slider (Radix Slider) and validation
+      - Show cost calculation
+      - Verify with pnpm build
+
+      RULES:
+      - "use client" for the billing page (interactive forms)
+      - Seat adjustment: validate new_seats >= seats_used before API call
+      - Optimistic update for seat adjustment
+      - Only named exports
+      - Tailwind CSS only
+      - Progress bar for seat usage (green < 80%, yellow 80-95%, red > 95%)
+      - next/link for navigation
+      - Do NOT implement actual Stripe checkout — mock only
+
+      COMMIT:
+      feat(buyer): add organization billing and seat management page
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [team-subscription, org-dashboard-frontend]

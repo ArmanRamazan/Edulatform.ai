@@ -1,0 +1,734 @@
+phase: "sprint-8"
+description: "DevOps & Reliability — CI/CD, staging, logging, backups, email delivery"
+
+tasks:
+  # ──────────────────────────────────────────────
+  # INFRA: GITHUB ACTIONS CI
+  # ──────────────────────────────────────────────
+
+  - id: github-ci
+    title: "GitHub Actions CI: lint, test, build for all services"
+    scope: infra
+    prompt: |
+      Task: Create a GitHub Actions CI workflow that lints, tests, and builds all services on every push and PR.
+
+      CONTEXT:
+      - Monorepo at root with: services/py/ (7 Python services), apps/ (2 Next.js apps)
+      - Python: uv package manager, ruff for linting/formatting, pytest for tests
+      - Frontend: pnpm package manager, Next.js build
+      - Python services: identity, course, enrollment, payment, notification, ai, learning
+      - Frontend apps: buyer, seller
+      - uv workspace defined in root pyproject.toml
+      - pnpm workspace defined in root pnpm-workspace.yaml
+      - Each Python service runs tests with: cd services/py/<name> && uv run --package <name> pytest tests/ -v
+      - Each frontend app builds with: cd apps/<name> && pnpm build
+      - No CI exists yet
+
+      WHAT TO BUILD:
+      1. Create .github/workflows/ci.yml:
+
+         Triggers: push to main, pull_request to main
+
+         Job 1 — python-lint:
+         - runs-on: ubuntu-latest
+         - Steps: checkout, install uv, uv sync --all-packages, ruff check ., ruff format --check .
+         - Working directory: root
+
+         Job 2 — python-test:
+         - runs-on: ubuntu-latest
+         - Strategy matrix: service [identity, course, enrollment, payment, notification, ai, learning]
+         - Steps:
+           a) Checkout
+           b) Set up Python 3.12 (actions/setup-python@v5)
+           c) Install uv (astral-sh/setup-uv@v4)
+           d) Install dependencies: uv sync --all-packages
+           e) Run tests: cd services/py/${{ matrix.service }} && uv run --package ${{ matrix.service }} pytest tests/ -v
+         - Each service runs in parallel via matrix
+
+         Job 3 — frontend-build:
+         - runs-on: ubuntu-latest
+         - Strategy matrix: app [buyer, seller]
+         - Steps:
+           a) Checkout
+           b) Set up Node.js 20 (actions/setup-node@v4)
+           c) Install pnpm (pnpm/action-setup@v4, version 9)
+           d) Install dependencies: pnpm install --frozen-lockfile
+           e) Build: cd apps/${{ matrix.app }} && pnpm build
+
+         Caching:
+         - Cache uv: ~/.cache/uv (key: uv-${{ hashFiles('uv.lock') }})
+         - Cache pnpm: use pnpm/action-setup built-in caching or actions/cache
+
+      IMPLEMENTATION APPROACH:
+      1. Create .github/workflows/ directory
+      2. Write ci.yml with all three jobs
+      3. Use proper action versions (latest stable)
+      4. Ensure matrix strategy runs services in parallel
+
+      RULES:
+      - Use official actions: actions/checkout@v4, actions/setup-python@v5, actions/setup-node@v4
+      - Use astral-sh/setup-uv@v4 for uv installation
+      - Use pnpm/action-setup@v4 for pnpm
+      - Cache dependencies to speed up runs
+      - Each job is independent (lint, test, build run in parallel)
+      - Matrix strategy for per-service/per-app parallelism
+      - Fail fast: if one matrix entry fails, cancel others (default behavior)
+      - No secrets needed for CI (tests use mocks, not real DBs)
+
+      COMMIT: chore(infra): add GitHub Actions CI for lint, test, and build
+    test: "cat /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/.github/workflows/ci.yml && echo 'CI file created'"
+
+  # ──────────────────────────────────────────────
+  # INFRA: GITHUB ACTIONS CD
+  # ──────────────────────────────────────────────
+
+  - id: github-cd
+    title: "GitHub Actions CD: Docker build and push to registry"
+    scope: infra
+    depends_on:
+      - github-ci
+    prompt: |
+      Task: Create a GitHub Actions CD workflow that builds and pushes Docker images on merge to main.
+
+      CONTEXT:
+      - Monorepo with Dockerfiles in deploy/docker/ for services
+      - Check deploy/docker/ for existing Dockerfile naming convention
+      - Services: identity, course, enrollment, payment, notification, ai, learning, buyer, seller
+      - GitHub Container Registry (ghcr.io) for image hosting
+      - CI workflow already exists (.github/workflows/ci.yml)
+
+      WHAT TO BUILD:
+      1. Create .github/workflows/cd.yml:
+
+         Triggers: push to main (only after CI completes — use workflow_run or needs)
+
+         Alternatively, simpler approach: trigger on push to main, but each build job needs CI.
+
+         Job: build-and-push
+         - runs-on: ubuntu-latest
+         - Strategy matrix with all services that have Dockerfiles
+         - Steps:
+           a) Checkout
+           b) Log in to GHCR: docker/login-action@v3 with github.token
+           c) Set up Docker Buildx: docker/setup-buildx-action@v3
+           d) Build and push: docker/build-push-action@v5
+              - context: . (root, since Dockerfiles may reference root files)
+              - file: deploy/docker/Dockerfile.${{ matrix.service }} (or however Dockerfiles are named)
+              - push: true
+              - tags: ghcr.io/${{ github.repository }}/${{ matrix.service }}:${{ github.sha }}, ghcr.io/${{ github.repository }}/${{ matrix.service }}:latest
+              - cache-from: type=gha
+              - cache-to: type=gha,mode=max
+
+         First, check deploy/docker/ to understand the Dockerfile naming convention and adjust accordingly.
+
+      IMPLEMENTATION APPROACH:
+      1. Check deploy/docker/ directory structure
+      2. Create .github/workflows/cd.yml
+      3. Use Docker layer caching via GitHub Actions cache
+      4. Tag images with both SHA and latest
+
+      RULES:
+      - Use official Docker actions: docker/login-action@v3, docker/setup-buildx-action@v3, docker/build-push-action@v5
+      - Use GITHUB_TOKEN for GHCR auth (no additional secrets needed)
+      - Tag with commit SHA for traceability and :latest for convenience
+      - Use GitHub Actions cache for Docker layers
+      - Only push on main branch (not on PRs)
+      - Matrix strategy for parallel builds
+
+      COMMIT: chore(infra): add GitHub Actions CD for Docker build and push
+    test: "cat /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/.github/workflows/cd.yml && echo 'CD file created'"
+
+  # ──────────────────────────────────────────────
+  # INFRA: STAGING ENVIRONMENT
+  # ──────────────────────────────────────────────
+
+  - id: staging-env
+    title: "Staging environment: Docker Compose staging configuration"
+    scope: infra
+    prompt: |
+      Task: Create a Docker Compose configuration for the staging environment.
+
+      CONTEXT:
+      - Production compose: docker-compose.prod.yml (exists at repo root)
+      - Dev compose: docker-compose.dev.yml (exists at repo root)
+      - Services: identity, course, enrollment, payment, notification, ai, learning, buyer, seller
+      - Each service has its own PostgreSQL database
+      - Redis for caching
+      - NATS for messaging (if configured)
+
+      WHAT TO BUILD:
+      1. Create docker-compose.staging.yml at repo root:
+         - Based on production compose but with staging-specific overrides:
+         - Single replica per service (no scaling)
+         - All services with healthcheck enabled
+         - Seed profile included (docker compose --profile seed up seed)
+         - No monitoring stack (no Prometheus, Grafana, Locust)
+         - Resource limits: lower than prod (256MB per service)
+         - env_file: deploy/env/staging.env
+
+      2. Create deploy/env/staging.env.template:
+         - All required environment variables with placeholder values:
+           JWT_SECRET=change-me-staging-secret
+           DATABASE_URL templates for each service
+           REDIS_URL=redis://redis:6379
+           RESEND_API_KEY= (empty, uses stub)
+           SENTRY_DSN= (empty, disabled)
+           STRIPE_SECRET_KEY= (empty, mock mode)
+           GEMINI_API_KEY= (empty)
+           NEXT_PUBLIC_BASE_URL=https://staging.eduplatform.ru
+         - Comments explaining each variable
+
+      IMPLEMENTATION APPROACH:
+      1. Read docker-compose.prod.yml to understand the current production setup
+      2. Create staging compose as a simplified version
+      3. Create env template with all required variables
+      4. Validate with docker compose config
+
+      RULES:
+      - staging.env.template, NOT staging.env (template has placeholder values, not real secrets)
+      - All services must have healthcheck
+      - No monitoring/observability stack (keep it lean)
+      - Use the same Docker images as prod (just different config)
+      - Include seed profile for test data
+      - File must pass: docker compose -f docker-compose.staging.yml config --quiet
+
+      COMMIT: chore(infra): add staging Docker Compose configuration
+    test: "docker compose -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/docker-compose.staging.yml config --quiet && echo 'Staging config valid'"
+
+  # ──────────────────────────────────────────────
+  # BACKEND: STRUCTURED LOGGING
+  # ──────────────────────────────────────────────
+
+  - id: structured-logging
+    title: "Structured JSON logging with structlog"
+    scope: backend:identity
+    prompt: |
+      Task: Add structured JSON logging using structlog to the common library and integrate into identity service.
+
+      CONTEXT:
+      - Common library: libs/py/common/ (shared across all 7 services)
+      - Common modules: common/config.py, common/errors.py, common/security.py, common/database.py, common/health.py
+      - Identity service: services/py/identity/ (FastAPI, Clean Architecture)
+      - Current logging: basic Python logging (print statements or logging.info)
+      - structlog outputs structured JSON logs ideal for production (ELK, CloudWatch, etc.)
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. Add structlog dependency to libs/py/common/pyproject.toml
+
+      2. Create libs/py/common/common/logging.py:
+         - setup_logging(service_name: str, log_level: str = "INFO") -> None
+           - Configures structlog with JSON renderer for production
+           - Adds processors: timestamp (ISO format), service name, log level, caller info
+           - In dev mode (LOG_FORMAT=console env var): use ConsoleRenderer for pretty output
+           - Configures standard logging to route through structlog
+         - get_logger(name: str | None = None) -> structlog.BoundLogger
+           - Returns a bound logger with optional name context
+
+      3. Create libs/py/common/common/middleware.py (or add to existing):
+         - LoggingMiddleware (Starlette middleware):
+           - On request: generate request_id (uuid4) if not in X-Request-ID header
+           - Bind request_id, method, path to structlog context
+           - On response: log request completed with status_code, duration_ms
+           - On exception: log error with traceback
+           - Add X-Request-ID to response headers
+
+      4. Integrate into identity service:
+         - In services/py/identity/app/main.py (or wherever FastAPI app is created):
+           - Call setup_logging("identity") in lifespan
+           - Add LoggingMiddleware to app
+         - Replace any print() or logging.info() calls with structlog logger
+
+      5. Tests in services/py/identity/tests/:
+         - test_logging.py:
+           - Test setup_logging configures structlog without error
+           - Test get_logger returns a bound logger
+           - Test LoggingMiddleware adds X-Request-ID header
+           - Test LoggingMiddleware logs request with duration
+           - Use caplog or StringIO capture to verify log output
+
+      IMPLEMENTATION APPROACH:
+      1. Write failing tests first (TDD Red)
+      2. Add structlog to common pyproject.toml
+      3. Implement logging.py in common
+      4. Implement LoggingMiddleware
+      5. Integrate into identity service
+      6. Run tests — all green (TDD Green)
+      7. Refactor if needed
+
+      RULES:
+      - TDD: tests first, implementation second
+      - structlog is the ONLY new dependency
+      - Keep existing log calls working (structlog wraps stdlib logging)
+      - JSON output in production, pretty console in development
+      - request_id must propagate through the entire request lifecycle
+      - Do NOT modify other services yet (only identity) — others will adopt later
+      - All tests must pass: cd services/py/identity && uv run --package identity pytest tests/ -v
+
+      COMMIT: feat(identity): add structured JSON logging with structlog
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+
+  # ──────────────────────────────────────────────
+  # INFRA: DATABASE BACKUP SCRIPTS
+  # ──────────────────────────────────────────────
+
+  - id: db-backup
+    title: "Database backup and restore scripts"
+    scope: infra
+    prompt: |
+      Task: Create database backup and restore shell scripts for all 6 PostgreSQL databases.
+
+      CONTEXT:
+      - 6 PostgreSQL databases: identity-db(:5433), course-db(:5434), enrollment-db(:5435),
+        payment-db(:5436), notification-db(:5437), learning-db(:5438)
+      - Docker Compose runs all databases as containers
+      - Each DB container name follows pattern: <name>-db (e.g., identity-db, course-db)
+      - pg_dump and pg_restore are available inside the PostgreSQL containers
+      - Default DB user: postgres, default DB name: <service>_db (e.g., identity_db)
+
+      WHAT TO BUILD:
+      1. Create tools/backup/backup.sh:
+         - Usage: ./backup.sh [--db <name>] [--all] [--output-dir <path>]
+         - --all (default): backup all 6 databases
+         - --db <name>: backup single database (identity, course, enrollment, payment, notification, learning)
+         - --output-dir: directory for backups (default: ./backups/$(date +%Y%m%d_%H%M%S))
+         - For each DB:
+           - Run pg_dump via docker exec: docker exec <name>-db pg_dump -U postgres -Fc <name>_db
+           - Output to: <output-dir>/<name>_db.dump.gz (pipe through gzip)
+         - Print summary: database name, file size, timestamp
+         - Exit 1 on any failure
+
+      2. Create tools/backup/restore.sh:
+         - Usage: ./restore.sh [--db <name>] [--all] [--input-dir <path>]
+         - --all (default): restore all 6 databases
+         - --db <name>: restore single database
+         - --input-dir: directory containing backup files (required)
+         - For each DB:
+           - Drop and recreate the database: docker exec <name>-db dropdb -U postgres --if-exists <name>_db && createdb
+           - Restore: gunzip and pipe to pg_restore via docker exec
+         - Confirmation prompt before restore (--yes flag to skip)
+         - Print summary
+
+      3. Make both scripts executable (chmod +x)
+
+      IMPLEMENTATION APPROACH:
+      1. Create tools/backup/ directory
+      2. Write backup.sh with argument parsing, loop over databases
+      3. Write restore.sh with argument parsing, confirmation, loop
+      4. Test syntax with bash -n
+
+      RULES:
+      - Bash scripts, POSIX-compatible where possible
+      - set -euo pipefail at the top
+      - Proper argument parsing with getopts or manual parsing
+      - Error handling: check if docker container is running before exec
+      - Gzip compression for all dumps
+      - Timestamp in default output directory name
+      - No hardcoded passwords (use PGPASSWORD env var or .pgpass)
+      - Scripts must be syntax-valid: bash -n <script>
+
+      COMMIT: chore(infra): add database backup and restore scripts
+    test: "bash -n /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/tools/backup/backup.sh && bash -n /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/tools/backup/restore.sh && echo 'Scripts valid'"
+
+  # ──────────────────────────────────────────────
+  # BACKEND: EMAIL DELIVERY
+  # ──────────────────────────────────────────────
+
+  - id: email-delivery
+    title: "Email delivery via Resend API"
+    scope: backend:notification
+    prompt: |
+      Task: Add real email delivery to the notification service using Resend API, with a stub fallback.
+
+      CONTEXT:
+      - Notification service: services/py/notification/ (FastAPI, Clean Architecture)
+      - Currently logs notification content to stdout (no real delivery)
+      - Resend API: POST https://api.resend.com/emails, Authorization: Bearer <key>
+        Body: { "from": "...", "to": ["..."], "subject": "...", "html": "..." }
+      - Service structure: app/routes/, app/services/, app/domain/, app/repositories/
+      - httpx is likely already a dependency (used in other services)
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. Create app/adapters/email.py:
+         - Abstract base: EmailClient (ABC)
+           - async def send(self, to: str, subject: str, html_body: str) -> bool
+         - StubEmailClient(EmailClient):
+           - Logs to stdout: "EMAIL STUB: to={to}, subject={subject}"
+           - Returns True always
+         - ResendEmailClient(EmailClient):
+           - __init__(self, api_key: str, from_address: str = "noreply@eduplatform.ru")
+           - Uses httpx.AsyncClient to POST to Resend API
+           - Returns True on 200, logs error and returns False on failure
+           - Handles network errors gracefully (try/except, log, return False)
+
+      2. Configuration:
+         - Add RESEND_API_KEY to service config (via pydantic BaseSettings)
+         - If RESEND_API_KEY is empty or not set → use StubEmailClient
+         - If RESEND_API_KEY is set → use ResendEmailClient
+
+      3. Integration into notification service:
+         - Wire EmailClient into the service layer via dependency injection
+         - When a notification is created with type that warrants email delivery
+           (e.g., enrollment_confirmation, review_received, payout_processed),
+           also send email via EmailClient
+         - Notification service.create_notification() should check notification type
+           and call email_client.send() for email-worthy types
+         - Email delivery is fire-and-forget (don't fail the notification creation if email fails)
+
+      4. Tests:
+         - test_email_adapter.py:
+           - Test StubEmailClient.send returns True and logs
+           - Test ResendEmailClient.send with mocked httpx (mock 200 response → True)
+           - Test ResendEmailClient.send with mocked httpx (mock 500 response → False)
+           - Test ResendEmailClient.send with network error → False
+         - test_notification_service_email.py:
+           - Test that creating an enrollment_confirmation notification triggers email send
+           - Test that email failure doesn't prevent notification creation
+           - Use AsyncMock(spec=EmailClient) for mocking
+
+      IMPLEMENTATION APPROACH:
+      1. Write failing tests (TDD Red)
+      2. Create email adapter with ABC + two implementations
+      3. Add config for RESEND_API_KEY
+      4. Wire into notification service
+      5. All tests green (TDD Green)
+      6. Refactor
+
+      RULES:
+      - TDD: tests first
+      - Clean Architecture: adapter is in app/adapters/, service uses abstract EmailClient
+      - httpx for HTTP calls (no requests library)
+      - Graceful failure: email errors are logged, never bubble up to API response
+      - No new dependencies beyond httpx (should already be available)
+      - StubEmailClient is the default (safe for development)
+      - All tests must pass: cd services/py/notification && uv run --package notification pytest tests/ -v
+
+      COMMIT: feat(notification): add email delivery via Resend API
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+
+  # ──────────────────────────────────────────────
+  # BACKEND: EMAIL TEMPLATES
+  # ──────────────────────────────────────────────
+
+  - id: email-templates
+    title: "HTML email templates for all notification types"
+    scope: backend:notification
+    depends_on:
+      - email-delivery
+    prompt: |
+      Task: Create HTML email templates for all notification types as Python string templates.
+
+      CONTEXT:
+      - Notification service: services/py/notification/ (FastAPI, Clean Architecture)
+      - Email delivery adapter already exists (app/adapters/email.py)
+      - No Jinja2 dependency — use Python str.format() or f-strings
+      - Notification types used in the system: welcome, email_verification, password_reset,
+        enrollment_confirmation, course_completion, review_received, payout_processed
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. Create app/templates/ directory with:
+         - base.py: base_template(content: str, unsubscribe_url: str = "#") -> str
+           - Returns full HTML email with:
+             - DOCTYPE html, UTF-8 charset
+             - Inline CSS (email clients don't support <style> well)
+             - Header: EduPlatform logo text (blue, centered)
+             - Content area: {content} placeholder
+             - Footer: "Вы получили это письмо, потому что зарегистрированы на EduPlatform"
+             - Unsubscribe link: "Отписаться от рассылки"
+           - Max width 600px, centered, white background, clean typography
+
+         - welcome.py: welcome_email(user_name: str) -> tuple[str, str]
+           Returns (subject, html_body)
+           Subject: "Добро пожаловать в EduPlatform!"
+           Body: greeting, 3 key features, CTA button "Начать обучение"
+
+         - email_verification.py: verification_email(user_name: str, verify_url: str) -> tuple[str, str]
+           Subject: "Подтвердите email"
+           Body: greeting, explanation, CTA button "Подтвердить email", link expiry note
+
+         - password_reset.py: password_reset_email(user_name: str, reset_url: str) -> tuple[str, str]
+           Subject: "Сброс пароля"
+           Body: greeting, explanation, CTA button "Сбросить пароль", "Не запрашивали?" note
+
+         - enrollment_confirmation.py: enrollment_email(user_name: str, course_title: str, course_url: str) -> tuple[str, str]
+           Subject: "Вы записаны на курс: {course_title}"
+           Body: greeting, course name, CTA button "Перейти к курсу"
+
+         - course_completion.py: completion_email(user_name: str, course_title: str) -> tuple[str, str]
+           Subject: "Поздравляем! Курс завершён"
+           Body: congratulations, course name, next steps suggestion
+
+         - review_received.py: review_email(teacher_name: str, course_title: str, rating: int, review_text: str) -> tuple[str, str]
+           Subject: "Новый отзыв на курс: {course_title}"
+           Body: greeting, rating stars, review text preview
+
+         - payout_processed.py: payout_email(teacher_name: str, amount: float, currency: str = "RUB") -> tuple[str, str]
+           Subject: "Выплата обработана"
+           Body: greeting, amount, expected delivery time
+
+      2. Create app/templates/__init__.py:
+         - Import all template functions for easy access
+         - get_email_template(notification_type: str, **kwargs) -> tuple[str, str] | None
+           - Maps notification type string to template function
+           - Returns None for unknown types
+
+      3. Integrate with notification service:
+         - When sending email, use get_email_template() to get subject and html_body
+         - Pass to email_client.send(to, subject, html_body)
+
+      4. Tests:
+         - test_email_templates.py:
+           - Test each template returns valid (subject, html_body) tuple
+           - Test html_body contains expected content (user_name, course_title, etc.)
+           - Test base template wraps content with header/footer
+           - Test get_email_template returns correct template for each type
+           - Test get_email_template returns None for unknown type
+
+      IMPLEMENTATION APPROACH:
+      1. Write tests first (TDD Red)
+      2. Create base template
+      3. Create individual templates
+      4. Create __init__.py with registry
+      5. Integrate with email sending
+      6. All tests green (TDD Green)
+
+      RULES:
+      - TDD: tests first
+      - NO Jinja2 — use Python str.format() for variable substitution
+      - Inline CSS only (email client compatibility)
+      - All text in Russian
+      - Templates return (subject, html_body) tuple
+      - HTML must be valid and render in email clients
+      - CTA buttons: inline-block, padding, background-color, border-radius, color white
+      - No images — text and CSS only
+      - All tests must pass: cd services/py/notification && uv run --package notification pytest tests/ -v
+
+      COMMIT: feat(notification): add HTML email templates for all notification types
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+
+  # ──────────────────────────────────────────────
+  # BACKEND: ERROR TRACKING (SENTRY)
+  # ──────────────────────────────────────────────
+
+  - id: error-tracking
+    title: "Error tracking with Sentry integration"
+    scope: backend:identity
+    depends_on:
+      - structured-logging
+    prompt: |
+      Task: Add optional Sentry error tracking integration to the common library and identity service.
+
+      CONTEXT:
+      - Common library: libs/py/common/ (shared across all services)
+      - Identity service: services/py/identity/ (FastAPI)
+      - Sentry SDK: sentry-sdk[fastapi] — integrates with FastAPI automatically
+      - Should be optional: disabled when SENTRY_DSN env var is empty
+      - structlog already integrated (previous task)
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. Add sentry-sdk[fastapi] to libs/py/common/pyproject.toml as optional dependency
+
+      2. Create libs/py/common/common/sentry.py:
+         - setup_sentry(dsn: str | None, service_name: str, environment: str = "production") -> None
+           - If dsn is None or empty: log "Sentry disabled" and return (no-op)
+           - If dsn is set: call sentry_sdk.init(
+               dsn=dsn,
+               environment=environment,
+               traces_sample_rate=0.1,  # 10% of transactions
+               profiles_sample_rate=0.1,
+               send_default_pii=False,  # NEVER send PII
+               server_name=service_name,
+               integrations=[FastApiIntegration()],
+               before_send=_before_send,  # custom filter
+             )
+         - _before_send(event, hint) -> event | None:
+           - Strip sensitive headers (Authorization, Cookie) from request data
+           - Strip email, phone from user context if present
+           - Return filtered event
+
+      3. Create middleware or hook for user context:
+         - After JWT is validated in a request, call sentry_sdk.set_user({"id": user_id, "role": role})
+         - Do NOT set email or other PII
+         - Clear user context after request
+
+      4. Integrate into identity service:
+         - In lifespan: setup_sentry(dsn=settings.SENTRY_DSN, service_name="identity", environment=settings.ENVIRONMENT)
+         - Add SENTRY_DSN and ENVIRONMENT to service config (BaseSettings)
+         - Default: SENTRY_DSN="" (disabled)
+
+      5. Tests in services/py/identity/tests/:
+         - test_sentry.py:
+           - Test setup_sentry with empty DSN does nothing (no error)
+           - Test setup_sentry with DSN calls sentry_sdk.init (mock sentry_sdk)
+           - Test _before_send strips Authorization header
+           - Test _before_send strips email from user context
+           - Test that with SENTRY_DSN="" the app starts without sentry
+
+      IMPLEMENTATION APPROACH:
+      1. Write failing tests (TDD Red)
+      2. Add sentry-sdk to common dependencies
+      3. Implement sentry.py in common
+      4. Integrate into identity service config and lifespan
+      5. All tests green (TDD Green)
+
+      RULES:
+      - TDD: tests first
+      - sentry-sdk[fastapi] is the ONLY new dependency
+      - NEVER send PII to Sentry (send_default_pii=False, strip in before_send)
+      - Optional: empty SENTRY_DSN = Sentry completely disabled
+      - Low sampling rates (0.1) to avoid performance impact
+      - Mock sentry_sdk in tests — do NOT make real Sentry calls
+      - All tests must pass: cd services/py/identity && uv run --package identity pytest tests/ -v
+
+      COMMIT: feat(identity): add optional Sentry error tracking integration
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"
+
+  # ──────────────────────────────────────────────
+  # FRONTEND: HEALTH DASHBOARD
+  # ──────────────────────────────────────────────
+
+  - id: health-dashboard
+    title: "Service health dashboard page"
+    scope: frontend:buyer
+    prompt: |
+      Task: Create a public status page that shows health status of all backend services.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15 App Router, Tailwind CSS, TanStack Query)
+      - All 7 services expose /health/live and /health/ready endpoints
+      - Services: identity(:8001), course(:8002), enrollment(:8003), payment(:8004),
+        notification(:8005), ai(:8006), learning(:8007)
+      - API client proxies requests through Next.js API routes or direct calls
+      - This page should be public (no auth required)
+
+      WHAT TO BUILD:
+      1. Create apps/buyer/app/status/page.tsx ("use client"):
+         - Display a table/grid of all 7 services with their health status
+         - Columns: Service Name, Status (green/red badge), Response Time (ms), Last Checked
+         - Auto-refresh every 10 seconds using setInterval + refetch
+
+      2. Create apps/buyer/hooks/use-health.ts:
+         - useServiceHealth() hook using TanStack Query
+         - Fetches health from all 7 services in parallel
+         - For each service: GET /api/<service>/health/live (through API proxy)
+           or direct: fetch(`http://localhost:<port>/health/live`)
+         - Measures response time (performance.now() before/after)
+         - Returns: { services: ServiceHealth[], isLoading, refetch }
+         - ServiceHealth: { name, url, status: 'healthy' | 'unhealthy' | 'unknown', responseTimeMs, lastChecked }
+         - refetchInterval: 10000 (10 seconds)
+
+      3. Page layout:
+         - Title: "Статус системы"
+         - Overall status banner: "Все системы работают" (green) or "Есть проблемы" (yellow/red)
+         - Service grid: 7 cards or table rows
+         - Each service: name, status badge (green dot = healthy, red dot = unhealthy, gray = checking)
+         - Response time in ms
+         - Last checked: "только что", "10 сек назад", etc.
+         - Footer: "Автообновление каждые 10 секунд"
+
+      4. Add metadata (via layout.tsx in status/ directory since page is "use client"):
+         - title: "Статус системы"
+
+      IMPLEMENTATION APPROACH:
+      1. Create the health hook with TanStack Query
+      2. Create the status page with auto-refresh
+      3. Style with Tailwind CSS
+      4. Handle errors gracefully (service down = red badge, not crash)
+      5. Build and verify
+
+      RULES:
+      - "use client" (uses hooks, setInterval, performance.now)
+      - TanStack Query for data fetching
+      - Handle all error states (service down, network error, timeout)
+      - Set fetch timeout to 5 seconds per service
+      - No auth required for this page
+      - Named exports for hook, default export for page
+      - Tailwind CSS only
+      - No new dependencies
+
+      COMMIT: feat(buyer): add service health dashboard page
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+
+  # ──────────────────────────────────────────────
+  # BACKEND: RATE LIMIT IMPROVEMENTS
+  # ──────────────────────────────────────────────
+
+  - id: rate-limit-improvements
+    title: "Rate limiting improvements: per-endpoint and per-user"
+    scope: backend:identity
+    prompt: |
+      Task: Enhance the rate limiter in the common library to support per-user and per-endpoint limits.
+
+      CONTEXT:
+      - Common library: libs/py/common/common/rate_limit.py (existing rate limiter)
+      - Current: per-IP global rate limiting (e.g., 100 requests/minute)
+      - Identity service already has specific limits for login (10/min) and register (5/min)
+      - AI service needs per-user limits based on subscription tier:
+        free=10/min, student=100/min, pro=unlimited
+      - Redis is used for rate limit state storage
+      - JWT contains: user_id, role, extra_claims (which may include tier/plan info)
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. Enhance libs/py/common/common/rate_limit.py:
+         - RateLimitConfig dataclass:
+           - key_type: "ip" | "user" | "ip_and_user"
+           - max_requests: int
+           - window_seconds: int
+           - exclude_roles: list[str] (e.g., ["admin"] to bypass limits)
+
+         - RateLimiter class enhancements:
+           - Support key_type="user": use user_id from JWT as rate limit key
+           - Support key_type="ip_and_user": combine IP and user_id
+           - Support dynamic limits: accept a callable that returns max_requests based on request context
+             e.g., def get_ai_limit(user_claims: dict) -> int: return 10 if tier=="free" else 100
+           - Support exclude_roles: skip rate limiting for certain roles
+
+         - rate_limit() dependency (FastAPI Depends):
+           - Accept RateLimitConfig or use defaults
+           - Extract user_id from JWT if key_type involves user
+           - Support per-route configuration via decorator or Depends parameter
+
+      2. Example usage patterns (document in code):
+         - Global: Depends(rate_limit(RateLimitConfig(key_type="ip", max_requests=100, window_seconds=60)))
+         - Per-user AI: Depends(rate_limit(RateLimitConfig(key_type="user", max_requests=10, window_seconds=60)))
+         - Dynamic: Depends(rate_limit(RateLimitConfig(key_type="user", dynamic_limit=get_ai_limit)))
+
+      3. Tests in services/py/identity/tests/:
+         - test_rate_limit.py:
+           - Test IP-based rate limiting (existing behavior preserved)
+           - Test user-based rate limiting (user_id as key)
+           - Test dynamic limit based on user claims
+           - Test admin bypass (exclude_roles=["admin"])
+           - Test rate limit exceeded returns 429
+           - Test window reset after expiry
+           - Use AsyncMock for Redis
+
+      IMPLEMENTATION APPROACH:
+      1. Write failing tests (TDD Red)
+      2. Refactor RateLimiter to accept RateLimitConfig
+      3. Add user-based key extraction
+      4. Add dynamic limit support
+      5. Add role exclusion
+      6. Ensure backward compatibility (existing usage still works)
+      7. All tests green (TDD Green)
+
+      RULES:
+      - TDD: tests first
+      - BACKWARD COMPATIBLE: existing rate_limit() usage must continue to work
+      - Redis for state storage (mock in tests)
+      - RateLimitConfig is a dataclass(frozen=True) or pydantic model
+      - 429 Too Many Requests with Retry-After header
+      - Do NOT import from service layers — rate limiter is in common lib
+      - All tests must pass: cd services/py/identity && uv run --package identity pytest tests/ -v
+
+      COMMIT: feat(identity): enhance rate limiter with per-user and per-endpoint support
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/identity && uv run --package identity pytest tests/ -v"

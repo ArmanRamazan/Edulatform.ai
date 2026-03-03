@@ -1,0 +1,836 @@
+phase: "sprint-6"
+description: "Supply Side — complete seller dashboard, teacher analytics, earnings UI"
+
+tasks:
+  - id: seller-layout
+    title: "Seller app layout: sidebar navigation, auth guard"
+    scope: frontend:seller
+    prompt: |
+      Task: Create the seller app layout with sidebar navigation, auth guard, and login page.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - Current state: minimal scaffold with layout.tsx (just Providers wrapper), page.tsx (redirects
+        to /dashboard), lib/api.ts (full API client with identity, courses, analytics, earnings),
+        hooks/use-auth.ts (teacher-only auth with role check), hooks/use-courses.ts (CRUD hooks),
+        components/Providers.tsx (QueryClientProvider).
+      - useAuth() in hooks/use-auth.ts: login validates role=teacher, stores token in localStorage,
+        provides { token, user, loading, login, logout }.
+      - API client lib/api.ts has: identity (login, me), courses (my, list, get, create, update,
+        curriculum), analytics (getSummary), earnings (getSummary, listEarnings, requestPayout, listPayouts).
+      - lib/errors.ts exists for error handling.
+      - No dashboard, login page, or sidebar currently exist.
+
+      WHAT TO BUILD:
+      1. apps/seller/components/Sidebar.tsx — "use client" named export:
+         - Left sidebar, fixed width (w-64), full height (min-h-screen), bg-white border-r
+         - Logo section: "EduPlatform" text + "Для преподавателей" subtitle
+         - Nav items (vertical list with icons as emoji or text prefixes):
+           * "Дашборд" → /dashboard (icon: bar chart)
+           * "Мои курсы" → /courses (icon: book)
+           * "Аналитика" → /analytics (icon: chart)
+           * "Доходы" → /earnings (icon: wallet)
+           * "Настройки" → /settings (icon: gear)
+         - Active item highlighted with bg-indigo-50 text-indigo-700 font-medium
+         - Use usePathname() to detect active route
+         - User section at bottom: user name, email, role badge, logout button
+         - Mobile: hidden on <lg, show hamburger button in a top bar
+
+      2. apps/seller/components/AuthGuard.tsx — "use client" named export:
+         - Wraps children, uses useAuth()
+         - If loading: show centered spinner
+         - If !user && !loading: redirect to /login using router.push()
+         - If user: render children
+
+      3. apps/seller/app/layout.tsx — update:
+         - Import AuthGuard and Sidebar (but NOT on /login route)
+         - The layout renders Providers wrapping the page content
+         - Use a conditional layout: if pathname is /login, render just children;
+           otherwise render sidebar + main content area
+
+      4. apps/seller/components/SellerLayout.tsx — "use client" named export:
+         - Combines AuthGuard + Sidebar + main content area
+         - Layout: flex row, sidebar on left, main content flex-1 p-8 bg-gray-50
+         - Mobile: sidebar hidden, top bar with hamburger toggle (useState for sidebar open)
+         - Hamburger sidebar: fixed overlay on mobile, slide from left
+
+      5. apps/seller/app/login/page.tsx — "use client":
+         - Simple login form: email, password, submit button
+         - Uses useAuth().login() — which validates teacher role
+         - Error display for wrong credentials or non-teacher role
+         - On success: router.push("/dashboard")
+         - Branded header: "EduPlatform — Вход для преподавателей"
+         - Link: "Нет аккаунта? Зарегистрируйтесь на основном сайте"
+
+      6. apps/seller/app/dashboard/page.tsx — placeholder:
+         - Simple "Dashboard coming soon" with SellerLayout wrapping
+         - This will be replaced by seller-dashboard task
+
+      IMPLEMENTATION APPROACH:
+      1. Create Sidebar.tsx with nav items and usePathname() for active detection.
+      2. Create AuthGuard.tsx wrapping children with auth check.
+      3. Create SellerLayout.tsx combining AuthGuard + Sidebar + content area.
+      4. Update layout.tsx to use Providers only (keep it simple, no layout logic here).
+      5. Create login/page.tsx with form using useAuth().login().
+      6. Create dashboard/page.tsx as placeholder.
+      7. For mobile sidebar: useState in SellerLayout, hamburger button in top bar,
+         fixed overlay sidebar with transition.
+      8. Import SellerLayout in dashboard/page.tsx (and future pages will do the same).
+
+      RULES:
+      - "use client" on all interactive components (Sidebar, AuthGuard, SellerLayout, login page)
+      - Named exports ONLY (except page.tsx which needs default export for Next.js)
+      - next/link for all navigation
+      - Tailwind CSS only — no CSS modules
+      - No new npm dependencies
+      - useAuth() hook is already built — do not recreate it
+      - Seller app is teacher-only: useAuth already rejects non-teacher roles
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add layout with sidebar navigation, auth guard, and login page
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: []
+
+  - id: seller-dashboard
+    title: "Seller dashboard: overview stats and recent activity"
+    scope: frontend:seller
+    prompt: |
+      Task: Build the main teacher dashboard page showing overview statistics and recent activity.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - Layout with Sidebar and AuthGuard established (from seller-layout task).
+      - SellerLayout component: apps/seller/components/SellerLayout.tsx — wraps page content.
+      - API client: apps/seller/lib/api.ts:
+        * courses.my(token) → CourseList { items: Course[], total: number }
+        * analytics.getSummary(token) → TeacherAnalyticsSummary { total_courses, total_lessons,
+          avg_rating, total_reviews, courses: CourseAnalytics[] }
+        * earnings.getSummary(token) → EarningsSummary { total_gross, total_net, total_pending,
+          total_paid, earnings: EarningResponse[] }
+      - Hooks: hooks/use-courses.ts — useTeacherCourses(token), useCreateCourse(token).
+      - Auth: hooks/use-auth.ts — { token, user, loading }.
+
+      WHAT TO BUILD:
+      1. apps/seller/hooks/use-analytics.ts — new hook:
+         - useTeacherAnalytics(token) → useQuery calling analytics.getSummary(token)
+
+      2. apps/seller/hooks/use-earnings.ts — new hook:
+         - useEarningsSummary(token) → useQuery calling earnings.getSummary(token)
+
+      3. apps/seller/app/dashboard/page.tsx — "use client" (replace placeholder):
+         - Wrap content in SellerLayout
+         - Headline: "Дашборд" with "Добро пожаловать, {user.name}"
+
+         Stats row (4 cards in grid-cols-2 lg:grid-cols-4):
+           - "Курсы" — total_courses count with book icon
+           - "Уроки" — total_lessons count with document icon
+           - "Средняя оценка" — avg_rating (or "—" if null) with star icon
+           - "Доход" — total_net from earnings summary with dollar icon
+         Each card: white bg, rounded-xl, shadow-sm, p-6, icon + number + label
+
+         Teacher's courses section:
+           - Grid of course cards (grid-cols-1 md:grid-cols-2 lg:grid-cols-3)
+           - Each card: title, level badge, lesson count, review count, avg rating
+           - "Редактировать" link → /courses/{id}
+           - If no courses: "Создайте свой первый курс" with CTA button → /courses/new
+
+         Quick actions:
+           - "Создать курс" button → /courses/new (indigo, prominent)
+
+      4. apps/seller/app/dashboard/loading.tsx — stat card skeletons + course card skeletons.
+
+      IMPLEMENTATION APPROACH:
+      1. Create use-analytics.ts and use-earnings.ts hooks.
+      2. Replace dashboard/page.tsx placeholder with full implementation.
+      3. Use useAuth() for token and user, useTeacherCourses for courses,
+         useTeacherAnalytics for stats, useEarningsSummary for earnings.
+      4. Handle loading states (show skeleton), error states (show message).
+      5. Create loading.tsx.
+
+      RULES:
+      - "use client" on dashboard/page.tsx
+      - Wrap in SellerLayout component
+      - Named exports for hooks
+      - next/link for navigation
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Handle null/undefined data gracefully (avg_rating can be null)
+      - Format currency: parseFloat(total_net).toFixed(2) with $ prefix
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add teacher dashboard with stats and course overview
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: [seller-layout]
+
+  - id: seller-courses
+    title: "Seller course management: list, create, edit"
+    scope: frontend:seller
+    prompt: |
+      Task: Build course management pages — list, create, and edit with curriculum management.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - SellerLayout component for page wrapping.
+      - API client lib/api.ts:
+        * courses.my(token) → CourseList
+        * courses.create(token, body: CourseCreate) → Course
+        * courses.update(token, id, body: CourseUpdate) → Course
+        * courses.get(token, id) → Course
+        * courses.curriculum(token, id) → CurriculumResponse { course, modules, total_lessons }
+      - Hooks: useTeacherCourses, useCreateCourse, useUpdateCourse, useCurriculum (all exist).
+      - CourseCreate: { title, description, is_free, price, duration_minutes, level, category_id }
+      - CourseUpdate: partial of CourseCreate fields
+      - CurriculumResponse includes modules[] with lessons[] nested.
+      - Module/Lesson CRUD may need new API methods in api.ts:
+        * POST /api/course/courses/:id/modules { title, order }
+        * POST /api/course/modules/:id/lessons { title, content, video_url?, duration_minutes, order }
+        * PATCH /api/course/modules/:id { title, order }
+        * PATCH /api/course/lessons/:id { title, content, video_url?, duration_minutes, order }
+        * DELETE /api/course/modules/:id
+        * DELETE /api/course/lessons/:id
+
+      WHAT TO BUILD:
+      1. Add missing API methods to apps/seller/lib/api.ts:
+         - modules.create(token, courseId, body) → POST /api/course/courses/{courseId}/modules
+         - modules.update(token, moduleId, body) → PATCH /api/course/modules/{moduleId}
+         - modules.delete(token, moduleId) → DELETE /api/course/modules/{moduleId}
+         - lessons.create(token, moduleId, body) → POST /api/course/modules/{moduleId}/lessons
+         - lessons.update(token, lessonId, body) → PATCH /api/course/lessons/{lessonId}
+         - lessons.delete(token, lessonId) → DELETE /api/course/lessons/{lessonId}
+
+      2. apps/seller/hooks/use-modules.ts — CRUD mutation hooks for modules and lessons.
+
+      3. apps/seller/app/courses/page.tsx — "use client":
+         - Wrap in SellerLayout
+         - Headline: "Мои курсы" with "Создать курс" button → /courses/new
+         - List of teacher's courses (useTeacherCourses)
+         - Each course row: title, level, lessons count, avg rating, created date
+         - Click row → /courses/{id}
+         - Loading and empty states
+
+      4. apps/seller/app/courses/new/page.tsx — "use client":
+         - Wrap in SellerLayout
+         - Course creation form:
+           * Title (required, text input)
+           * Description (required, textarea)
+           * Level (select: beginner/intermediate/advanced)
+           * Is free (checkbox)
+           * Price (number input, disabled if is_free)
+           * Duration (number input, minutes)
+           * Category (select, optional — hardcode a few or leave as text)
+         - Submit → useCreateCourse mutation
+         - On success → router.push(`/courses/${newCourse.id}`)
+         - Validation: title required (min 3 chars), description required (min 10 chars)
+
+      5. apps/seller/app/courses/[id]/page.tsx — "use client":
+         - Wrap in SellerLayout
+         - Tabs: "Детали" | "Программа" (useState for active tab)
+
+         Details tab:
+           - Same form as create, prefilled with course data (useUpdateCourse to save)
+           - "Сохранить изменения" button
+
+         Curriculum tab:
+           - List of modules, each expandable to show lessons
+           - "Добавить модуль" button → inline form (title input + save)
+           - Each module: title, order number, edit/delete buttons
+           - Under each module: list of lessons with title, duration
+           - "Добавить урок" button per module → inline form (title, content textarea,
+             duration input, save)
+           - Each lesson: edit (inline) / delete buttons
+           - No drag-to-reorder (keep it simple — manual order number input)
+
+      6. Loading files for each page.
+
+      IMPLEMENTATION APPROACH:
+      1. Add API methods to lib/api.ts for modules and lessons CRUD.
+      2. Create use-modules.ts with mutation hooks.
+      3. Build courses/page.tsx — list view.
+      4. Build courses/new/page.tsx — creation form.
+      5. Build courses/[id]/page.tsx — edit with tabs.
+      6. For curriculum editing: use useState for inline forms.
+         When user clicks "Добавить модуль", show input + save/cancel.
+         On save → call mutation → refetch curriculum.
+      7. Create loading.tsx for each route.
+
+      RULES:
+      - "use client" on all page components
+      - Wrap every page in SellerLayout
+      - Named exports for hooks and non-page components
+      - next/link for navigation
+      - Tailwind CSS only
+      - No new npm dependencies
+      - TanStack Query for all data fetching and mutations
+      - Invalidate relevant queries on mutation success
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add course management with CRUD and curriculum editing
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: [seller-dashboard]
+
+  - id: seller-analytics
+    title: "Seller analytics dashboard: students, completion, engagement"
+    scope: frontend:seller
+    prompt: |
+      Task: Build a teacher analytics page with charts showing enrollments, ratings, and performance.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - SellerLayout for page wrapping.
+      - API: analytics.getSummary(token) → TeacherAnalyticsSummary:
+        { total_courses, total_lessons, avg_rating, total_reviews, courses: CourseAnalytics[] }
+        CourseAnalytics: { course_id, title, avg_rating, review_count, module_count, lesson_count }
+      - Hook: useTeacherAnalytics(token) from hooks/use-analytics.ts (created in seller-dashboard).
+      - No chart library installed yet — need to add recharts.
+
+      WHAT TO BUILD:
+      1. Install recharts: run pnpm add recharts in apps/seller/.
+
+      2. apps/seller/app/analytics/page.tsx — "use client":
+         - Wrap in SellerLayout
+         - Headline: "Аналитика"
+
+         Summary cards row (grid-cols-2 lg:grid-cols-4):
+           - Total courses, Total lessons, Average rating, Total reviews
+
+         Chart 1 — Lessons per course (BarChart from recharts):
+           - X axis: course title (truncated to 20 chars)
+           - Y axis: lesson count
+           - Data from courses[] array in analytics summary
+           - Blue bars
+
+         Chart 2 — Ratings per course (BarChart):
+           - X axis: course title
+           - Y axis: avg_rating (0-5 scale)
+           - Green bars for rating >= 4, yellow for 3-4, red for < 3
+
+         Chart 3 — Reviews per course (BarChart):
+           - X axis: course title
+           - Y axis: review_count
+           - Indigo bars
+
+         Course-level detail table below charts:
+           - Columns: Course title, Modules, Lessons, Avg rating, Reviews
+           - Sortable by clicking column headers (useState for sort column/direction)
+           - Click row → link to /courses/{id}
+
+      3. apps/seller/app/analytics/loading.tsx — chart skeleton placeholders.
+
+      IMPLEMENTATION APPROACH:
+      1. Install recharts: pnpm add recharts (in apps/seller directory).
+      2. Create analytics/page.tsx as "use client".
+      3. Use useTeacherAnalytics(token) to fetch data.
+      4. Import BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer from recharts.
+      5. Dynamic import recharts to keep bundle light:
+         const { BarChart, Bar, ... } = await import("recharts") — or use next/dynamic.
+         Actually, simpler: just import directly since it's a seller app (lower performance requirements).
+      6. Map courses[] array to chart data format.
+      7. For the table: useState for sortKey and sortDirection, sort the array before rendering.
+      8. Handle empty state: if no courses, show "Создайте курс, чтобы увидеть аналитику" with link.
+
+      RULES:
+      - "use client" on analytics/page.tsx
+      - Wrap in SellerLayout
+      - Named exports for any extracted chart components
+      - Tailwind CSS only for layout (recharts handles chart styling)
+      - ResponsiveContainer width="100%" height={300} for all charts
+      - Handle null avg_rating: show 0 or "Нет оценок" in table
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add analytics dashboard with charts and course stats
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: [seller-dashboard]
+
+  - id: seller-earnings
+    title: "Seller earnings and payout management"
+    scope: frontend:seller
+    prompt: |
+      Task: Build the teacher earnings page with summary, earnings history, and payout management.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - SellerLayout for page wrapping.
+      - API client lib/api.ts:
+        * earnings.getSummary(token) → EarningsSummary { total_gross, total_net, total_pending,
+          total_paid, earnings: EarningResponse[] }
+        * earnings.listEarnings(token, limit, offset) → EarningListResponse { items, total }
+        * earnings.requestPayout(token, amount) → PayoutResponse
+        * earnings.listPayouts(token, limit, offset) → PayoutListResponse { items, total }
+      - EarningResponse: { id, teacher_id, course_id, payment_id, gross_amount, commission_rate,
+        net_amount, status, created_at }
+      - PayoutResponse: { id, teacher_id, amount, stripe_transfer_id, status, requested_at, completed_at }
+      - Hook: useEarningsSummary(token) from hooks/use-earnings.ts (created in seller-dashboard).
+
+      WHAT TO BUILD:
+      1. Extend apps/seller/hooks/use-earnings.ts with additional hooks:
+         - useEarningsList(token, limit?, offset?) → useQuery
+         - useRequestPayout(token) → useMutation calling earnings.requestPayout
+         - usePayoutList(token, limit?, offset?) → useQuery
+
+      2. apps/seller/app/earnings/page.tsx — "use client":
+         - Wrap in SellerLayout
+         - Headline: "Доходы"
+
+         Summary cards (grid-cols-2 lg:grid-cols-4):
+           - "Общий доход" — total_gross, gray text
+           - "Чистый доход" — total_net, green text (after commission)
+           - "В ожидании" — total_pending, yellow text
+           - "Выплачено" — total_paid, blue text
+         Each card: white bg, rounded-xl, p-6, amount in text-2xl font-bold
+
+         Earnings table:
+           - Columns: Date, Course ID (truncated), Gross, Commission, Net, Status badge
+           - Status badges: pending=yellow, paid=green, processing=blue
+           - Pagination: "Показать ещё" button (increase limit) or page numbers
+           - Loading state: skeleton rows
+
+         Payout section:
+           - "Запросить выплату" button → opens inline form or modal:
+             * Amount input (number, max = available balance = total_net - total_paid - total_pending)
+             * "Отправить запрос" button → useRequestPayout mutation
+             * Success: show green alert, refetch earnings summary
+             * Error: show red alert with message
+           - Available balance display: total_net - total_paid - total_pending
+
+         Payout history table:
+           - Columns: Date requested, Amount, Status, Completed date
+           - Status badges: requested=yellow, processing=blue, completed=green, failed=red
+
+      3. apps/seller/app/earnings/loading.tsx — summary card + table skeletons.
+
+      IMPLEMENTATION APPROACH:
+      1. Extend use-earnings.ts with new hooks.
+      2. Create earnings/page.tsx with three sections: summary, earnings, payouts.
+      3. Use useEarningsSummary for cards, useEarningsList for table, usePayoutList for payout history.
+      4. For payout request: useState for showPayoutForm, amount field, submit handler.
+      5. Calculate available balance: parseFloat(total_net) - parseFloat(total_paid) - parseFloat(total_pending).
+      6. Format amounts: parseFloat(amount).toFixed(2) with $ prefix.
+      7. Format dates: Intl.DateTimeFormat("ru-RU", { dateStyle: "medium" }).
+      8. Handle empty states for both tables.
+
+      RULES:
+      - "use client" on earnings/page.tsx
+      - Wrap in SellerLayout
+      - Named exports for hooks
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Handle string-to-number conversion for amounts (API returns strings)
+      - Payout amount validation: must be positive, must not exceed available balance
+      - window.confirm before submitting payout request
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add earnings page with payout management
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: [seller-dashboard]
+
+  - id: seller-settings
+    title: "Seller settings: profile, payment info, notifications"
+    scope: frontend:seller
+    prompt: |
+      Task: Build the teacher settings page with profile editing and notification preferences.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - SellerLayout for page wrapping.
+      - Identity service PATCH /users/me accepts { name?, bio?, avatar_url? } (from profile-edit backend).
+      - API client lib/api.ts: identity.me(token) returns User { id, email, name, role, ... }.
+      - Need to add identity.updateProfile(token, body) to seller's lib/api.ts.
+      - Auth hook: useAuth() — { user, token, loading, logout }.
+
+      WHAT TO BUILD:
+      1. Add to apps/seller/lib/api.ts:
+         - identity.updateProfile(token, { name?, bio?, avatar_url? }) → PATCH /api/identity/users/me
+         - Update User interface: add bio: string | null, avatar_url: string | null
+
+      2. apps/seller/hooks/use-profile.ts — new hook:
+         - useUpdateProfile(token) → useMutation, invalidates user-related queries on success
+
+      3. apps/seller/app/settings/page.tsx — "use client":
+         - Wrap in SellerLayout
+         - Headline: "Настройки"
+
+         Tab navigation: "Профиль" | "Уведомления" (useState for active tab)
+
+         Profile tab:
+           - Avatar section: initials circle (if no avatar_url) or image preview
+           - Avatar URL input (text, paste image URL)
+           - Name input (prefilled from user.name)
+           - Bio textarea (prefilled from user.bio, 500 char limit, char counter)
+           - Email display (read-only, with note "Email нельзя изменить")
+           - "Сохранить" button → useUpdateProfile mutation
+           - Success/error feedback messages
+
+         Notifications tab (mock — preferences stored in localStorage, not backend):
+           - Toggle switches (styled checkboxes) for:
+             * "Новая запись на курс" — default on
+             * "Новый отзыв" — default on
+             * "Выплата обработана" — default on
+             * "Еженедельный отчёт" — default off
+           - Save to localStorage("seller_notification_prefs")
+           - Note: "Настройки уведомлений будут подключены к серверу в следующем обновлении"
+
+      4. apps/seller/app/settings/loading.tsx — form skeleton.
+
+      IMPLEMENTATION APPROACH:
+      1. Add updateProfile to api.ts and update User interface.
+      2. Create use-profile.ts hook.
+      3. Create settings/page.tsx with tab navigation.
+      4. Profile tab: useState for each field, initialize from user object.
+         On save: call mutation with changed fields only.
+      5. Notifications tab: useState initialized from localStorage.
+         On toggle: update state + save to localStorage.
+      6. Create loading.tsx.
+
+      RULES:
+      - "use client" on settings/page.tsx
+      - Wrap in SellerLayout
+      - Named exports for hooks
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Client-side validation: name 1-100 chars, bio max 500, avatar_url starts with https://
+      - Notification prefs are client-side only (localStorage) — clearly labeled as mock
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add settings page with profile editing and notification preferences
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: [seller-layout]
+
+  - id: seller-quiz-builder
+    title: "Teacher quiz builder with AI generation"
+    scope: frontend:seller
+    prompt: |
+      Task: Add a Quiz tab to the course editor for creating and managing quizzes with AI generation.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - Course edit page: apps/seller/app/courses/[id]/page.tsx (from seller-courses task) — has tabs.
+      - Learning service quiz API:
+        * POST /api/learning/quizzes — create quiz { course_id, lesson_id?, title, questions[] }
+        * GET /api/learning/quizzes/course/{course_id} — list quizzes for course
+        * Each question: { question_text, options: string[], correct_index: number, explanation? }
+      - AI service:
+        * POST /api/ai/quiz/generate — { lesson_content: str, num_questions: int } → generated quiz
+      - Curriculum data: courses.curriculum(token, id) returns modules with lessons (title, content).
+      - Seller API client: apps/seller/lib/api.ts — needs learning and AI endpoints added.
+
+      WHAT TO BUILD:
+      1. Add to apps/seller/lib/api.ts:
+         - learning namespace:
+           * quizzes.list(token, courseId) → GET /api/learning/quizzes/course/{courseId}
+           * quizzes.create(token, body) → POST /api/learning/quizzes
+         - ai namespace:
+           * quiz.generate(token, { lesson_content, num_questions }) → POST /api/ai/quiz/generate
+
+      2. apps/seller/hooks/use-quizzes.ts — new hooks:
+         - useCourseQuizzes(token, courseId) → useQuery
+         - useCreateQuiz(token) → useMutation
+         - useGenerateQuiz(token) → useMutation (calls AI endpoint)
+
+      3. Add "Квизы" tab to apps/seller/app/courses/[id]/page.tsx:
+
+         Quiz list view (default):
+           - List of existing quizzes for this course (useCourseQuizzes)
+           - Each quiz: title, question count, lesson association
+           - "Создать квиз" button → shows creation form
+           - "Сгенерировать AI-квиз" button → shows lesson selector
+
+         AI generation flow:
+           - Select a lesson from curriculum (dropdown of all lessons)
+           - Number of questions input (default 5, range 3-10)
+           - "Сгенерировать" button → calls AI generate endpoint with lesson content
+           - Loading state: "AI генерирует вопросы..." with spinner
+           - Preview generated questions (editable before save)
+           - "Сохранить квиз" → calls createQuiz mutation
+
+         Manual quiz creation:
+           - Quiz title input
+           - Lesson association dropdown (optional)
+           - Dynamic question form (add/remove questions):
+             * Question text (textarea)
+             * 4 answer options (text inputs)
+             * Correct answer radio buttons (select which is correct)
+             * Explanation (optional textarea)
+           - "Добавить вопрос" button
+           - "Сохранить" button → calls createQuiz mutation
+
+      IMPLEMENTATION APPROACH:
+      1. Add API methods to lib/api.ts for learning and AI services.
+      2. Create use-quizzes.ts hooks.
+      3. Read the existing courses/[id]/page.tsx to understand the tab structure.
+      4. Add a new "Квизы" tab alongside existing "Детали" and "Программа" tabs.
+      5. Build the quiz tab content with three views: list, AI generate, manual create.
+         Use useState for activeView ("list" | "generate" | "manual").
+      6. For AI generation: fetch curriculum (useCurriculum), let user select lesson,
+         call generate mutation, show results in editable form, then save.
+      7. For manual creation: useState for questions array, add/remove handlers.
+
+      RULES:
+      - "use client" (page already is)
+      - Named exports for hooks
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Handle AI generation errors gracefully (show error message, don't crash)
+      - Questions array must have at least 1 question to save
+      - Each question must have exactly 4 options and a selected correct answer
+      - Invalidate quiz list query on successful creation
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add quiz builder with AI generation to course editor
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: [seller-courses]
+
+  - id: seller-concept-editor
+    title: "Teacher knowledge graph editor"
+    scope: frontend:seller
+    prompt: |
+      Task: Add a Knowledge Graph tab to the course editor for managing concepts and prerequisites.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - Course edit page: apps/seller/app/courses/[id]/page.tsx — has tabs (Детали, Программа, Квизы).
+      - Learning service concepts API:
+        * POST /api/learning/concepts — { course_id, name, description? }
+        * DELETE /api/learning/concepts/{id}
+        * POST /api/learning/concepts/{id}/prerequisites — { prerequisite_id }
+        * DELETE /api/learning/concepts/{id}/prerequisites/{prerequisite_id}
+        * GET /api/learning/concepts/course/{course_id} — returns list of concepts with prerequisites
+      - Concept object: { id, course_id, name, description, prerequisites: string[] }
+      - Seller API client needs learning.concepts endpoints added.
+
+      WHAT TO BUILD:
+      1. Add to apps/seller/lib/api.ts:
+         - learning.concepts namespace:
+           * list(token, courseId) → GET /api/learning/concepts/course/{courseId}
+           * create(token, body) → POST /api/learning/concepts
+           * remove(token, conceptId) → DELETE /api/learning/concepts/{conceptId}
+           * addPrerequisite(token, conceptId, prereqId) → POST .../{conceptId}/prerequisites
+           * removePrerequisite(token, conceptId, prereqId) → DELETE .../{conceptId}/prerequisites/{prereqId}
+
+      2. apps/seller/hooks/use-concepts.ts — new hooks:
+         - useCourseConcepts(token, courseId) → useQuery
+         - useCreateConcept(token, courseId) → useMutation
+         - useDeleteConcept(token, courseId) → useMutation
+         - useAddPrerequisite(token, courseId) → useMutation
+         - useRemovePrerequisite(token, courseId) → useMutation
+
+      3. Add "Граф знаний" tab to apps/seller/app/courses/[id]/page.tsx:
+
+         Concept list + graph view:
+           - Left panel (w-1/3): list of concepts with name, description
+             * "Добавить концепт" button → inline form (name, description inputs)
+             * Each concept: name, delete button (with confirm)
+             * Click concept → select it for prerequisite editing
+
+           - Right panel (w-2/3): Simple SVG visualization of the concept graph
+             * Each concept as a circle/rounded rect node with name text
+             * Arrows from prerequisite to dependent concept
+             * Position nodes using a simple force-directed layout:
+               - OR simpler: grid layout with rows based on dependency depth
+               - Level 0: concepts with no prerequisites (top row)
+               - Level 1: concepts whose prereqs are all level 0 (second row)
+               - etc.
+             * Nodes are colored: blue default, green if has prerequisites
+
+         Prerequisite editing:
+           - When a concept is selected (clicked in left panel):
+             * Show its current prerequisites as tags with X remove buttons
+             * "Добавить пререквизит" dropdown listing other concepts
+             * Select from dropdown → calls addPrerequisite mutation
+             * Click X on tag → calls removePrerequisite mutation
+
+      IMPLEMENTATION APPROACH:
+      1. Add API methods to lib/api.ts.
+      2. Create use-concepts.ts hooks.
+      3. Read courses/[id]/page.tsx, add "Граф знаний" tab.
+      4. Build left panel: concept list with CRUD.
+      5. Build right panel: SVG graph.
+         For SVG graph, use a simple approach:
+         - Calculate depth of each concept (BFS from roots)
+         - Position: x = index within row * spacing, y = depth * spacing
+         - Draw nodes as <rect> with <text>
+         - Draw edges as <line> or <path> with arrow markers
+         - SVG viewBox auto-calculated from node positions
+      6. For prerequisite editing: useState for selectedConceptId,
+         show prereq tags and dropdown when selected.
+      7. Invalidate concepts query on all mutations.
+
+      RULES:
+      - "use client" (page already is)
+      - Named exports for hooks
+      - Tailwind CSS only for layout, SVG for graph
+      - No graph visualization library (no d3, no cytoscape) — plain SVG
+      - No new npm dependencies
+      - Handle circular dependency prevention: don't show concept A as a prereq option
+        for concept B if B is already a prereq of A (check prerequisites chains)
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add knowledge graph editor to course editor
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: [seller-courses]
+
+  - id: seller-onboarding
+    title: "Teacher onboarding after registration"
+    scope: frontend:seller
+    prompt: |
+      Task: Build a teacher onboarding flow that handles unverified accounts and guides to first course.
+
+      CONTEXT:
+      - Seller app: apps/seller/ (Next.js App Router, TypeScript strict, Tailwind CSS, TanStack Query)
+      - Auth: useAuth() — user object has is_verified field. Teachers register with role=teacher,
+        then need admin verification before they can create courses.
+      - Course service requires is_verified=true to create courses.
+      - API: identity.me(token) returns User with is_verified boolean.
+      - courses.create(token, body) will return 403 if teacher is not verified.
+      - SellerLayout and AuthGuard exist (from seller-layout task).
+      - Dashboard at /dashboard, course creation at /courses/new.
+
+      WHAT TO BUILD:
+      1. apps/seller/app/onboarding/page.tsx — "use client":
+         - Wrap in SellerLayout (sidebar still visible for navigation)
+         - Uses useAuth() to check verification status
+
+         If NOT verified (is_verified = false):
+           - Progress stepper showing 3 steps:
+             * Step 1: "Регистрация" — completed (green check)
+             * Step 2: "Верификация" — in progress (yellow spinner)
+             * Step 3: "Первый курс" — pending (gray)
+           - Main content:
+             * Headline: "Ваш аккаунт на проверке"
+             * Explanation: "Администратор проверит ваш профиль в течение 24 часов.
+               После подтверждения вы сможете создавать курсы."
+             * Tips while waiting: "Пока вы ждёте:" — list of 3 suggestions:
+               - "Заполните профиль в Настройках" → link to /settings
+               - "Продумайте структуру первого курса"
+               - "Ознакомьтесь с панелью управления" → link to /dashboard
+           - Auto-refresh: poll identity.me(token) every 30 seconds to check is_verified
+             Use useQuery with refetchInterval: 30_000
+           - When is_verified becomes true: show success message + redirect to step 2
+
+         If verified but no courses (useTeacherCourses returns 0 items):
+           - Progress stepper: steps 1-2 completed, step 3 active
+           - Headline: "Создайте свой первый курс"
+           - Quick course creation wizard (simplified form):
+             * Title input
+             * Description textarea
+             * Level select
+             * "Создать курс" button → useCreateCourse mutation
+             * On success → router.push(`/courses/${newCourse.id}`)
+
+         If verified and has courses:
+           - Redirect to /dashboard
+
+      2. Update AuthGuard or dashboard to detect onboarding state:
+         - In apps/seller/app/dashboard/page.tsx: if user is not verified OR has 0 courses,
+           redirect to /onboarding. This ensures new teachers always see onboarding first.
+
+      IMPLEMENTATION APPROACH:
+      1. Create onboarding/page.tsx as "use client".
+      2. Use useAuth() for user and verification status.
+      3. Use useTeacherCourses(token) to check if teacher has courses.
+      4. For verification polling: useQuery on identity.me with refetchInterval: 30_000,
+         enabled only when !is_verified.
+      5. For course creation wizard: minimal form with useCreateCourse mutation.
+      6. Update dashboard/page.tsx to check onboarding state and redirect if needed.
+      7. Progress stepper: simple flex row with 3 circles + connecting lines.
+
+      RULES:
+      - "use client" on onboarding/page.tsx
+      - Wrap in SellerLayout
+      - Named exports for sub-components if extracted
+      - next/link for navigation
+      - Tailwind CSS only
+      - No new npm dependencies
+      - Don't poll too aggressively — 30s interval is enough
+      - Handle race condition: if courses query is loading, don't redirect yet
+      - After implementation: cd apps/seller && pnpm build must pass with 0 errors
+
+      COMMIT:
+      feat(seller): add teacher onboarding flow with verification status
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/seller && pnpm build"
+    depends_on: [seller-layout]
+
+  - id: course-thumbnails
+    title: "Course thumbnail/image support"
+    scope: backend:course
+    prompt: |
+      Task: Add thumbnail_url support to courses — migration, domain, repository, service, endpoint.
+
+      CONTEXT:
+      - Course service: services/py/course/ (FastAPI, asyncpg, Clean Architecture)
+      - Domain entity: services/py/course/app/domain/course.py — Course dataclass
+      - Repository: services/py/course/app/repositories/ — CourseRepository with SQL
+      - Service: services/py/course/app/services/ — CourseService
+      - Routes: services/py/course/app/routes/ — course routes with CRUD
+      - Migrations: services/py/course/migrations/ — 7 existing migration files (001-007)
+      - Tests: services/py/course/tests/ — 59 existing tests
+      - Current Course fields: id, teacher_id, title, description, is_free, price, duration_minutes,
+        level, created_at, updated_at, avg_rating, review_count, category_id
+      - Common lib: libs/py/common/ — errors, security, database
+
+      WHAT TO BUILD:
+      1. Migration: services/py/course/migrations/008_thumbnails.sql
+         - ALTER TABLE courses ADD COLUMN IF NOT EXISTS thumbnail_url TEXT DEFAULT NULL;
+
+      2. Domain: update Course entity in services/py/course/app/domain/course.py
+         - Add field: thumbnail_url: str | None = None
+
+      3. Repository: update CourseRepository
+         - Include thumbnail_url in all SELECT queries (in the column list)
+         - Include thumbnail_url in INSERT and UPDATE queries
+         - Update the row-to-entity mapping to include thumbnail_url
+
+      4. Service: update CourseService
+         - Accept thumbnail_url in create and update methods
+         - Validate: if provided, must start with http:// or https:// and end with
+           common image extension (.jpg, .jpeg, .png, .gif, .webp) or be a known CDN URL
+         - Simple validation: URL format check, not strict
+
+      5. Route: update course routes
+         - Add thumbnail_url to CreateCourseRequest and UpdateCourseRequest schemas
+         - Include thumbnail_url in course response
+         - No separate endpoint needed — thumbnail_url is set via create/update
+
+      6. Update GET /courses list and GET /courses/{id} responses to include thumbnail_url.
+
+      TDD — write tests FIRST:
+      1. test_create_course_with_thumbnail — POST /courses with thumbnail_url → 201, URL in response
+      2. test_create_course_without_thumbnail — POST /courses without thumbnail → 201, null in response
+      3. test_update_course_thumbnail — PATCH /courses/{id} with { thumbnail_url: "https://..." } → 200
+      4. test_update_course_remove_thumbnail — PATCH with { thumbnail_url: null } → 200, null
+      5. test_invalid_thumbnail_url — POST with { thumbnail_url: "not-a-url" } → 400
+      6. test_get_course_includes_thumbnail — GET /courses/{id} includes thumbnail_url field
+      7. test_list_courses_includes_thumbnail — GET /courses includes thumbnail_url in items
+      8. Write failing tests, then implement.
+
+      IMPLEMENTATION APPROACH:
+      1. Read existing domain, repository, service, and route files to understand patterns.
+      2. Write all tests first (add to existing test files or create test_thumbnails.py).
+      3. Add migration file 008_thumbnails.sql.
+      4. Update domain entity — add thumbnail_url field.
+      5. Update repository — add to SELECT, INSERT, UPDATE queries.
+      6. Update service — add validation and pass through.
+      7. Update route schemas — add to request/response models.
+      8. Run tests until all green (existing + new).
+
+      RULES:
+      - TDD: write failing tests FIRST, then implement
+      - Clean Architecture: routes → services → domain ← repositories
+      - Parameterized SQL queries only
+      - Migration must be idempotent (ADD COLUMN IF NOT EXISTS)
+      - thumbnail_url is optional — all existing courses get NULL
+      - Do not break any existing tests — all 59 + new tests must pass
+      - URL validation: simple check (starts with http/https), not overly strict
+      - After implementation: cd services/py/course && uv run --package course pytest tests/ -v
+
+      COMMIT:
+      feat(course): add thumbnail_url support for course images
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course && uv run --package course pytest tests/ -v"
+    depends_on: []
