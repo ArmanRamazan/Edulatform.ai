@@ -145,7 +145,7 @@ CREATE INDEX idx_payouts_teacher ON payouts(teacher_id);
 | 3.3.1 | Dynamic meta tags: title, description per page (course, category, lesson) | frontend:buyer | 🔴 |
 | 3.3.2 | Structured data: JSON-LD Course schema on course pages (schema.org/Course) | frontend:buyer | 🔴 |
 | 3.3.3 | Open Graph + Twitter Card meta tags for social sharing (course image, title, description) | frontend:buyer | 🔴 |
-| 3.3.4 | Dynamic sitemap.xml generation: /sitemap.xml → all courses, categories, static pages | frontend:buyer | 🔴 |
+| 3.3.4 | Dynamic sitemap.xml generation: /sitemap.xml → all courses, categories, static pages | frontend:buyer | ✅ |
 | 3.3.5 | robots.txt: allow crawlers, reference sitemap | frontend:buyer | 🔴 |
 | 3.3.6 | Core Web Vitals: LCP < 2.5s, FID < 100ms, CLS < 0.1 — audit + optimize | frontend:buyer | 🔴 |
 | 3.3.7 | Image optimization: next/image for course thumbnails, lazy loading, WebP | frontend:buyer | 🔴 |
