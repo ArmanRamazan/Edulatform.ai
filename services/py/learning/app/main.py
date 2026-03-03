@@ -23,6 +23,7 @@ from app.repositories.discussion_repo import DiscussionRepository
 from app.repositories.xp_repo import XpRepository
 from app.repositories.badge_repo import BadgeRepository
 from app.repositories.pretest_repo import PretestRepository
+from app.repositories.velocity_repo import VelocityRepository
 from app.services.quiz_service import QuizService
 from app.services.flashcard_service import FlashcardService
 from app.services.concept_service import ConceptService
@@ -32,6 +33,7 @@ from app.services.discussion_service import DiscussionService
 from app.services.xp_service import XpService
 from app.services.badge_service import BadgeService
 from app.services.pretest_service import PretestService
+from app.services.velocity_service import VelocityService
 from app.routes.quizzes import router as quizzes_router
 from app.routes.flashcards import router as flashcards_router
 from app.routes.concepts import router as concepts_router
@@ -41,6 +43,7 @@ from app.routes.discussions import router as discussions_router
 from app.routes.xp import router as xp_router
 from app.routes.badges import router as badges_router
 from app.routes.pretests import router as pretests_router
+from app.routes.velocity import router as velocity_router
 
 app_settings = Settings()
 
@@ -55,6 +58,7 @@ _discussion_service: DiscussionService | None = None
 _xp_service: XpService | None = None
 _badge_service: BadgeService | None = None
 _pretest_service: PretestService | None = None
+_velocity_service: VelocityService | None = None
 
 
 def get_quiz_service() -> QuizService:
@@ -102,9 +106,14 @@ def get_pretest_service() -> PretestService:
     return _pretest_service
 
 
+def get_velocity_service() -> VelocityService:
+    assert _velocity_service is not None
+    return _velocity_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service
+    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service
 
     configure_logging(service_name="learning")
     logger = structlog.get_logger()
@@ -165,6 +174,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     pretest_repo = PretestRepository(_pool)
     _pretest_service = PretestService(pretest_repo, concept_repo)
+
+    velocity_repo = VelocityRepository(_pool)
+    _velocity_service = VelocityService(velocity_repo)
     logger.info("service_started", port=8007)
     yield
     await _redis.aclose()
@@ -195,6 +207,7 @@ app.include_router(discussions_router)
 app.include_router(xp_router)
 app.include_router(badges_router)
 app.include_router(pretests_router)
+app.include_router(velocity_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
