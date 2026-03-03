@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, use } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { lessons as lessonsApi } from "@/lib/api";
@@ -10,9 +11,14 @@ import { useCurriculum } from "@/hooks/use-courses";
 import { useCompletedLessons, useCompleteLesson } from "@/hooks/use-progress";
 import { useQuiz, useSubmitQuiz, useCreateQuiz } from "@/hooks/use-quiz";
 import { useSummary, useGenerateQuiz } from "@/hooks/use-ai";
+import { usePaywall } from "@/hooks/use-paywall";
 import { TutorDrawer } from "@/components/TutorDrawer";
 import { getErrorMessage } from "@/lib/errors";
 import type { QuizQuestionResult } from "@/lib/api";
+
+const PaywallDialog = dynamic(
+  () => import("@/components/PaywallDialog").then((m) => ({ default: m.PaywallDialog })),
+);
 
 export default function LessonPage({
   params,
@@ -39,14 +45,19 @@ export default function LessonPage({
   const completeLesson = useCompleteLesson(token, courseId);
 
   const { data: quizData } = useQuiz(token, lessonId);
-  const { data: summaryData, isLoading: summaryLoading } = useSummary(
-    token, lessonId, lesson?.content ?? ""
-  );
 
   const [selectedAnswers, setSelectedAnswers] = useState<Record<number, number>>({});
   const [quizResults, setQuizResults] = useState<QuizQuestionResult[] | null>(null);
   const [quizScore, setQuizScore] = useState<number | null>(null);
   const [tutorOpen, setTutorOpen] = useState(false);
+  const [paywallFeature, setPaywallFeature] = useState<string | undefined>();
+
+  const { showPaywall, paywallOpen, openPaywall, closePaywall, creditStatus } =
+    usePaywall(token);
+
+  const { data: summaryData, isLoading: summaryLoading } = useSummary(
+    showPaywall ? null : token, lessonId, lesson?.content ?? ""
+  );
 
   const submitQuiz = useSubmitQuiz(token, quizData?.id ?? "");
   const generateQuiz = useGenerateQuiz(token);
@@ -56,6 +67,11 @@ export default function LessonPage({
 
   const handleGenerateQuiz = () => {
     if (!lesson) return;
+    if (showPaywall) {
+      setPaywallFeature("Генерация квиза");
+      openPaywall();
+      return;
+    }
     generateQuiz.mutate(
       { lessonId, content: lesson.content },
       {
@@ -180,6 +196,23 @@ export default function LessonPage({
                   <p className="whitespace-pre-wrap text-sm text-gray-700">{summaryData.summary}</p>
                 </div>
               )}
+              {!summaryData && !summaryLoading && token && showPaywall && (
+                <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <h3 className="mb-2 text-sm font-semibold text-gray-500">Краткое содержание</h3>
+                  <p className="text-sm text-gray-500">
+                    AI-кредиты исчерпаны.{" "}
+                    <button
+                      onClick={() => {
+                        setPaywallFeature("Генерация краткого содержания");
+                        openPaywall();
+                      }}
+                      className="text-blue-600 hover:underline"
+                    >
+                      Улучшить тариф
+                    </button>
+                  </p>
+                </div>
+              )}
 
               {/* Generate Quiz (teacher only) */}
               {!quizData && isTeacher && (
@@ -287,7 +320,14 @@ export default function LessonPage({
                 <div className="mb-4 flex items-center gap-2 rounded-lg border border-teal-100 bg-teal-50 p-3">
                   <span className="text-sm text-teal-700">Не понимаете материал?</span>
                   <button
-                    onClick={() => setTutorOpen(true)}
+                    onClick={() => {
+                      if (showPaywall) {
+                        setPaywallFeature("Чат с AI-тьютором");
+                        openPaywall();
+                      } else {
+                        setTutorOpen(true);
+                      }
+                    }}
                     className="rounded bg-teal-600 px-3 py-1.5 text-sm text-white hover:bg-teal-700"
                   >
                     Спросить AI-тьютора
@@ -351,6 +391,14 @@ export default function LessonPage({
           lessonContent={lesson.content}
         />
       )}
+
+      <PaywallDialog
+        open={paywallOpen}
+        onClose={closePaywall}
+        feature={paywallFeature}
+        limit={creditStatus?.limit}
+        resetAt={creditStatus?.reset_at}
+      />
     </>
   );
 }
