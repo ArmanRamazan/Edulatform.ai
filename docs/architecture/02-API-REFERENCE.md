@@ -1320,6 +1320,47 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### POST /ai/lesson/generate
+
+Генерация контента урока (markdown) через AI. Только для **teacher** и **admin**. Требует JWT. Потребляет 1 AI кредит.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "title": "Introduction to Variables",
+  "description": "Learn what variables are and how to use them",
+  "course_context": "Beginner Python course for absolute beginners",
+  "format": "article"
+}
+```
+
+> `format`: `"article"` | `"tutorial"`, default `"article"`
+> `title`: max 200 символов
+> `description`: max 1000 символов (optional)
+> `course_context`: max 500 символов (optional)
+
+**Response `200`:**
+```json
+{
+  "content": "# Introduction to Variables\n\nA variable is a named container...",
+  "key_concepts": ["variable", "assignment", "data types"],
+  "estimated_duration_minutes": 10,
+  "model_used": "gemini-2.0-flash-lite"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Роль не teacher/admin или лимит кредитов исчерпан |
+| 422 | Невалидные параметры (title пустой, превышен max length) |
+| 502 | Ошибка Gemini API или невалидный JSON от LLM |
+
+---
+
 ## Learning Engine Service (`:8007`)
 
 ### POST /quizzes

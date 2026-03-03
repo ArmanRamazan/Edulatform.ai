@@ -9,6 +9,7 @@ from app.domain.models import (
     QuizRequest, QuizResponse, SummaryRequest, SummaryResponse,
     TutorChatRequest, TutorChatResponse, TutorFeedbackRequest, TutorFeedbackResponse,
     CourseOutlineRequest, CourseOutlineResponse,
+    LessonContentRequest, LessonContentResponse,
 )
 from app.services.ai_service import AIService
 from app.services.tutor_service import TutorService
@@ -129,6 +130,27 @@ async def generate_course_outline(
         level=body.level,
         target_audience=body.target_audience,
         num_modules=body.num_modules,
+    )
+
+
+@router.post("/lesson/generate", response_model=LessonContentResponse)
+async def generate_lesson_content(
+    body: LessonContentRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[AIService, Depends(_get_ai_service)],
+    credit_service: Annotated[CreditService, Depends(_get_credit_service)],
+) -> LessonContentResponse:
+    if claims["role"] not in ("teacher", "admin"):
+        raise ForbiddenError("Only teachers and admins can generate lesson content")
+    await credit_service.check_and_consume(
+        user_id=str(claims["user_id"]),
+        tier=claims["subscription_tier"],
+    )
+    return await service.generate_lesson_content(
+        title=body.title,
+        description=body.description,
+        course_context=body.course_context,
+        format=body.format,
     )
 
 

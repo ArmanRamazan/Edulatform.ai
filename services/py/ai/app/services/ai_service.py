@@ -8,10 +8,14 @@ from app.config import Settings
 from app.domain.models import (
     QuestionData, QuizResponse, SummaryResponse,
     CourseOutlineResponse, ModuleOutline, LessonOutline,
+    LessonContentResponse,
 )
 from app.repositories.llm_client import GeminiClient
 from app.repositories.cache import AICache
-from app.services.prompts import QUIZ_PROMPT_TEMPLATE, SUMMARY_PROMPT_TEMPLATE, COURSE_OUTLINE_PROMPT_TEMPLATE
+from app.services.prompts import (
+    QUIZ_PROMPT_TEMPLATE, SUMMARY_PROMPT_TEMPLATE, COURSE_OUTLINE_PROMPT_TEMPLATE,
+    LESSON_ARTICLE_PROMPT_TEMPLATE, LESSON_TUTORIAL_PROMPT_TEMPLATE,
+)
 
 logger = structlog.get_logger()
 
@@ -102,6 +106,47 @@ class AIService:
             estimated_duration_hours=estimated_hours,
             model_used=self._llm.model_name,
         )
+
+    async def generate_lesson_content(
+        self,
+        title: str,
+        description: str | None,
+        course_context: str | None,
+        format: str,
+    ) -> LessonContentResponse:
+        template = LESSON_TUTORIAL_PROMPT_TEMPLATE if format == "tutorial" else LESSON_ARTICLE_PROMPT_TEMPLATE
+        prompt = template.format(
+            title=title,
+            description=description or "Not specified",
+            course_context=course_context or "Not specified",
+        )
+        raw, tokens_in, tokens_out = await self._llm.generate(prompt)
+        logger.info("lesson_content_generated", tokens_in=tokens_in, tokens_out=tokens_out)
+
+        data = self._parse_lesson_content(raw)
+        content = data["content"]
+        key_concepts = data.get("key_concepts", [])
+        word_count = len(content.split())
+        estimated_minutes = max(1, round(word_count / 200))
+
+        return LessonContentResponse(
+            content=content,
+            key_concepts=key_concepts,
+            estimated_duration_minutes=estimated_minutes,
+            model_used=self._llm.model_name,
+        )
+
+    def _parse_lesson_content(self, raw: str) -> dict:
+        text = self._strip_markdown_fences(raw)
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as exc:
+            raise AppError(f"Failed to parse lesson content JSON from LLM: {exc}", status_code=502) from exc
+
+        if not isinstance(data, dict) or "content" not in data:
+            raise AppError("LLM returned invalid lesson content structure (missing 'content' key)", status_code=502)
+
+        return data
 
     def _parse_outline(self, raw: str) -> list[ModuleOutline]:
         text = self._strip_markdown_fences(raw)

@@ -40,6 +40,34 @@ IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blo
 Return this exact JSON structure:
 {{"modules": [{{"title": "Module Title", "description": "Module description", "lessons": [{{"title": "Lesson Title", "description": "Lesson description", "key_concepts": ["concept1", "concept2"], "estimated_duration_minutes": 20}}]}}]}}"""
 
+LESSON_ARTICLE_PROMPT_TEMPLATE = """Write a comprehensive educational lesson in markdown format.
+
+Title: {title}
+Description: {description}
+Course context: {course_context}
+
+Structure: ## Introduction, ## Main Content (with subsections), ## Key Takeaways, ## Practice Exercises (2-3).
+Use clear explanations, examples, and analogies. Target length: 1000-2000 words.
+
+IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blocks.
+
+Return this exact JSON structure:
+{{"content": "full markdown lesson content here", "key_concepts": ["concept1", "concept2", "concept3"]}}"""
+
+LESSON_TUTORIAL_PROMPT_TEMPLATE = """Write a step-by-step tutorial in markdown format.
+
+Title: {title}
+Description: {description}
+Course context: {course_context}
+
+Structure: ## Overview, ## Prerequisites, ## Step-by-step Guide (numbered steps with code/examples), ## Summary, ## Exercises.
+Include practical examples and code snippets where relevant. Target length: 1000-2000 words.
+
+IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blocks.
+
+Return this exact JSON structure:
+{{"content": "full markdown tutorial content here", "key_concepts": ["concept1", "concept2", "concept3"]}}"""
+
 TUTOR_SYSTEM_PROMPT = """You are a Socratic AI tutor for an online learning platform. Your role is to help students understand the lesson material through guided questioning.
 
 RULES:

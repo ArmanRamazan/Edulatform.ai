@@ -102,3 +102,17 @@ class CourseOutlineResponse(BaseModel):
     total_lessons: int
     estimated_duration_hours: int
     model_used: str
+
+
+class LessonContentRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    description: str | None = Field(default=None, max_length=1000)
+    course_context: str | None = Field(default=None, max_length=500)
+    format: str = Field(default="article", pattern=r"^(article|tutorial)$")
+
+
+class LessonContentResponse(BaseModel):
+    content: str
+    key_concepts: list[str]
+    estimated_duration_minutes: int
+    model_used: str
