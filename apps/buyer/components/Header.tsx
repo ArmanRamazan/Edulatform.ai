@@ -1,11 +1,16 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useAuth } from "@/hooks/use-auth";
 import { useDueCount } from "@/hooks/use-flashcards";
 import { useMyXp, useMyStreak } from "@/hooks/use-gamification";
 import { identity as identityApi } from "@/lib/api";
-import { AICreditIndicator } from "@/components/AICreditIndicator";
+
+const AICreditIndicator = dynamic(
+  () => import("@/components/AICreditIndicator").then((m) => ({ default: m.AICreditIndicator })),
+  { ssr: false },
+);
 
 const ROLE_LABELS: Record<string, string> = {
   student: "Студент",

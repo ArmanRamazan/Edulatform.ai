@@ -17,6 +17,7 @@ import type { QuizQuestionResult } from "@/lib/api";
 
 const PaywallDialog = dynamic(
   () => import("@/components/PaywallDialog").then((m) => ({ default: m.PaywallDialog })),
+  { ssr: false },
 );
 
 const TutorDrawer = dynamic(
@@ -178,6 +179,7 @@ export default function LessonPage({
                     src={lesson.video_url}
                     className="h-full w-full rounded"
                     allowFullScreen
+                    loading="lazy"
                     title="Видео урока"
                   />
                 </div>
