@@ -4,10 +4,11 @@ from uuid import UUID
 import jwt
 from fastapi import APIRouter, Depends, Header
 
-from common.errors import AppError
+from common.errors import AppError, ForbiddenError
 from app.domain.models import (
     QuizRequest, QuizResponse, SummaryRequest, SummaryResponse,
     TutorChatRequest, TutorChatResponse, TutorFeedbackRequest, TutorFeedbackResponse,
+    CourseOutlineRequest, CourseOutlineResponse,
 )
 from app.services.ai_service import AIService
 from app.services.tutor_service import TutorService
@@ -107,6 +108,27 @@ async def tutor_chat(
         lesson_content=body.lesson_content,
         session_id=body.session_id,
         credits_remaining=credits_remaining,
+    )
+
+
+@router.post("/course/outline", response_model=CourseOutlineResponse)
+async def generate_course_outline(
+    body: CourseOutlineRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[AIService, Depends(_get_ai_service)],
+    credit_service: Annotated[CreditService, Depends(_get_credit_service)],
+) -> CourseOutlineResponse:
+    if claims["role"] not in ("teacher", "admin"):
+        raise ForbiddenError("Only teachers and admins can generate course outlines")
+    await credit_service.check_and_consume(
+        user_id=str(claims["user_id"]),
+        tier=claims["subscription_tier"],
+    )
+    return await service.generate_outline(
+        topic=body.topic,
+        level=body.level,
+        target_audience=body.target_audience,
+        num_modules=body.num_modules,
     )
 
 

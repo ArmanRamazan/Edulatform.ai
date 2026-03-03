@@ -1268,6 +1268,56 @@ Mock оплата курса. Всегда возвращает `status=complete
 | 401 | Отсутствует или невалидный токен |
 | 404 | Сессия не найдена |
 
+### POST /ai/course/outline
+
+Генерация структуры курса (модули и уроки) через AI. Только для **teacher** и **admin**. Требует JWT. Использует кредиты.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "topic": "Python Programming",
+  "level": "beginner",
+  "target_audience": "Complete beginners with no coding experience",
+  "num_modules": 5
+}
+```
+
+> `level`: `"beginner"` | `"intermediate"` | `"advanced"`
+> `num_modules`: 2–10, default 5
+
+**Response `200`:**
+```json
+{
+  "modules": [
+    {
+      "title": "Introduction to Python",
+      "description": "Getting started with Python",
+      "lessons": [
+        {
+          "title": "Installing Python",
+          "description": "How to set up your environment",
+          "key_concepts": ["installation", "IDE setup"],
+          "estimated_duration_minutes": 15
+        }
+      ]
+    }
+  ],
+  "total_lessons": 18,
+  "estimated_duration_hours": 6,
+  "model_used": "gemini-2.0-flash-lite"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Роль не teacher/admin или лимит кредитов исчерпан |
+| 422 | Невалидные параметры (level, num_modules range) |
+| 502 | Ошибка Gemini API или невалидный JSON от LLM |
+
 ---
 
 ## Learning Engine Service (`:8007`)

@@ -26,6 +26,20 @@ Rules:
 Lesson content:
 {content}"""
 
+COURSE_OUTLINE_PROMPT_TEMPLATE = """You are an expert course designer. Generate a detailed course outline for an online course.
+
+Topic: {topic}
+Level: {level}
+Target audience: {target_audience}
+Number of modules: {num_modules}
+
+Each module should have 3-5 lessons. Each lesson should have a clear title, description, key concepts, and estimated duration in minutes.
+
+IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blocks.
+
+Return this exact JSON structure:
+{{"modules": [{{"title": "Module Title", "description": "Module description", "lessons": [{{"title": "Lesson Title", "description": "Lesson description", "key_concepts": ["concept1", "concept2"], "estimated_duration_minutes": 20}}]}}]}}"""
+
 TUTOR_SYSTEM_PROMPT = """You are a Socratic AI tutor for an online learning platform. Your role is to help students understand the lesson material through guided questioning.
 
 RULES:
