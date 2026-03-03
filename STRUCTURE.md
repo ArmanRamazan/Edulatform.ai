@@ -55,8 +55,9 @@ eduplatform/
 │   ├── seed/                      #   Database seeding scripts
 │   ├── locust/                    #   Load test scenarios
 │   └── orchestrator/              #   AI orchestrator: autonomous Claude Code executor
-│       ├── orchestrator.py        #     Phase parser, task executor, budget tracker, state persistence
-│       ├── run.sh                 #     Launcher script (./run.sh --phase 2.4)
+│       ├── orchestrator.py        #     YAML task parser, task executor, state persistence
+│       ├── run.sh                 #     Launcher script (./run.sh tasks/sprint-1.yaml)
+│       ├── tasks/                 #     Sprint YAML files (sprint-1 through sprint-4, phase-2.0 through phase-3.5)
 │       └── pyproject.toml         #     uv workspace member (pure stdlib, no deps)
 │
 └── docs/                          # Документация (goals, phases, ADR)
@@ -90,7 +91,7 @@ eduplatform/
 | `workers/` директория | Когда вырастет | Пока background jobs живут внутри сервисов. Выделим когда нужна независимая масштабируемость |
 | `libs/py/testing/` | Когда будет boilerplate | Пока fixtures живут в `tests/` каждого сервиса. Выделим когда увидим дублирование |
 | `terraform/` | Phase 2 | Пока Docker Compose хватает. IaC когда будет multi-env |
-| `apps/seller/` | Phase 1.7 | Teacher dashboard как отдельное приложение |
+| ~~`apps/seller/`~~ | ~~Phase 1.7~~ | ✅ Scaffolded (auth + API client, pages в процессе) |
 
 ---
 

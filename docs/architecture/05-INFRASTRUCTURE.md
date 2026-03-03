@@ -1,7 +1,7 @@
 # 05 — Infrastructure & Docker
 
-> Последнее обновление: 2026-02-25
-> Стадия: Phase 2.3 (Knowledge Graph + Adaptive Path)
+> Последнее обновление: 2026-03-03
+> Стадия: Phase 3.2 (Monetization backend — Stripe, subscriptions, earnings, payouts)
 
 ---
 
@@ -158,6 +158,7 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 | `ENROLLMENT_DB_URL` | `postgresql://enrollment:enrollment@enrollment-db:5432/enrollment` | Enrollment DB |
 | `PAYMENT_DB_URL` | `postgresql://payment:payment@payment-db:5432/payment` | Payment DB |
 | `NOTIFICATION_DB_URL` | `postgresql://notification:notification@notification-db:5432/notification` | Notification DB |
+| `LEARNING_DB_URL` | `postgresql://learning:learning@learning-db:5432/learning` | Learning DB |
 
 ---
 
@@ -176,6 +177,7 @@ docker compose -f docker-compose.dev.yml --profile seed up seed
 - **~100,000 отзывов**: рейтинг 1-5 (weighted: 40% пятёрок), обновляет avg_rating/review_count
 - **200,000 записей (enrollments)**: 60% на бесплатные курсы, 40% на платные
 - **50,000 оплат (payments)**: для платных курсов, status=completed
+- **Learning data**: quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments
 - Пароль для всех: `password123` (bcrypt hash)
 
 ---

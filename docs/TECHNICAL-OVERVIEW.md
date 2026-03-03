@@ -21,7 +21,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 336 тестов | identity 48, course 59, enrollment 25, payment 58, notification 20, ai 30, learning 96 |
+| Unit Tests | ✅ 400 тестов | identity 52, course 71, enrollment 28, payment 61, notification 32, ai 49, learning 107 |
 
 ## Стек
 
@@ -35,7 +35,7 @@
 | AI / LLM | Gemini 2.0 Flash Lite (httpx) | Quiz gen, summary gen, Socratic tutor, credit tracking |
 | Метрики | Prometheus + Grafana | Автоматические метрики через prometheus-fastapi-instrumentator |
 | Нагрузка | Locust | Сценарии, имитирующие реальный трафик |
-| Пакеты | uv (Python), npm (JS) | uv workspace для монорепы |
+| Пакеты | uv (Python), pnpm (JS) | uv workspace для монорепы |
 
 ## Быстрый старт
 
@@ -62,7 +62,7 @@ cd apps/seller && pnpm install && pnpm dev   # http://localhost:3002
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 7 сервисов (336 тестов)
+# Все 7 сервисов (400 тестов)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v

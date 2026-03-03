@@ -42,7 +42,8 @@ EduPlatform — не очередной видеохостинг с прогре
 Монорепа: **Python** (бизнес-логика, 7 микросервисов) + **Next.js** (frontend) + **Rust** (performance-critical, Phase 4).
 
 - **7 сервисов**: Identity, Course, Enrollment, Payment, Notification, AI, Learning
-- **301 unit-тестов**, нагрузочное тестирование через Locust
+- **400 unit-тестов**, нагрузочное тестирование через Locust
+- **81 endpoint**, **26 таблиц** в 6 БД
 - **157 RPS, p99 = 51ms** на текущей стадии
 - **AI**: Quiz generation, Summary, Socratic Tutor (Gemini Flash), FSRS spaced repetition
 - **Knowledge Graph**: concepts, prerequisites, concept mastery tracking
@@ -56,9 +57,9 @@ EduPlatform — не очередной видеохостинг с прогре
 docker compose -f docker-compose.dev.yml up
 
 # Фронтенд
-cd apps/buyer && npm install && npm run dev
+cd apps/buyer && pnpm install && pnpm dev
 
-# Тесты (301 тестов, 7 сервисов)
+# Тесты (400 тестов, 7 сервисов)
 uv sync --all-packages
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
@@ -71,15 +72,14 @@ cd services/py/learning && uv run --package learning pytest tests/ -v
 
 ## AI Orchestrator
 
-Автономный executor для реализации roadmap через Claude Code:
+Автономный executor для реализации roadmap через Claude Code. Принимает YAML task files:
 
 ```bash
 cd tools/orchestrator
-./run.sh                        # все оставшиеся фазы
-./run.sh --phase 2.4            # конкретный milestone
-./run.sh --phase 2.4 --dry-run  # preview задач
-./run.sh --resume               # продолжить после паузы
-./run.sh --status               # показать прогресс
+./run.sh tasks/sprint-1-launch-blockers.yaml   # конкретный спринт
+./run.sh tasks/sprint-1-launch-blockers.yaml --dry-run  # preview задач
+./run.sh --resume                              # продолжить после паузы
+./run.sh --status                              # показать прогресс
 ```
 
 ## Документация
@@ -91,12 +91,12 @@ cd tools/orchestrator
 
 ## Статус
 
-**Phase 2.3 — Knowledge Graph (завершён).** 7 сервисов, фронтенд, мониторинг, 224 теста. AI-слой: quiz generation, summary, Socratic tutor. Learning Engine: квизы + FSRS flashcards + knowledge graph + concept mastery. Далее — gamification (2.4), MVP polish (2.5), затем Phase 3 (Growth: реальные платежи, seller app, SEO, CI/CD).
+**Phase 3.2 — Monetization backend (завершён).** 7 сервисов, 81 endpoint, 400 тестов. AI-слой: quiz generation, summary, Socratic tutor. Learning Engine: квизы + FSRS flashcards + knowledge graph + gamification. Buyer App: 18 страниц (каталог, обучение, AI, геймификация, onboarding). Stripe backend: subscriptions, earnings, payouts.
 
 | Стадия | Пользователи | Статус |
 |--------|-------------|--------|
 | **Phase 0 — Foundation** | до 10K | ✅ Готово |
 | **Phase 1 — Launch** | 10K → 100K | ✅ Готово |
-| **Phase 2 — Learning Intelligence** | 10K → 100K | 🟡 2.0–2.3 ✅, 2.4–2.5 🔴 |
-| **Phase 3 — Growth** | 100K → 1M | 🔴 Не начато |
+| **Phase 2 — Learning Intelligence** | 10K → 100K | 🟡 2.0–2.4 ✅, 2.5 частично |
+| **Phase 3 — Growth** | 100K → 1M | 🟡 3.1–3.2 backend ✅, frontend 🔴 |
 | **Phase 4 — Scale** | 1M → 10M | 🔴 Не начато |

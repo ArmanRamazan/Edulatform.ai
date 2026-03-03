@@ -1,7 +1,7 @@
 # 04 — Authentication Flow
 
-> Последнее обновление: 2026-02-25
-> Стадия: Phase 2.3 (Knowledge Graph + Adaptive Path)
+> Последнее обновление: 2026-03-03
+> Стадия: Phase 3.2 (Monetization backend — Stripe, subscriptions, earnings, payouts)
 
 ---
 
@@ -175,10 +175,12 @@ CREATE TABLE refresh_tokens (
 
 **Student-only:** `POST /payments`
 **Authenticated:** `GET /payments/{id}`, `GET /payments/me`
+**Teacher-only:** `GET /earnings/me/summary`, `GET /earnings/me`, `POST /earnings/payouts`, `GET /earnings/payouts`
 
 ### Notification Service
 
 **Authenticated:** `POST /notifications`, `GET /notifications/me`, `PATCH /notifications/{id}/read`
+**Admin-only:** `POST /streak-reminders/send`, `POST /flashcard-reminders/send`
 
 ### AI Service
 
@@ -187,6 +189,7 @@ CREATE TABLE refresh_tokens (
 - `POST /ai/summary/generate` — генерация краткого содержания
 - `POST /ai/tutor/chat` — Socratic AI-тьютор (чат по уроку, лимит 10/день)
 - `POST /ai/tutor/feedback` — оценка ответа тьютора (thumbs up/down)
+- `GET /ai/credits/me` — баланс кредитов текущего пользователя
 
 ### Learning Engine
 
@@ -203,6 +206,16 @@ CREATE TABLE refresh_tokens (
 
 **Authenticated (любая роль):**
 - `GET /quizzes/lesson/{id}` — получение квиза для урока
+- `GET /concepts/course/{id}` — граф концептов курса
+- `GET /concepts/course/{id}/mastery` — мастерство по концептам
+- `GET /streaks/me` — текущий streak пользователя
+- `GET /leaderboard` — общий рейтинг
+- `GET /leaderboard/course/{id}` — рейтинг по курсу
+- `GET /discussions/lesson/{id}` — обсуждения урока
+- `POST /discussions` — создание комментария
+- `POST /discussions/{id}/upvote` — голосование
+- `GET /xp/me` — XP текущего пользователя
+- `GET /badges/me` — значки текущего пользователя
 
 ---
 
