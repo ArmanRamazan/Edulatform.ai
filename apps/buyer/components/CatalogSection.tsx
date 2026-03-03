@@ -30,7 +30,8 @@ export function CatalogSection() {
 
   return (
     <section id="catalog" className="mx-auto max-w-6xl px-4 py-6">
-      <h2 className="mb-4 text-2xl font-bold text-gray-900">Каталог курсов</h2>
+      <h2 className="mb-1 text-2xl font-bold text-gray-900">Каталог курсов</h2>
+      <p className="mb-4 text-sm text-gray-500">Выберите курс и начните учиться прямо сейчас</p>
 
       <form onSubmit={handleSearch} className="mb-4 flex gap-2">
         <label htmlFor="search-input" className="sr-only">Поиск курсов</label>
