@@ -251,7 +251,7 @@ export interface AiCreditsResponse {
   limit: number;
   remaining: number;
   reset_at: string;
-  tier: string;
+  tier: "free" | "student" | "pro";
 }
 
 export interface TutorFeedbackResponse {
@@ -599,6 +599,56 @@ export const payments = {
     if (params?.offset) sp.set("offset", String(params.offset));
     const qs = sp.toString();
     return request<PaymentList>(`${PAYMENT_URL}/payments/me${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export interface SubscriptionPlan {
+  id: string;
+  name: "free" | "student" | "pro";
+  stripe_price_id: string | null;
+  price_monthly: number;
+  price_yearly: number | null;
+  ai_credits_daily: number;
+  features: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface UserSubscription {
+  id: string;
+  user_id: string;
+  plan_id: string;
+  plan_name: "free" | "student" | "pro";
+  stripe_subscription_id: string | null;
+  stripe_customer_id: string | null;
+  status: "active" | "canceled" | "past_due";
+  current_period_start: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export const subscriptions = {
+  plans() {
+    return request<SubscriptionPlan[]>(`${PAYMENT_URL}/subscriptions/plans`);
+  },
+  me(token: string) {
+    return request<UserSubscription>(`${PAYMENT_URL}/subscriptions/me`, {
+      headers: authHeaders(token),
+    });
+  },
+  create(token: string, data: { plan_id: string; payment_method_id: string }) {
+    return request<UserSubscription>(`${PAYMENT_URL}/subscriptions`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  cancel(token: string) {
+    return request<UserSubscription>(`${PAYMENT_URL}/subscriptions/cancel`, {
+      method: "POST",
       headers: authHeaders(token),
     });
   },
