@@ -1,0 +1,322 @@
+# STAGING: docker compose -f docker-compose.staging.yml up -d
+# Pre-built images, staging DBs (ports 5443-5448), no monitoring stack
+# Seed demo data: docker compose -f docker-compose.staging.yml --profile seed up seed
+services:
+  identity-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: identity
+      POSTGRES_USER: identity
+      POSTGRES_PASSWORD: ${IDENTITY_DB_PASSWORD}
+    ports:
+      - "5443:5432"
+    volumes:
+      - identity-staging-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U identity"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  course-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: course
+      POSTGRES_USER: course
+      POSTGRES_PASSWORD: ${COURSE_DB_PASSWORD}
+    ports:
+      - "5444:5432"
+    volumes:
+      - course-staging-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U course"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  enrollment-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: enrollment
+      POSTGRES_USER: enrollment
+      POSTGRES_PASSWORD: ${ENROLLMENT_DB_PASSWORD}
+    ports:
+      - "5445:5432"
+    volumes:
+      - enrollment-staging-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U enrollment"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  payment-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: payment
+      POSTGRES_USER: payment
+      POSTGRES_PASSWORD: ${PAYMENT_DB_PASSWORD}
+    ports:
+      - "5446:5432"
+    volumes:
+      - payment-staging-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U payment"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  notification-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: notification
+      POSTGRES_USER: notification
+      POSTGRES_PASSWORD: ${NOTIFICATION_DB_PASSWORD}
+    ports:
+      - "5447:5432"
+    volumes:
+      - notification-staging-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U notification"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  learning-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: learning
+      POSTGRES_USER: learning
+      POSTGRES_PASSWORD: ${LEARNING_DB_PASSWORD}
+    ports:
+      - "5448:5432"
+    volumes:
+      - learning-staging-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U learning"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  identity:
+    image: ghcr.io/${GHCR_OWNER}/identity:${IMAGE_TAG:-latest}
+    ports:
+      - "8001:8001"
+    env_file:
+      - deploy/staging/.env.staging
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql://identity:${IDENTITY_DB_PASSWORD}@identity-db:5432/identity
+      REDIS_URL: redis://redis:6379
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 2 --timeout-graceful-shutdown 25
+    depends_on:
+      identity-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  course:
+    image: ghcr.io/${GHCR_OWNER}/course:${IMAGE_TAG:-latest}
+    ports:
+      - "8002:8002"
+    env_file:
+      - deploy/staging/.env.staging
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql://course:${COURSE_DB_PASSWORD}@course-db:5432/course
+      REDIS_URL: redis://redis:6379
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8002 --workers 2 --timeout-graceful-shutdown 25
+    depends_on:
+      course-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8002/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  enrollment:
+    image: ghcr.io/${GHCR_OWNER}/enrollment:${IMAGE_TAG:-latest}
+    ports:
+      - "8003:8003"
+    env_file:
+      - deploy/staging/.env.staging
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql://enrollment:${ENROLLMENT_DB_PASSWORD}@enrollment-db:5432/enrollment
+      REDIS_URL: redis://redis:6379
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8003 --workers 2 --timeout-graceful-shutdown 25
+    depends_on:
+      enrollment-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8003/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  payment:
+    image: ghcr.io/${GHCR_OWNER}/payment:${IMAGE_TAG:-latest}
+    ports:
+      - "8004:8004"
+    env_file:
+      - deploy/staging/.env.staging
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql://payment:${PAYMENT_DB_PASSWORD}@payment-db:5432/payment
+      REDIS_URL: redis://redis:6379
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8004 --workers 2 --timeout-graceful-shutdown 25
+    depends_on:
+      payment-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8004/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  notification:
+    image: ghcr.io/${GHCR_OWNER}/notification:${IMAGE_TAG:-latest}
+    ports:
+      - "8005:8005"
+    env_file:
+      - deploy/staging/.env.staging
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql://notification:${NOTIFICATION_DB_PASSWORD}@notification-db:5432/notification
+      REDIS_URL: redis://redis:6379
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8005 --workers 2 --timeout-graceful-shutdown 25
+    depends_on:
+      notification-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8005/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  ai:
+    image: ghcr.io/${GHCR_OWNER}/ai:${IMAGE_TAG:-latest}
+    ports:
+      - "8006:8006"
+    env_file:
+      - deploy/staging/.env.staging
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql://unused:unused@localhost:5432/unused
+      REDIS_URL: redis://redis:6379
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8006 --workers 2 --timeout-graceful-shutdown 25
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8006/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  learning:
+    image: ghcr.io/${GHCR_OWNER}/learning:${IMAGE_TAG:-latest}
+    ports:
+      - "8007:8007"
+    env_file:
+      - deploy/staging/.env.staging
+    environment:
+      ENVIRONMENT: staging
+      DATABASE_URL: postgresql://learning:${LEARNING_DB_PASSWORD}@learning-db:5432/learning
+      REDIS_URL: redis://redis:6379
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8007 --workers 2 --timeout-graceful-shutdown 25
+    depends_on:
+      learning-db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8007/health/live')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    stop_grace_period: 30s
+    restart: unless-stopped
+
+  seed:
+    image: ghcr.io/${GHCR_OWNER}/seed:${IMAGE_TAG:-latest}
+    environment:
+      IDENTITY_DB_URL: postgresql://identity:${IDENTITY_DB_PASSWORD}@identity-db:5432/identity
+      COURSE_DB_URL: postgresql://course:${COURSE_DB_PASSWORD}@course-db:5432/course
+      ENROLLMENT_DB_URL: postgresql://enrollment:${ENROLLMENT_DB_PASSWORD}@enrollment-db:5432/enrollment
+      PAYMENT_DB_URL: postgresql://payment:${PAYMENT_DB_PASSWORD}@payment-db:5432/payment
+      NOTIFICATION_DB_URL: postgresql://notification:${NOTIFICATION_DB_PASSWORD}@notification-db:5432/notification
+      LEARNING_DB_URL: postgresql://learning:${LEARNING_DB_PASSWORD}@learning-db:5432/learning
+    depends_on:
+      identity:
+        condition: service_healthy
+      course:
+        condition: service_healthy
+      enrollment:
+        condition: service_healthy
+      payment:
+        condition: service_healthy
+      notification:
+        condition: service_healthy
+      learning:
+        condition: service_healthy
+    profiles:
+      - seed
+
+volumes:
+  identity-staging-data:
+  course-staging-data:
+  enrollment-staging-data:
+  payment-staging-data:
+  notification-staging-data:
+  learning-staging-data:

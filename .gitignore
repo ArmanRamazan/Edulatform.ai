@@ -161,6 +161,7 @@ tools/orchestrator/.state/
 
 # Environments
 .env
+.env.staging
 .envrc
 .venv
 env/

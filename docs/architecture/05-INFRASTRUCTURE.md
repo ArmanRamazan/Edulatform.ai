@@ -38,6 +38,40 @@ docker compose -f docker-compose.dev.yml up
 | learning | Dockerfile build | 8007 |
 | seed (profile) | Dockerfile build | — |
 
+### Staging (`docker-compose.staging.yml`)
+
+```bash
+docker compose -f docker-compose.staging.yml up -d
+# Seed demo data:
+docker compose -f docker-compose.staging.yml --profile seed up seed
+```
+
+- Pre-built images from GHCR (`ghcr.io/{owner}/{service}:latest`)
+- 2 uvicorn workers (lower resource usage than prod)
+- No monitoring stack (no Prometheus/Grafana)
+- Staging-specific DB ports (5443–5448), Redis on 6380
+- Env vars via `deploy/staging/.env.staging` (env_file) + `ENVIRONMENT=staging`
+- Seed profile for demo data on first run
+
+**Сервисы:**
+| Container | Image | Порт (host) |
+|-----------|-------|-------------|
+| identity-db | postgres:16-alpine | 5443 |
+| course-db | postgres:16-alpine | 5444 |
+| enrollment-db | postgres:16-alpine | 5445 |
+| payment-db | postgres:16-alpine | 5446 |
+| notification-db | postgres:16-alpine | 5447 |
+| learning-db | postgres:16-alpine | 5448 |
+| redis | redis:7-alpine | 6380 |
+| identity | ghcr.io/{owner}/identity | 8001 |
+| course | ghcr.io/{owner}/course | 8002 |
+| enrollment | ghcr.io/{owner}/enrollment | 8003 |
+| payment | ghcr.io/{owner}/payment | 8004 |
+| notification | ghcr.io/{owner}/notification | 8005 |
+| ai | ghcr.io/{owner}/ai | 8006 |
+| learning | ghcr.io/{owner}/learning | 8007 |
+| seed (profile) | ghcr.io/{owner}/seed | — |
+
 ### Prod (`docker-compose.prod.yml`)
 
 ```bash
