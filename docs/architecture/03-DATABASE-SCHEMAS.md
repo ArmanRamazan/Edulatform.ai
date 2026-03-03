@@ -57,10 +57,12 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: comments
        ├── table: comment_upvotes
        ├── table: xp_ledger
-       └── table: badges
+       ├── table: badges
+       ├── table: pretests
+       └── table: pretest_answers
 ```
 
-**Итого: 26 таблиц в 6 базах данных.**
+**Итого: 28 таблиц в 6 базах данных.**
 
 ---
 
@@ -861,15 +863,6 @@ CREATE TABLE IF NOT EXISTS comment_upvotes (
 
 **Бизнес-логика:** Upvote — toggle: повторный вызов снимает голос. upvote_count в comments обновляется при add/remove vote. Создание комментария любым авторизованным пользователем. Ответы через parent_id. Удаление каскадное (удаляет ответы и голоса).
 
-**Миграции:**
-- `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
-- `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
-- `003_concepts.sql` — создание таблиц concepts, concept_prerequisites, concept_mastery и индексов
-- `004_streaks.sql` — создание таблицы streaks
-- `006_leaderboard.sql` — создание таблицы leaderboard_scores с partial index
-- `007_discussions.sql` — создание таблиц comments, comment_upvotes с индексами
-- `008_xp_badges.sql` — создание таблиц xp_ledger, badges с индексами
-
 ### Table: `xp_ledger`
 
 ```sql
@@ -920,6 +913,70 @@ CREATE TABLE IF NOT EXISTS badges (
 - `streak_7` — 7 дней подряд активности
 - `quiz_ace` — сдача квиза на 100%
 - `mastery_100` — достижение 100% mastery по любому concept
+
+### Table: `pretests`
+
+```sql
+CREATE TABLE IF NOT EXISTS pretests (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL,
+    course_id    UUID NOT NULL,
+    status       VARCHAR(20) NOT NULL DEFAULT 'in_progress',
+    started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at TIMESTAMPTZ
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `user_id` | UUID | NOT NULL | ID студента (из Identity) |
+| `course_id` | UUID | NOT NULL | ID курса (из Course Service) |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'in_progress' | Статус: `in_progress`, `completed` |
+| `started_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время начала |
+| `completed_at` | TIMESTAMPTZ | nullable | Время завершения |
+
+**Индексы:** PK (id) + idx_pretests_user_course (user_id, course_id).
+
+### Table: `pretest_answers`
+
+```sql
+CREATE TABLE IF NOT EXISTS pretest_answers (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pretest_id     UUID NOT NULL REFERENCES pretests(id) ON DELETE CASCADE,
+    concept_id     UUID NOT NULL,
+    question       TEXT NOT NULL,
+    user_answer    TEXT NOT NULL,
+    correct_answer TEXT NOT NULL,
+    is_correct     BOOLEAN NOT NULL,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `pretest_id` | UUID | FK → pretests(id) CASCADE, NOT NULL | Пре-тест, к которому относится ответ |
+| `concept_id` | UUID | NOT NULL | Концепт, по которому задан вопрос (из concepts) |
+| `question` | TEXT | NOT NULL | Текст вопроса |
+| `user_answer` | TEXT | NOT NULL | Ответ студента |
+| `correct_answer` | TEXT | NOT NULL | Правильный ответ |
+| `is_correct` | BOOLEAN | NOT NULL | Верен ли ответ |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время ответа |
+
+**Индексы:** PK (id) + idx_pretest_answers_pretest_id (pretest_id).
+
+**Бизнес-логика:** Адаптивный алгоритм выбирает следующий концепт на основе истории ответов текущего пре-теста. При завершении всех концептов (или достижении лимита вопросов) pretest.status переводится в `completed` и вычисляется итоговый score = correct / total.
+
+**Миграции:**
+- `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
+- `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
+- `003_concepts.sql` — создание таблиц concepts, concept_prerequisites, concept_mastery и индексов
+- `004_streaks.sql` — создание таблицы streaks
+- `006_leaderboard.sql` — создание таблицы leaderboard_scores с partial index
+- `007_discussions.sql` — создание таблиц comments, comment_upvotes с индексами
+- `008_xp_badges.sql` — создание таблиц xp_ledger, badges с индексами
+- `009_pretests.sql` — создание таблиц pretests, pretest_answers с индексами
 
 ---
 

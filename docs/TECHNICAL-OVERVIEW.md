@@ -14,14 +14,14 @@
 | Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read, streak-at-risk reminders, flashcard-due reminders |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), GET /ai/credits/me |
-| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, 29 endpoints |
+| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, adaptive pre-test, 32 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 400 тестов | identity 52, course 71, enrollment 28, payment 61, notification 32, ai 49, learning 107 |
+| Unit Tests | ✅ 415 тестов | identity 52, course 71, enrollment 28, payment 61, notification 32, ai 49, learning 126 (incl. pre-test: 20) |
 
 ## Стек
 
@@ -63,7 +63,7 @@ cd apps/seller && pnpm install && pnpm dev   # http://localhost:3002
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 7 сервисов (400 тестов)
+# Все 7 сервисов (415 тестов)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v

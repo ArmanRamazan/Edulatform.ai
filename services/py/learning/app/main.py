@@ -22,6 +22,7 @@ from app.repositories.leaderboard_repo import LeaderboardRepository
 from app.repositories.discussion_repo import DiscussionRepository
 from app.repositories.xp_repo import XpRepository
 from app.repositories.badge_repo import BadgeRepository
+from app.repositories.pretest_repo import PretestRepository
 from app.services.quiz_service import QuizService
 from app.services.flashcard_service import FlashcardService
 from app.services.concept_service import ConceptService
@@ -30,6 +31,7 @@ from app.services.leaderboard_service import LeaderboardService
 from app.services.discussion_service import DiscussionService
 from app.services.xp_service import XpService
 from app.services.badge_service import BadgeService
+from app.services.pretest_service import PretestService
 from app.routes.quizzes import router as quizzes_router
 from app.routes.flashcards import router as flashcards_router
 from app.routes.concepts import router as concepts_router
@@ -38,6 +40,7 @@ from app.routes.leaderboard import router as leaderboard_router
 from app.routes.discussions import router as discussions_router
 from app.routes.xp import router as xp_router
 from app.routes.badges import router as badges_router
+from app.routes.pretests import router as pretests_router
 
 app_settings = Settings()
 
@@ -51,6 +54,7 @@ _leaderboard_service: LeaderboardService | None = None
 _discussion_service: DiscussionService | None = None
 _xp_service: XpService | None = None
 _badge_service: BadgeService | None = None
+_pretest_service: PretestService | None = None
 
 
 def get_quiz_service() -> QuizService:
@@ -93,9 +97,14 @@ def get_badge_service() -> BadgeService:
     return _badge_service
 
 
+def get_pretest_service() -> PretestService:
+    assert _pretest_service is not None
+    return _pretest_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service
+    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service
 
     configure_logging(service_name="learning")
     logger = structlog.get_logger()
@@ -122,6 +131,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         with open("migrations/007_discussions.sql") as f:
             await conn.execute(f.read())
         with open("migrations/008_xp_badges.sql") as f:
+            await conn.execute(f.read())
+        with open("migrations/009_pretests.sql") as f:
             await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
@@ -151,6 +162,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     badge_repo = BadgeRepository(_pool)
     _badge_service = BadgeService(badge_repo)
+
+    pretest_repo = PretestRepository(_pool)
+    _pretest_service = PretestService(pretest_repo, concept_repo)
     logger.info("service_started", port=8007)
     yield
     await _redis.aclose()
@@ -180,6 +194,7 @@ app.include_router(leaderboard_router)
 app.include_router(discussions_router)
 app.include_router(xp_router)
 app.include_router(badges_router)
+app.include_router(pretests_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
