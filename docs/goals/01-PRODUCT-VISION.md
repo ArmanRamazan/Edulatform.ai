@@ -1,7 +1,7 @@
 # 01 — Видение продукта: Learning Velocity Platform
 
 > Владелец: CEO / CPO
-> Последнее обновление: 2026-02-24
+> Последнее обновление: 2026-03-03
 
 ---
 
@@ -50,9 +50,9 @@
 
 ---
 
-## Текущее состояние продукта (Phase 0–1.3 ✅)
+## Текущее состояние продукта (Phase 0–2.4 ✅, 3.1–3.2 backend ✅)
 
-### Что работает (Foundation)
+### Что работает
 
 | Возможность | Статус |
 |-------------|--------|
@@ -75,23 +75,29 @@
 | Buyer frontend (Next.js): все страницы | ✅ |
 | TanStack Query + error boundaries + skeletons | ✅ |
 | Prometheus + Grafana (22 panels) | ✅ |
-| 157 тестов по 5 сервисам | ✅ |
+| 400 тестов по 7 сервисам | ✅ |
+| AI Service: quiz gen, summary, Socratic tutor, credits | ✅ |
+| Learning Engine: quizzes, FSRS flashcards, knowledge graph | ✅ |
+| Gamification: XP, streaks, badges, leaderboard, discussions | ✅ |
+| Stripe backend: subscriptions, earnings, payouts | ✅ |
+| Onboarding flow | ✅ |
+| Seller App scaffolded (auth + API client) | ✅ |
 
 ### Замкнутый цикл обучения ✅
 
-Admin → teacher creates course → student finds → enrolls → completes lessons → reviews.
+Admin → teacher creates course → student finds → enrolls → completes lessons → takes quiz → reviews flashcards → asks AI tutor → earns XP/badges → joins leaderboard → discusses.
 
-### Чего НЕ хватает для дифференциации
+### Чего НЕ хватает для полного Growth
 
 | Пробел | Почему критично |
 |--------|----------------|
-| Квизы после урока | Нет active recall — пассивное потребление |
-| AI-генерация контента | Нет summaries, auto-quizzes |
-| Spaced repetition | Нет долгосрочного запоминания |
-| AI Tutor | Нет обратной связи по пониманию |
-| Knowledge graph | Нет адаптивных путей, нет метакогниции |
-| Gamification | Нет мотивации (streaks, XP, badges) |
-| Community | Нет accountability (обсуждения) |
+| Stripe frontend (checkout, pricing page) | Нельзя принимать реальные платежи |
+| Seller App pages | Teachers не видят аналитику и earnings |
+| SEO | Нет органического трафика |
+| CI/CD | Нет автоматического тестирования на PR |
+| Real email delivery | Verification/reset через stdout stub |
+| Certificates | Нет мотивации завершить курс до конца |
+| Video upload | Нет видео-контента от teachers |
 
 ---
 
@@ -142,28 +148,28 @@ Admin → teacher creates course → student finds → enrolls → completes les
 - [x] ✅ Прохождение уроков (markdown + video)
 - [x] ✅ Прогресс: % завершения, auto-completion
 - [x] ✅ Отзыв и оценка курса
-- [ ] 🔵 **Quiz после каждого урока (AI-generated)**
-- [ ] 🔵 **AI Summary урока**
-- [ ] 🔵 **Flashcards (FSRS-scheduled)**
-- [ ] 🔵 **AI Socratic Tutor (chat per lesson)**
-- [ ] 🔵 **Knowledge graph visualization**
-- [ ] 🔵 **Learning Velocity Dashboard**
-- [ ] 🔵 **XP, streaks, badges**
-- [ ] 🔵 **Course discussions**
-- [ ] 🔴 Реальные платежи (Stripe)
-- [ ] 🔴 Сертификат по завершении (PDF)
-- [ ] 🔴 Push/email уведомления
+- [x] ✅ Quiz после каждого урока (AI-generated)
+- [x] ✅ AI Summary урока
+- [x] ✅ Flashcards (FSRS-scheduled)
+- [x] ✅ AI Socratic Tutor (chat per lesson)
+- [x] ✅ Knowledge graph visualization
+- [ ] 🔴 Learning Velocity Dashboard (sprint-10)
+- [x] ✅ XP, streaks, badges
+- [x] ✅ Course discussions
+- [ ] 🟡 Реальные платежи (Stripe) — backend ✅, frontend sprint-3
+- [ ] 🔴 Сертификат по завершении (PDF) — sprint-8
+- [ ] 🔴 Push/email уведомления — sprint-7
 
 ### Teacher Journey
 
 - [x] ✅ Регистрация, верификация через admin
 - [x] ✅ CRUD курсов, модулей, уроков
 - [x] ✅ "Мои курсы" dashboard
-- [ ] 🔵 **Тегирование concepts per lesson (knowledge graph)**
-- [ ] 🔴 Seller App (полноценный dashboard)
-- [ ] 🔴 Аналитика: students, completion, revenue
-- [ ] 🔴 Загрузка видео
-- [ ] 🔴 Промо-инструменты
+- [x] ✅ Тегирование concepts per lesson (knowledge graph)
+- [ ] 🟡 Seller App — scaffolded, pages sprint-2/6
+- [ ] 🟡 Аналитика — backend ✅ (GET /analytics/teacher), frontend sprint-6
+- [ ] 🔴 Загрузка видео — sprint-13
+- [ ] 🔴 Промо-инструменты — sprint-12
 
 ### Platform Operations
 

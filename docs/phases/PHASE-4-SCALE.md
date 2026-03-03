@@ -18,7 +18,7 @@
 
 ---
 
-## Milestone 4.1 — Rust Performance Layer
+## Milestone 4.1 — Rust Performance Layer (sprint-16)
 
 | # | Задача | Статус |
 |---|--------|--------|
@@ -28,7 +28,7 @@
 
 ---
 
-## Milestone 4.2 — Event-Driven Architecture
+## Milestone 4.2 — Event-Driven Architecture (sprint-16)
 
 | # | Задача | Статус |
 |---|--------|--------|
@@ -38,7 +38,7 @@
 
 ---
 
-## Milestone 4.3 — Video Platform
+## Milestone 4.3 — Video Platform (sprint-13)
 
 | # | Задача | Статус |
 |---|--------|--------|
@@ -49,7 +49,7 @@
 
 ---
 
-## Milestone 4.4 — Database Scale
+## Milestone 4.4 — Database Scale (sprint-16)
 
 | # | Задача | Статус |
 |---|--------|--------|
@@ -69,7 +69,7 @@
 
 ---
 
-## Milestone 4.6 — Global Infrastructure
+## Milestone 4.6 — Global Infrastructure (sprint-16)
 
 | # | Задача | Статус |
 |---|--------|--------|
@@ -77,3 +77,16 @@
 | 4.6.2 | Multi-region active-active | 🔴 |
 | 4.6.3 | Global load balancing (GeoDNS) | 🔴 |
 | 4.6.4 | Mobile app (PWA → native) | 🔴 |
+
+---
+
+## Новые домены (из sprint execution plan)
+
+| Sprint | Домен | Описание |
+|--------|-------|----------|
+| sprint-11 | Social & Community | Study groups, peer review, mentorship program |
+| sprint-12 | Marketplace & Discovery | Course recommendations, coupons, instructor marketplace |
+| sprint-13 | Video Platform | Upload, transcode, HLS, subtitles, video analytics |
+| sprint-14 | Integrations & SSO | Google/GitHub SSO, Slack, LTI, API marketplace, webhooks |
+| sprint-15 | Enterprise & Teams | Team accounts, SCIM, SSO SAML, admin dashboard, reporting |
+| sprint-16 | Scale Infrastructure | Rust gateway, NATS, read replicas, K8s, multi-region |

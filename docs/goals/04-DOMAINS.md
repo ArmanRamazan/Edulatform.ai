@@ -1,7 +1,7 @@
 # 04 — Домены и Bounded Contexts
 
 > Владелец: Architect / Principal Developer
-> Последнее обновление: 2026-02-24
+> Последнее обновление: 2026-03-03
 
 ---
 
@@ -19,23 +19,29 @@
 │                                                                 │
 │  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
 │  │Enrollment│  │ Payments │  │ Progress  │  │Notifications │  │
-│  │   ✅     │  │  ✅ mock │  │   ✅      │  │    ✅        │  │
+│  │   ✅     │  │  ✅      │  │   ✅      │  │    ✅        │  │
 │  └──────────┘  └──────────┘  └───────────┘  └──────────────┘  │
 │                                                                 │
 │  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
 │  │ Reviews  │  │ Teacher  │  │    AI     │  │  Learning    │  │
 │  │& Ratings │  │  Tools   │  │  Service  │  │  Engine      │  │
-│  │   ✅     │  │   ✅     │  │   🔵 NEW  │  │  🔵 NEW     │  │
+│  │   ✅     │  │   ✅     │  │    ✅     │  │    ✅        │  │
+│  └──────────┘  └──────────┘  └───────────┘  └──────────────┘  │
+│                                                                 │
+│  ┌──────────┐  ┌──────────┐  ┌───────────┐  ┌──────────────┐  │
+│  │Gamifica- │  │  Video   │  │ Analytics │  │   Social     │  │
+│  │tion      │  │ Platform │  │  & Reco   │  │ & Community  │  │
+│  │   ✅     │  │   🔴     │  │    🔴     │  │    🔴        │  │
 │  └──────────┘  └──────────┘  └───────────┘  └──────────────┘  │
 │                                                                 │
 │  ┌──────────┐  ┌──────────┐  ┌───────────┐                    │
-│  │Gamifica- │  │  Video   │  │ Analytics │                    │
-│  │tion      │  │ Platform │  │  & Reco   │                    │
-│  │  🔵 NEW  │  │   🔴     │  │    🔴     │                    │
+│  │ Market-  │  │Enterprise│  │Integra-   │                    │
+│  │ place    │  │ & Teams  │  │tions/SSO  │                    │
+│  │   🔴     │  │   🔴     │  │    🔴     │                    │
 │  └──────────┘  └──────────┘  └───────────┘                    │
 └─────────────────────────────────────────────────────────────────┘
 
-✅ = реализовано   🔵 = следующий этап   🔴 = будущее
+✅ = реализовано   🔴 = будущее (спринты 5–16)
 ```
 
 ---
@@ -125,14 +131,16 @@
 
 ---
 
-## Домен 6: Payments ✅ (mock)
+## Домен 6: Payments ✅
 
 | # | Задача | Приоритет | Статус |
 |---|--------|-----------|--------|
 | 6.1 | POST /payments (mock, always completed) | P0 | ✅ |
 | 6.2 | GET /payments/me, GET /payments/:id | P0 | ✅ |
-| 6.3 | Stripe/YooKassa интеграция | P2 (Growth) | 🔴 |
-| 6.4 | Subscription billing | P2 (Growth) | 🔴 |
+| 6.3 | Stripe SDK adapter (backend) | P2 (Growth) | ✅ |
+| 6.4 | Subscription plans + user_subscriptions (backend) | P2 (Growth) | ✅ |
+| 6.5 | Teacher earnings + payouts (backend) | P2 (Growth) | ✅ |
+| 6.6 | Stripe frontend (checkout, pricing) | P2 (Growth) | 🔴 sprint-3 |
 
 **Сервис:** Payment (:8004)
 
@@ -143,8 +151,8 @@
 | # | Задача | Приоритет | Статус |
 |---|--------|-----------|--------|
 | 7.1 | POST, GET /me, PATCH /read | P0 | ✅ |
-| 7.2 | FSRS review reminders | P1 (Phase 2.1) | 🔵 |
-| 7.3 | Streak at risk reminders | P1 (Phase 2.4) | 🔵 |
+| 7.2 | FSRS review reminders | P1 (Phase 2.1) | ✅ |
+| 7.3 | Streak at risk reminders | P1 (Phase 2.4) | ✅ |
 | 7.4 | Email delivery (SMTP) | P2 (Growth) | 🔴 |
 
 **Сервис:** Notification (:8005)
@@ -177,70 +185,75 @@
 
 ---
 
-## Домен 10: AI Service 🔵 NEW (Phase 2.0)
+## Домен 10: AI Service ✅ (Phase 2.0–2.2)
 
 **Бизнес-цель:** Центральная точка LLM-взаимодействий. Model routing для оптимизации стоимости.
 
 | # | Задача | Приоритет | Статус |
 |---|--------|-----------|--------|
-| 10.1 | Model routing: cheap (Gemini Flash) / mid (Haiku) / expensive (Sonnet) | P0 | 🔵 |
-| 10.2 | Quiz generation из lesson content | P0 | 🔵 |
-| 10.3 | Lesson summary generation | P0 | 🔵 |
-| 10.4 | Socratic tutor pipeline | P1 | 🔵 |
-| 10.5 | Redis кэширование AI-ответов | P0 | 🔵 |
-| 10.6 | Rate limiting per user (AI credits) | P1 | 🔵 |
+| 10.1 | Gemini Flash integration (httpx) | P0 | ✅ |
+| 10.2 | Quiz generation из lesson content | P0 | ✅ |
+| 10.3 | Lesson summary generation | P0 | ✅ |
+| 10.4 | Socratic tutor pipeline | P1 | ✅ |
+| 10.5 | Redis кэширование AI-ответов + conversation memory | P0 | ✅ |
+| 10.6 | Plan-based AI credits (free/student/pro) | P1 | ✅ |
 
 **Сервис:** AI Service (:8006)
 **Владение данными:** prompt templates, AI response cache
 
 ---
 
-## Домен 11: Learning Engine 🔵 NEW (Phase 2.0–2.3)
+## Домен 11: Learning Engine ✅ (Phase 2.0–2.4)
 
-**Бизнес-цель:** "Мозг" платформы — адаптивные пути, spaced repetition, knowledge graph.
+**Бизнес-цель:** "Мозг" платформы — адаптивные пути, spaced repetition, knowledge graph, gamification.
 
 | # | Задача | Приоритет | Статус |
 |---|--------|-----------|--------|
-| 11.1 | Quiz model: questions, answers, attempts | P0 (Phase 2.0) | 🔵 |
-| 11.2 | FSRS scheduler (py-fsrs) | P0 (Phase 2.1) | 🔵 |
-| 11.3 | Flashcard model + review log | P0 (Phase 2.1) | 🔵 |
-| 11.4 | Concept model (knowledge points) | P1 (Phase 2.3) | 🔵 |
-| 11.5 | Concept mastery tracking (per-student) | P1 (Phase 2.3) | 🔵 |
-| 11.6 | Adaptive pre-test | P1 (Phase 2.3) | 🔵 |
-| 11.7 | Learning velocity metrics | P1 (Phase 2.3) | 🔵 |
-| 11.8 | xAPI-style learning events (analytics) | P2 | 🔵 |
+| 11.1 | Quiz model: questions, answers, attempts | P0 (Phase 2.0) | ✅ |
+| 11.2 | FSRS scheduler (py-fsrs) | P0 (Phase 2.1) | ✅ |
+| 11.3 | Flashcard model + review log | P0 (Phase 2.1) | ✅ |
+| 11.4 | Concept model (knowledge points) + edges | P1 (Phase 2.3) | ✅ |
+| 11.5 | Concept mastery tracking (per-student) | P1 (Phase 2.3) | ✅ |
+| 11.6 | Adaptive pre-test | P1 (Phase 2.3) | ⏭️ YAGNI (sprint-10) |
+| 11.7 | Learning velocity metrics | P1 (Phase 2.3) | ⏭️ YAGNI (sprint-10) |
+| 11.8 | XP, streaks, badges, leaderboard, discussions | P1 (Phase 2.4) | ✅ |
+| 11.9 | xAPI-style learning events (analytics) | P2 | 🔴 sprint-10 |
 
 **Сервис:** Learning Engine (:8007)
 **Владение данными:** quizzes, flashcards, concepts, concept_mastery, learning_events
 
 ---
 
-## Домен 12: Gamification 🔵 NEW (Phase 2.4)
+## Домен 12: Gamification ✅ (Phase 2.4)
 
 **Бизнес-цель:** Мотивация и привычка. Превратить обучение в ежедневную активность.
 
 | # | Задача | Приоритет | Статус |
 |---|--------|-----------|--------|
-| 12.1 | XP system (events → points) | P1 | 🔵 |
-| 12.2 | Streaks (daily activity tracking) | P1 | 🔵 |
-| 12.3 | Badges/achievements | P2 | 🔵 |
-| 12.4 | Leaderboard per course | P2 | 🔵 |
-| 12.5 | Course discussions (comments per lesson) | P1 | 🔵 |
+| 12.1 | XP system (lesson +10, quiz +20, flashcard +5) | P1 | ✅ |
+| 12.2 | Streaks (daily activity tracking, midnight reset) | P1 | ✅ |
+| 12.3 | Badges (first_enrollment, streak_7, quiz_ace, mastery_100) | P2 | ✅ |
+| 12.4 | Leaderboard per course + global | P2 | ✅ |
+| 12.5 | Course discussions (comments per lesson + upvotes) | P1 | ✅ |
 
-**Реализация:** часть Learning Engine (:8007) или отдельный сервис — решим при имплементации.
+**Реализация:** часть Learning Engine (:8007) — 30 endpoints, 11 таблиц, 107 тестов.
 
 ---
 
 ## Домены вне текущего этапа (Growth / Scale)
 
-| Домен | Описание | Когда |
-|-------|----------|-------|
-| Video Platform | Upload + transcode + stream | Scale |
-| Seller Dashboard | Teacher analytics, revenue, payouts | Growth |
-| Real Payments | Stripe/YooKassa + subscriptions | Growth |
-| Messaging | Student ↔ Teacher Q&A | Growth |
-| Analytics | ClickHouse, ML recommendations | Scale |
-| Moderation | AI content moderation, fraud | Growth |
+| Домен | Описание | Sprint | Статус |
+|-------|----------|--------|--------|
+| Seller Dashboard | Teacher analytics, revenue, payouts | sprint-2, sprint-6 | 🟡 scaffolded |
+| Real Payments frontend | Stripe checkout, pricing page | sprint-3 | 🔴 |
+| Social & Community | Study groups, peer review, mentorship | sprint-11 | 🔴 |
+| Marketplace & Discovery | Recommendations, coupons, instructor marketplace | sprint-12 | 🔴 |
+| Video Platform | Upload + transcode + HLS streaming | sprint-13 | 🔴 |
+| Integrations & SSO | Google/GitHub SSO, Slack, LTI, webhooks | sprint-14 | 🔴 |
+| Enterprise & Teams | Team accounts, admin dashboard, SCIM | sprint-15 | 🔴 |
+| Scale Infrastructure | Rust gateway, NATS, DB replicas, K8s | sprint-16 | 🔴 |
+| Analytics | ClickHouse, ML recommendations | sprint-10, sprint-12 | 🔴 |
+| Moderation | AI content moderation, fraud | sprint-12 | 🔴 |
 
 ---
 

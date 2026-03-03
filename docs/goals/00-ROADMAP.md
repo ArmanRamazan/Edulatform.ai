@@ -12,15 +12,15 @@
 ## Стадии развития продукта
 
 ```
-Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Scale
+Foundation ✅ → Learning Intelligence ✅ → Growth (← мы здесь) → Scale
 ```
 
 | Стадия | Пользователи | Суть | Критерий перехода |
 |--------|-------------|------|-------------------|
-| Foundation | до 10K | Базовая платформа, полный цикл обучения | ✅ 201 тест, 157 RPS, p99=51ms |
-| **Learning Intelligence** | **10K → 100K** | **AI-тьютор, квизы, spaced repetition, knowledge graph, gamification** | **Completion rate > 40%, retention 7d > 60%** |
-| Growth | 100K → 1M | Реальные платежи, seller dashboard, SEO, mobile, CI/CD | Revenue $100K/мес, 1000 teachers |
-| Scale | 1M → 10M | Rust gateway, event bus, video platform, multi-region | 5K+ RPS, horizontal scaling |
+| Foundation | до 10K | Базовая платформа, полный цикл обучения | ✅ 400 тестов, 157 RPS, p99=51ms |
+| Learning Intelligence | 10K → 100K | AI-тьютор, квизы, spaced repetition, knowledge graph, gamification | ✅ 2.0–2.4 done, 2.5 partial |
+| **Growth** | **100K → 1M** | **Реальные платежи, seller dashboard, SEO, mobile, CI/CD** | **3.1–3.2 backend ✅, frontend 🔴** |
+| Scale | 1M → 10M | Rust gateway, event bus, video platform, multi-region | 🔴 Не начато |
 
 ---
 
@@ -64,7 +64,7 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 | 1.2 | JWT refresh, rate limiting, CORS, XSS, health checks | 146 тестов |
 | 1.3 | Categories, email verify, forgot password, auto-completion, TanStack Query | 157 тестов |
 
-**Итого Foundation:** 201 тест, 7 backend сервисов + frontend + shared lib, полный user journey.
+**Итого Foundation:** 400 тестов, 7 backend сервисов + frontend + shared lib, полный user journey.
 
 ---
 
@@ -156,14 +156,14 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 
 | # | Задача | Зачем | Статус |
 |---|--------|-------|--------|
-| 2.4.1 | XP system: earn XP за lesson/quiz/review/flashcard | Мотивация | 🔴 |
-| 2.4.2 | Streaks: daily learning streak (модель Duolingo) | Привычка | 🔴 |
-| 2.4.3 | Badges/achievements (first course, 7-day streak, 100% mastery) | Milestones | 🔴 |
-| 2.4.4 | Leaderboard per course (opt-in) | Соревнование | 🔴 |
-| 2.4.5 | Course discussions: комментарии per lesson | Сообщество | 🔴 |
-| 2.4.6 | Frontend: XP counter, streak flame, badge shelf | UX | 🔴 |
-| 2.4.7 | Notification: streak at risk reminders | Retention | 🔴 |
-| 2.4.8 | Тесты: XP calculation, streak logic, badges | Качество | 🔴 |
+| 2.4.1 | XP system: earn XP за lesson/quiz/review/flashcard | Мотивация | ✅ |
+| 2.4.2 | Streaks: daily learning streak (модель Duolingo) | Привычка | ✅ |
+| 2.4.3 | Badges/achievements (first course, 7-day streak, 100% mastery) | Milestones | ✅ |
+| 2.4.4 | Leaderboard per course (opt-in) | Соревнование | ✅ |
+| 2.4.5 | Course discussions: комментарии per lesson | Сообщество | ✅ |
+| 2.4.6 | Frontend: XP counter, streak flame, badge shelf | UX | ✅ |
+| 2.4.7 | Notification: streak at risk reminders | Retention | ✅ |
+| 2.4.8 | Тесты: XP calculation, streak logic, badges | Качество | ✅ |
 
 **Метрики:** DAU/MAU ratio, streak > 7d %, completion rate delta.
 **Evidence:** Gamification + community → up to 96% completion rate.
@@ -176,7 +176,7 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 
 | # | Задача | Зачем | Статус |
 |---|--------|-------|--------|
-| 2.5.1 | Onboarding flow: guided first course experience | First-time UX | 🔴 |
+| 2.5.1 | Onboarding flow: guided first course experience | First-time UX | ✅ |
 | 2.5.2 | Landing page: value proposition, demo видео | Конверсия | 🔴 |
 | 2.5.3 | Responsive mobile web | Мобильный доступ | 🔴 |
 | 2.5.4 | Demo script update: показывает AI-фичи | Презентация | 🔴 |
@@ -193,8 +193,8 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 
 | Milestone | Содержание | Статус |
 |-----------|-----------|--------|
-| 3.1 | Реальные платежи (Stripe) + subscription tiers | 🔴 |
-| 3.2 | Seller App: teacher dashboard, аналитика, revenue | 🔴 |
+| 3.1 | Реальные платежи (Stripe) + subscription tiers | 🟡 backend ✅, frontend 🔴 |
+| 3.2 | Seller App: teacher dashboard, аналитика, revenue | 🟡 backend ✅, seller scaffolded |
 | 3.3 | SEO: meta tags, structured data, OG | 🔴 |
 | 3.4 | CI/CD: GitHub Actions (lint → test → build) | 🔴 |
 | 3.5 | Email delivery (SMTP/Resend вместо stub) | 🔴 |
@@ -226,3 +226,33 @@ Foundation ✅ → Learning Intelligence (← мы здесь) → Growth → Sc
 Не масштабировать ДО того, как продукт доказал ценность.
 AI дешёвый ($0.03/user/мес) — не бояться внедрять.
 ```
+
+---
+
+## Sprint Execution Plan
+
+165 задач в 16 спринтах. Файлы: `tools/orchestrator/tasks/sprint-*.yaml`.
+
+| Sprint | Название | Задач | Фаза |
+|--------|----------|-------|------|
+| 1 | Launch Blockers | 10 | 2.5 + 3.x fixes |
+| 2 | Seller App MVP | 6 | 3.2 frontend |
+| 3 | Monetization Frontend | 15 | 3.1 frontend |
+| 4 | Polish & Quality | 12 | 2.5 + 3.x |
+| 5 | MVP Launch | 10 | 2.5 + 3.3 |
+| 6 | Seller App Complete | 10 | 3.2 |
+| 7 | DevOps & Reliability | 10 | 3.4 |
+| 8 | Engagement Features | 12 | 3.5 |
+| 9 | Advanced AI | 10 | 2.x + AI |
+| 10 | Advanced Learning | 10 | 2.3 + 2.x |
+| 11 | Social & Community | 10 | Growth |
+| 12 | Marketplace & Discovery | 10 | Growth |
+| 13 | Video Platform | 11 | 4.3 |
+| 14 | Integrations & SSO | 10 | Growth |
+| 15 | Enterprise & Teams | 10 | Growth |
+| 16 | Scale Infrastructure | 11 | 4.1–4.6 |
+
+**Sprints 1–4:** завершение текущих задач, seller app, монетизация frontend.
+**Sprints 5–8:** запуск MVP, DevOps, engagement.
+**Sprints 9–12:** продвинутый AI, обучение, соц. фичи, маркетплейс.
+**Sprints 13–16:** видео, интеграции, enterprise, масштабирование.

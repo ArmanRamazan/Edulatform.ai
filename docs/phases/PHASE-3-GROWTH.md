@@ -95,7 +95,7 @@ CREATE INDEX idx_user_subscriptions_stripe ON user_subscriptions(stripe_subscrip
 | 3.2.4 | GET /earnings/me → total earned, pending payout, paid out | backend:payment | ✅ |
 | 3.2.5 | POST /payouts/request → request payout (min $50, Stripe Connect) | backend:payment | ✅ |
 | **Frontend: Seller App** | | | |
-| 3.2.6 | Seller App scaffold: Next.js App Router, Tailwind, shared packages | frontend:seller | 🔴 |
+| 3.2.6 | Seller App scaffold: Next.js App Router, Tailwind, shared packages | frontend:seller | ✅ |
 | 3.2.7 | Dashboard page: total students, revenue, completion rate, charts (recharts) | frontend:seller | 🔴 |
 | 3.2.8 | Course management: list my courses, create/edit, module/lesson editor | frontend:seller | 🔴 |
 | 3.2.9 | Analytics page: per-course metrics, student funnel, rating distribution | frontend:seller | 🔴 |

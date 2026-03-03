@@ -6,7 +6,7 @@
 > **Baseline (индустрия):** 13% completion rate, пассивное видео.
 > **Target:** 40%+ completion, 60%+ 7-day retention.
 >
-> **Предусловие:** Phase 0–1 завершены — полный цикл обучения, 190 тестов (7 сервисов), 157 RPS.
+> **Предусловие:** Phase 0–1 завершены — полный цикл обучения, 400 тестов (7 сервисов), 157 RPS.
 
 ---
 
@@ -240,7 +240,7 @@ CREATE TABLE concept_mastery (
 
 | # | Задача | Статус |
 |---|--------|--------|
-| 2.5.1 | Onboarding: guided first course experience | 🔴 |
+| 2.5.1 | Onboarding: guided first course experience | ✅ |
 | 2.5.2 | Landing page: value proposition, screenshots/demo | 🔴 |
 | 2.5.3 | Responsive mobile web | 🔴 |
 | 2.5.4 | Update demo script (show AI features in browser) | ✅ |
@@ -251,11 +251,11 @@ CREATE TABLE concept_mastery (
 
 ## Критерии завершения Phase 2
 
-- [ ] AI Service работает: quizzes, summaries, tutor
-- [ ] FSRS flashcards с расписанием повторений
-- [ ] Knowledge graph visualization для min 3 courses
-- [ ] Gamification (XP, streaks, badges) в UI
+- [x] AI Service работает: quizzes, summaries, tutor
+- [x] FSRS flashcards с расписанием повторений
+- [x] Knowledge graph visualization для min 3 courses
+- [x] Gamification (XP, streaks, badges) в UI
 - [ ] Course completion rate > 40% в тестовой группе
 - [ ] 7-day retention > 60%
 - [ ] Можно провести live demo для пользователей/инвесторов
-- [ ] AI cost < $0.05/user/мес
+- [x] AI cost < $0.05/user/мес
