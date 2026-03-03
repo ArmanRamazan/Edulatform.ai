@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import asyncpg
+import structlog
 
 from common.errors import ConflictError, ForbiddenError, NotFoundError
 from app.domain.quiz import Quiz, Question, QuizAttempt, QuestionResult
@@ -15,7 +15,7 @@ from app.repositories.flashcard_repo import FlashcardRepository
 if TYPE_CHECKING:
     from app.services.concept_service import ConceptService
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class QuizService:
@@ -105,7 +105,7 @@ class QuizService:
                     score_delta=score * 0.3,
                 )
             except Exception:
-                logger.warning("Failed to update mastery for quiz %s", quiz_id)
+                logger.warning("mastery_update_failed", quiz_id=str(quiz_id))
 
         if self._flashcard_repo is not None:
             await self._generate_flashcards_for_mistakes(
@@ -149,9 +149,7 @@ class QuizService:
                     source_id=q.id,
                 )
             except Exception:
-                logger.warning(
-                    "Failed to create flashcard for question %s", q.id
-                )
+                logger.warning("flashcard_create_failed", question_id=str(q.id))
 
     async def list_my_attempts(
         self, quiz_id: UUID, student_id: UUID, limit: int = 20, offset: int = 0

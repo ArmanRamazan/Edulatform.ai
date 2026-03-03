@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 import asyncpg
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -10,6 +11,7 @@ from redis.asyncio import Redis
 from common.database import create_pool, update_pool_metrics
 from common.errors import register_error_handlers
 from common.health import create_health_router
+from common.logging import configure_logging
 from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.notification_repo import NotificationRepository
@@ -32,6 +34,9 @@ def get_notification_service() -> NotificationService:
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     global _pool, _redis, _notification_service
 
+    configure_logging(service_name="notification")
+    logger = structlog.get_logger()
+
     _pool = await create_pool(
         app_settings.database_url,
         min_size=app_settings.db_pool_min_size,
@@ -52,6 +57,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     repo = NotificationRepository(_pool)
     _notification_service = NotificationService(repo)
+    logger.info("service_started", port=8005)
     yield
     await _redis.aclose()
     await _pool.close()

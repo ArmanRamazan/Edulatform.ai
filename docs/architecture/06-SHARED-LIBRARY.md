@@ -10,12 +10,15 @@
 ```
 libs/py/common/
 ├── pyproject.toml       # hatchling build, installable package
+├── tests/
+│   └── test_logging.py  # 4 tests for configure_logging
 └── common/
     ├── __init__.py
     ├── config.py         # BaseAppSettings
     ├── database.py       # create_pool(), update_pool_metrics()
     ├── errors.py         # AppError hierarchy + register_error_handlers()
     ├── health.py         # create_health_router() — liveness + readiness
+    ├── logging.py        # configure_logging() — structlog JSON/console
     ├── rate_limit.py     # RateLimiter, RateLimitMiddleware
     └── security.py       # create_access_token(), decode_token()
 ```
@@ -94,6 +97,37 @@ def decode_token(token: str, secret: str, algorithm: str = "HS256") -> dict
 
 ---
 
+### `common.logging`
+
+```python
+def configure_logging(service_name: str, log_level: str = "INFO") -> None
+```
+
+- Настраивает structlog + stdlib logging для structured JSON logging
+- `ENVIRONMENT=production` — JSON renderer на stdout (для log aggregation)
+- `ENVIRONMENT=development` — цветной ConsoleRenderer на stderr (для разработки)
+- Добавляет `service` field во все log events через `bind_contextvars`
+- Процессоры: `add_log_level`, `TimeStamper(iso)`, `format_exc_info`, `merge_contextvars`
+- Подавляет шумные логгеры: uvicorn, httpcore, httpx
+- Вызывается один раз в `lifespan()` каждого сервиса
+
+**Использование в сервисах:**
+```python
+import structlog
+from common.logging import configure_logging
+
+# В lifespan:
+configure_logging(service_name="identity")
+logger = structlog.get_logger()
+logger.info("service_started", port=8001)
+
+# В модулях:
+logger = structlog.get_logger()
+logger.info("event_name", key="value")
+```
+
+---
+
 ### `common.health`
 
 ```python
@@ -146,4 +180,4 @@ class Settings(BaseAppSettings):
 
 ## Правило выноса в common
 
-Код выносится в `libs/py/common/` только когда используется в **2+ сервисах**. Все 6 модулей используются во всех 7 сервисах (Identity, Course, Enrollment, Payment, Notification, AI, Learning).
+Код выносится в `libs/py/common/` только когда используется в **2+ сервисах**. Все 7 модулей используются во всех 7 сервисах (Identity, Course, Enrollment, Payment, Notification, AI, Learning).

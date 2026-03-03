@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 import secrets
 from datetime import datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import bcrypt
+import structlog
 
 from common.errors import AppError, ConflictError, ForbiddenError, NotFoundError
 from common.security import create_access_token
@@ -16,7 +16,7 @@ from app.repositories.token_repo import TokenRepository
 from app.repositories.verification_repo import VerificationRepository
 from app.repositories.password_reset_repo import PasswordResetRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 def _hash_password(password: str) -> str:
@@ -101,7 +101,7 @@ class AuthService:
 
         if self._verification_repo:
             raw_token = await self._create_verification_token(user.id)
-            logger.info("[EMAIL_VERIFY] user_id=%s token=%s", user.id, raw_token)
+            logger.info("email_verification_sent", user_id=str(user.id))
 
         return await self._create_token_pair(user)
 
@@ -140,7 +140,7 @@ class AuthService:
         if user.email_verified:
             raise ConflictError("Email already verified")
         raw_token = await self._create_verification_token(user_id)
-        logger.info("[EMAIL_VERIFY] user_id=%s token=%s", user_id, raw_token)
+        logger.info("email_verification_resent", user_id=str(user_id))
 
     async def refresh(self, refresh_token: str) -> TokenPair:
         assert self._token_repo is not None
@@ -219,7 +219,7 @@ class AuthService:
         token_hash = _hash_token(raw_token)
         expires_at = datetime.now(timezone.utc) + timedelta(hours=1)
         await self._password_reset_repo.create(user.id, token_hash, expires_at)
-        logger.info("[PASSWORD_RESET] user_id=%s token=%s", user.id, raw_token)
+        logger.info("password_reset_sent", user_id=str(user.id))
 
     async def reset_password(self, token: str, new_password: str) -> None:
         assert self._password_reset_repo is not None

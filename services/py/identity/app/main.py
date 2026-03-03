@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 import asyncpg
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -10,6 +11,7 @@ from redis.asyncio import Redis
 from common.database import create_pool, update_pool_metrics
 from common.errors import register_error_handlers
 from common.health import create_health_router
+from common.logging import configure_logging
 from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.user_repo import UserRepository
@@ -35,6 +37,9 @@ def get_auth_service() -> AuthService:
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     global _pool, _redis, _auth_service
+
+    configure_logging(service_name="identity")
+    logger = structlog.get_logger()
 
     _pool = await create_pool(
         app_settings.database_url,
@@ -72,6 +77,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         verification_repo=verification_repo,
         password_reset_repo=password_reset_repo,
     )
+    logger.info("service_started", port=8001)
     yield
     await _redis.aclose()
     await _pool.close()

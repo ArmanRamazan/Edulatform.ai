@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import logging
 from uuid import UUID
 
 import asyncpg
+import structlog
 
 from common.errors import ConflictError, ForbiddenError, NotFoundError
 from app.domain.concept import (
@@ -15,7 +15,7 @@ from app.domain.concept import (
 )
 from app.repositories.concept_repo import ConceptRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class ConceptService:
@@ -178,7 +178,4 @@ class ConceptService:
             current_val = current.mastery if current else 0.0
             new_val = current_val + score_delta
             await self._repo.upsert_mastery(student_id, concept.id, new_val)
-            logger.debug(
-                "Mastery updated: student=%s concept=%s %.2f -> %.2f",
-                student_id, concept.id, current_val, new_val,
-            )
+            logger.debug("mastery_updated", student_id=str(student_id), concept_id=str(concept.id), old_value=current_val, new_value=new_val)

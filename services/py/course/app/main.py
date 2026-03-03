@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 import asyncpg
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
@@ -10,6 +11,7 @@ from redis.asyncio import Redis
 from common.database import create_pool, update_pool_metrics
 from common.errors import register_error_handlers
 from common.health import create_health_router
+from common.logging import configure_logging
 from common.rate_limit import RateLimitMiddleware
 from app.cache import CourseCache
 from app.config import Settings
@@ -69,6 +71,9 @@ def get_category_repo() -> CategoryRepository:
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     global _pool, _redis, _course_service, _module_service, _lesson_service, _review_service, _category_repo
 
+    configure_logging(service_name="course")
+    logger = structlog.get_logger()
+
     _pool = await create_pool(
         app_settings.database_url,
         min_size=app_settings.db_pool_min_size,
@@ -104,6 +109,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _module_service = ModuleService(module_repo, course_repo, cache=_cache)
     _lesson_service = LessonService(lesson_repo, module_repo, course_repo, cache=_cache)
     _review_service = ReviewService(review_repo, course_repo, cache=_cache)
+    logger.info("service_started", port=8002)
     yield
     await _redis.aclose()
     await _pool.close()

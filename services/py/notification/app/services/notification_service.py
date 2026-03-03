@@ -1,13 +1,14 @@
 from __future__ import annotations
 
-import logging
 from uuid import UUID
+
+import structlog
 
 from common.errors import NotFoundError
 from app.domain.notification import Notification, NotificationType
 from app.repositories.notification_repo import NotificationRepository
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class NotificationService:
@@ -22,10 +23,7 @@ class NotificationService:
         body: str,
     ) -> Notification:
         notification = await self._repo.create(user_id, type, title, body)
-        logger.info(
-            "[NOTIFICATION] user=%s type=%s title=%s",
-            user_id, type, title,
-        )
+        logger.info("notification_created", user_id=str(user_id), type=str(type), title=title)
         return notification
 
     async def list_my(
@@ -47,7 +45,7 @@ class NotificationService:
                 "Your streak is at risk!",
                 "You haven't studied today. Keep your streak alive!",
             )
-            logger.info("[STREAK_REMINDER] user=%s", uid)
+            logger.info("streak_reminder_sent", user_id=str(uid))
             sent += 1
         return sent
 
@@ -69,7 +67,7 @@ class NotificationService:
                 "Flashcards due for review!",
                 f"You have {card_count} flashcards due for review!",
             )
-            logger.info("[FLASHCARD_REMINDER] user=%s cards=%d", uid, card_count)
+            logger.info("flashcard_reminder_sent", user_id=str(uid), card_count=card_count)
             sent += 1
         return sent
 

@@ -1,6 +1,7 @@
 import json
-import logging
 from uuid import UUID
+
+import structlog
 
 from common.errors import AppError
 from app.config import Settings
@@ -9,7 +10,7 @@ from app.repositories.llm_client import GeminiClient
 from app.repositories.cache import AICache
 from app.services.prompts import QUIZ_PROMPT_TEMPLATE, SUMMARY_PROMPT_TEMPLATE
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class AIService:
@@ -31,7 +32,7 @@ class AIService:
 
         prompt = QUIZ_PROMPT_TEMPLATE.format(content=content)
         raw, tokens_in, tokens_out = await self._llm.generate(prompt)
-        logger.info("Quiz generated: %d tokens in, %d tokens out", tokens_in, tokens_out)
+        logger.info("quiz_generated", tokens_in=tokens_in, tokens_out=tokens_out)
 
         questions = self._parse_quiz(raw)
         await self._cache.set_quiz(lesson_id, json.dumps([q.model_dump() for q in questions]), self._settings.quiz_cache_ttl)
@@ -55,7 +56,7 @@ class AIService:
 
         prompt = SUMMARY_PROMPT_TEMPLATE.format(content=content)
         raw, tokens_in, tokens_out = await self._llm.generate(prompt)
-        logger.info("Summary generated: %d tokens in, %d tokens out", tokens_in, tokens_out)
+        logger.info("summary_generated", tokens_in=tokens_in, tokens_out=tokens_out)
 
         summary = raw.strip()
         await self._cache.set_summary(lesson_id, summary, self._settings.summary_cache_ttl)

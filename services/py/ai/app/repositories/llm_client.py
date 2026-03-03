@@ -1,11 +1,11 @@
 import asyncio
-import logging
 
 import httpx
+import structlog
 
 from common.errors import AppError
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models"
 
@@ -38,7 +38,7 @@ class GeminiClient:
                 if resp.status_code == 429 or resp.status_code >= 500:
                     last_exc = AppError(f"Gemini API error: {resp.status_code}", status_code=502)
                     wait = 2 ** attempt
-                    logger.warning("Gemini %d, retrying in %ds (attempt %d/3)", resp.status_code, wait, attempt + 1)
+                    logger.warning("gemini_retry", status_code=resp.status_code, wait_seconds=wait, attempt=attempt + 1)
                     await asyncio.sleep(wait)
                     continue
                 if resp.status_code != 200:
@@ -53,7 +53,7 @@ class GeminiClient:
             except httpx.HTTPError as exc:
                 last_exc = exc
                 wait = 2 ** attempt
-                logger.warning("Gemini HTTP error: %s, retrying in %ds", exc, wait)
+                logger.warning("gemini_http_error", error=str(exc), wait_seconds=wait)
                 await asyncio.sleep(wait)
 
         raise AppError(f"Gemini API unavailable after 3 retries: {last_exc}", status_code=502)

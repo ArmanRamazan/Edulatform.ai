@@ -1,5 +1,6 @@
-import logging
 import uuid
+
+import structlog
 
 from common.errors import AppError
 from app.config import Settings
@@ -8,7 +9,7 @@ from app.repositories.llm_client import GeminiClient
 from app.repositories.cache import AICache
 from app.services.prompts import TUTOR_SYSTEM_PROMPT
 
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger()
 
 
 class TutorService:
@@ -43,9 +44,7 @@ class TutorService:
         full_prompt = "\n".join(prompt_parts)
 
         raw, tokens_in, tokens_out = await self._llm.generate(full_prompt)
-        logger.info(
-            "Tutor response: %d tokens in, %d tokens out", tokens_in, tokens_out
-        )
+        logger.info("tutor_response", tokens_in=tokens_in, tokens_out=tokens_out)
 
         reply = raw.strip()
 

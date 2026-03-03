@@ -33,6 +33,7 @@
 | БД | PostgreSQL 16 | Каждый сервис — своя БД |
 | Кэш / Rate limit | Redis 7 | Course cache (TTL 5min), rate limiting (sliding window), все сервисы |
 | AI / LLM | Gemini 2.0 Flash Lite (httpx) | Quiz gen, summary gen, Socratic tutor, credit tracking |
+| Логирование | structlog (JSON) | Structured logging, JSON в prod, console в dev |
 | Метрики | Prometheus + Grafana | Автоматические метрики через prometheus-fastapi-instrumentator |
 | Нагрузка | Locust | Сценарии, имитирующие реальный трафик |
 | Пакеты | uv (Python), pnpm (JS) | uv workspace для монорепы |

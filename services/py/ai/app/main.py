@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 import httpx
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -10,6 +11,7 @@ from prometheus_fastapi_instrumentator import Instrumentator
 from redis.asyncio import Redis
 
 from common.errors import register_error_handlers
+from common.logging import configure_logging
 from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.llm_client import GeminiClient
@@ -81,6 +83,9 @@ def _create_health_router() -> APIRouter:
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     global _redis, _ai_service, _tutor_service, _credit_service, _http_client
 
+    configure_logging(service_name="ai")
+    logger = structlog.get_logger()
+
     _redis = Redis.from_url(app_settings.redis_url)
     _http_client = httpx.AsyncClient()
 
@@ -90,6 +95,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _tutor_service = TutorService(llm, cache, app_settings)
     _credit_service = CreditService(cache=cache)
 
+    logger.info("service_started", port=8006)
     yield
 
     await _http_client.aclose()
