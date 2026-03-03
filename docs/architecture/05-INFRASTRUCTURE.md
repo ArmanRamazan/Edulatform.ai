@@ -216,6 +216,28 @@ docker compose -f docker-compose.dev.yml --profile seed up seed
 
 ---
 
+## Database Backup & Restore
+
+Scripts in `deploy/scripts/`:
+
+```bash
+# Backup all 6 databases (compressed .sql.gz)
+./deploy/scripts/backup-all-dbs.sh
+
+# List existing backups
+./deploy/scripts/list-backups.sh
+
+# Restore a specific database (requires --confirm flag)
+./deploy/scripts/restore-db.sh identity deploy/backups/identity-2026-03-03-120000.sql.gz --confirm
+```
+
+- Backups saved to `deploy/backups/` (gitignored)
+- Uses `pg_dump` via `docker exec` on running containers
+- Restore drops and recreates the target database
+- Supported services: identity, course, enrollment, payment, notification, learning
+
+---
+
 ## Monitoring (Prod only)
 
 ### Prometheus

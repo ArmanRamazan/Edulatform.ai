@@ -49,6 +49,7 @@ eduplatform/
 │
 ├── deploy/                        # Infrastructure
 │   ├── docker/                    #   Dockerfiles per service
+│   ├── scripts/                   #   Ops scripts (backup, restore, list-backups)
 │   ├── staging/                   #   Staging env config (.env.staging.example)
 │   └── k8s/base/                  #   K8s manifests
 │

@@ -159,6 +159,9 @@ celerybeat.pid
 # Orchestrator state
 tools/orchestrator/.state/
 
+# Database backups
+deploy/backups/
+
 # Environments
 .env
 .env.staging
