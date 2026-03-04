@@ -111,11 +111,21 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                       Редактировать
                     </Link>
                   ) : (
-                    <FollowButton
-                      token={token}
-                      currentUserId={user?.id ?? null}
-                      targetUserId={id}
-                    />
+                    <>
+                      <FollowButton
+                        token={token}
+                        currentUserId={user?.id ?? null}
+                        targetUserId={id}
+                      />
+                      {token && (
+                        <Link
+                          href={`/messages?to=${id}`}
+                          className="rounded border border-blue-600 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
+                        >
+                          Написать сообщение
+                        </Link>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

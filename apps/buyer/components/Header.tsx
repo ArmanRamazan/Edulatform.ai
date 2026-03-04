@@ -6,6 +6,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useDueCount } from "@/hooks/use-flashcards";
 import { useMyXp, useMyStreak } from "@/hooks/use-gamification";
 import { identity as identityApi } from "@/lib/api";
+import { useUnreadCount } from "@/hooks/use-messages";
 
 const AICreditIndicator = dynamic(
   () => import("@/components/AICreditIndicator").then((m) => ({ default: m.AICreditIndicator })),
@@ -23,6 +24,7 @@ export function Header() {
   const dueCount = useDueCount(token);
   const totalXp = useMyXp(token);
   const streak = useMyStreak(token);
+  const unreadMessages = useUnreadCount(token);
 
   async function handleResend() {
     if (!token) return;
@@ -75,6 +77,17 @@ export function Header() {
                 )}
                 <Link href="/referral" className="text-sm hover:underline">
                   Пригласить друзей
+                </Link>
+                <Link href="/messages" className="relative text-sm hover:underline">
+                  Сообщения
+                  {unreadMessages > 0 && (
+                    <span className="absolute -right-3 -top-2 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-blue-600 px-1 text-[10px] font-bold text-white">
+                      {unreadMessages}
+                    </span>
+                  )}
+                </Link>
+                <Link href="/feed" className="text-sm hover:underline">
+                  Лента
                 </Link>
                 <Link href="/notifications" className="text-sm hover:underline">
                   Уведомления

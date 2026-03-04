@@ -775,6 +775,67 @@ export const subscriptions = {
   },
 };
 
+export interface ConversationPreview {
+  conversation_id: string;
+  other_user_id: string;
+  last_message_content: string;
+  last_message_at: string;
+  unread_count: number;
+}
+
+export interface ConversationList {
+  items: ConversationPreview[];
+  total: number;
+}
+
+export interface DirectMessage {
+  id: string;
+  conversation_id: string;
+  sender_id: string;
+  content: string;
+  is_read: boolean;
+  created_at: string;
+}
+
+export interface DirectMessageList {
+  items: DirectMessage[];
+  total: number;
+}
+
+export const messaging = {
+  sendMessage(token: string, data: { recipient_id: string; content: string }) {
+    return request<DirectMessage>(`${NOTIFICATION_URL}/messages`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  getConversations(token: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<ConversationList>(`${NOTIFICATION_URL}/conversations/me${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+  getMessages(token: string, conversationId: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<DirectMessageList>(`${NOTIFICATION_URL}/conversations/${conversationId}/messages${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+  markRead(token: string, messageId: string) {
+    return requestVoid(`${NOTIFICATION_URL}/messages/${messageId}/read`, {
+      method: "PATCH",
+      headers: authHeaders(token),
+    });
+  },
+};
+
 export const notifications = {
   create(token: string, data: { type: string; title: string; body?: string }) {
     return request<Notification>(`${NOTIFICATION_URL}/notifications`, {
@@ -1073,6 +1134,112 @@ export interface VelocityResponse {
 export const velocity = {
   me(token: string) {
     return request<VelocityResponse>(`${LEARNING_URL}/velocity/me`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export interface StudyGroup {
+  id: string;
+  course_id: string;
+  name: string;
+  description: string | null;
+  creator_id: string;
+  max_members: number;
+  created_at: string;
+}
+
+export interface StudyGroupWithCount extends StudyGroup {
+  member_count: number;
+}
+
+export interface StudyGroupList {
+  items: StudyGroupWithCount[];
+  total: number;
+}
+
+export interface GroupMember {
+  id: string;
+  group_id: string;
+  user_id: string;
+  joined_at: string;
+}
+
+export interface GroupMemberList {
+  items: GroupMember[];
+  total: number;
+}
+
+export const studyGroups = {
+  byCourse(courseId: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<StudyGroupList>(`${LEARNING_URL}/study-groups/course/${courseId}${qs ? `?${qs}` : ""}`);
+  },
+  create(token: string, data: { course_id: string; name: string; description?: string }) {
+    return request<StudyGroup>(`${LEARNING_URL}/study-groups`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  join(token: string, groupId: string) {
+    return request<GroupMember>(`${LEARNING_URL}/study-groups/${groupId}/join`, {
+      method: "POST",
+      headers: authHeaders(token),
+    });
+  },
+  leave(token: string, groupId: string) {
+    return requestVoid(`${LEARNING_URL}/study-groups/${groupId}/leave`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+  },
+  members(groupId: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<GroupMemberList>(`${LEARNING_URL}/study-groups/${groupId}/members${qs ? `?${qs}` : ""}`);
+  },
+  me(token: string) {
+    return request<StudyGroup[]>(`${LEARNING_URL}/study-groups/me`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export interface Activity {
+  id: string;
+  user_id: string;
+  activity_type: "quiz_completed" | "flashcard_reviewed" | "badge_earned" | "streak_milestone" | "concept_mastered";
+  payload: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface ActivityList {
+  items: Activity[];
+  total: number;
+}
+
+export const activity = {
+  me(token: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<ActivityList>(`${LEARNING_URL}/activity/me${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+  feed(token: string, params: { user_ids: string[]; limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    sp.set("user_ids", params.user_ids.join(","));
+    if (params.limit) sp.set("limit", String(params.limit));
+    if (params.offset) sp.set("offset", String(params.offset));
+    return request<ActivityList>(`${LEARNING_URL}/activity/feed?${sp.toString()}`, {
       headers: authHeaders(token),
     });
   },
