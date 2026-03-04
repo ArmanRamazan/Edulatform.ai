@@ -1340,30 +1340,33 @@ Readiness probe. Проверяет PostgreSQL (pgvector) pool.
 
 ---
 
-### Documents (3 endpoints)
+### Document Ingestion (3 endpoints)
 
 #### POST /documents
-Загрузка документа для индексирования. Требует JWT + org membership.
+Загрузка документа: chunking + embedding + сохранение в pgvector. Требует JWT (admin или teacher).
 
 **Request:**
 ```json
 {
-  "organization_id": "uuid",
+  "org_id": "uuid",
+  "source_type": "text",
+  "source_path": "/docs/guide.md",
   "title": "Authentication Guide",
-  "content": "Markdown content...",
-  "source_type": "manual",
-  "metadata": {"category": "security"}
+  "content": "Markdown content..."
 }
 ```
+
+`source_type`: `text`, `markdown`, `github`, `code`. Для `github`/`code` используется code chunker (split по def/class), для остальных — text chunker (split по параграфам/предложениям).
 
 **Response `201`:**
 ```json
 {
   "id": "uuid",
   "organization_id": "uuid",
+  "source_type": "text",
+  "source_path": "/docs/guide.md",
   "title": "Authentication Guide",
-  "chunk_count": 12,
-  "status": "indexed",
+  "metadata": {},
   "created_at": "2026-03-05T00:00:00Z"
 }
 ```
@@ -1371,14 +1374,14 @@ Readiness probe. Проверяет PostgreSQL (pgvector) pool.
 ---
 
 #### GET /documents
-Список документов организации. Требует JWT + org membership.
+Список документов организации. Требует JWT.
 
-**Query params:** `organization_id` (required), `limit` (default 50), `offset` (default 0).
+**Query params:** `org_id` (required), `limit` (default 20, max 100), `offset` (default 0).
 
 ---
 
 #### DELETE /documents/{id}
-Удаление документа и его chunks. Требует JWT + org admin.
+Удаление документа и его chunks (CASCADE). Требует JWT (admin only).
 
 **Response `204`:** No Content.
 
