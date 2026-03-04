@@ -190,6 +190,7 @@ class Task:
     title: str
     scope: str
     prompt: str
+    type: str = "feat"  # feat | fix | refactor | test | docs | chore | perf
     test: str | None = None
     depends_on: list[str] = field(default_factory=list)
     status: str = "pending"  # pending | running | passed | failed | skipped
@@ -215,6 +216,7 @@ class TaskFile:
                 title=t["title"],
                 scope=t.get("scope", ""),
                 prompt=t["prompt"],
+                type=t.get("type", "feat"),
                 test=t.get("test"),
                 depends_on=[str(d) for d in t.get("depends_on", [])],
             ))
@@ -246,7 +248,7 @@ class State:
             "tasks": [
                 {
                     "id": t.id, "title": t.title, "scope": t.scope,
-                    "prompt": t.prompt, "test": t.test,
+                    "prompt": t.prompt, "type": t.type, "test": t.test,
                     "depends_on": t.depends_on, "status": t.status,
                     "attempts": t.attempts, "started_at": t.started_at,
                     "finished_at": t.finished_at, "error": t.error,
@@ -339,6 +341,23 @@ def _stream_process(
         return 1, f"Command not found: {cmd[0] if isinstance(cmd, list) else cmd}"
 
 
+_TDD_PREAMBLE = (
+    "\n\nIMPORTANT — CLAUDE.md RULES YOU MUST FOLLOW:\n"
+    "1. TDD is mandatory for backend code: write failing tests FIRST, then implement, then refactor.\n"
+    "2. All tests must pass before you finish. Run the test command to verify.\n"
+    "3. Update documentation files affected by your changes "
+    "(see CLAUDE.md 'Closing session' checklist: README.md, STRUCTURE.md, "
+    "docs/architecture/*.md, docs/phases/PHASE-*.md as applicable).\n"
+    "4. Do NOT add Co-Authored-By or any auto-generated signatures to commits.\n"
+    "5. Do NOT create files 'for the future' — only what is needed now (YAGNI).\n"
+)
+
+
+def _augment_prompt(prompt: str, scope: str) -> str:
+    """Prepend CLAUDE.md enforcement rules to the task prompt."""
+    return prompt + _TDD_PREAMBLE
+
+
 def run_claude(prompt: str, cwd: Path | None = None, task_id: str | None = None) -> tuple[int, str]:
     """Execute task via Claude Code CLI."""
     work_dir = str(cwd or ROOT)
@@ -365,7 +384,8 @@ def run_commit(task: Task, cwd: Path | None = None) -> tuple[int, str]:
     """Stage all changes and commit."""
     work_dir = str(cwd or ROOT)
     scope = task.scope.split(":")[-1] if ":" in task.scope else task.scope
-    msg = f"feat({scope}): {task.title.lower()}"
+    commit_type = task.type if task.type else "feat"
+    msg = f"{commit_type}({scope}): {task.title.lower()}"
 
     subprocess.run(["git", "add", "-A"], cwd=work_dir, capture_output=True)
 
@@ -542,7 +562,8 @@ def execute(state: State, dry_run: bool = False) -> None:
 
                 _p(f"\n  Attempt {attempt}/{MAX_RETRIES}...")
 
-                exit_code, output = run_claude(task.prompt)
+                augmented = _augment_prompt(task.prompt, task.scope)
+                exit_code, output = run_claude(augmented)
                 _save_log(task, attempt, output)
 
                 if _shutdown_requested:
@@ -658,7 +679,8 @@ def _execute_task_in_worktree(task: Task, state: State, task_map: dict[str, Task
 
         _p(f"Attempt {attempt}/{MAX_RETRIES}...", tid)
 
-        exit_code, output = run_claude(task.prompt, cwd=wt_path, task_id=tid)
+        augmented = _augment_prompt(task.prompt, task.scope)
+        exit_code, output = run_claude(augmented, cwd=wt_path, task_id=tid)
         _save_log(task, attempt, output)
 
         if _shutdown_requested:
