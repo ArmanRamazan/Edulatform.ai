@@ -18,6 +18,14 @@ class Comment:
     upvote_count: int
     created_at: datetime
     updated_at: datetime
+    is_pinned: bool = False
+    is_teacher_answer: bool = False
+
+
+@dataclass(frozen=True)
+class ThreadedComment:
+    comment: Comment
+    replies: list[Comment]
 
 
 @dataclass(frozen=True)
@@ -38,6 +46,10 @@ class UpdateCommentRequest(BaseModel):
     content: str = Field(min_length=1, max_length=5000)
 
 
+class ReplyRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=5000)
+
+
 class CommentResponse(BaseModel):
     id: UUID
     lesson_id: UUID
@@ -48,10 +60,22 @@ class CommentResponse(BaseModel):
     upvote_count: int
     created_at: datetime
     updated_at: datetime
+    is_pinned: bool
+    is_teacher_answer: bool
 
 
 class CommentListResponse(BaseModel):
     comments: list[CommentResponse]
+    total: int
+
+
+class ThreadedCommentResponse(BaseModel):
+    comment: CommentResponse
+    replies: list[CommentResponse]
+
+
+class ThreadedListResponse(BaseModel):
+    threads: list[ThreadedCommentResponse]
     total: int
 
 

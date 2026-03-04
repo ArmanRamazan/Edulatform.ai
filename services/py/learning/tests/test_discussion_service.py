@@ -20,6 +20,8 @@ def _make_comment(
     upvote_count=0,
     content="Great lesson!",
     comment_id=None,
+    is_pinned=False,
+    is_teacher_answer=False,
 ) -> Comment:
     now = datetime.now(timezone.utc)
     return Comment(
@@ -32,6 +34,8 @@ def _make_comment(
         upvote_count=upvote_count,
         created_at=now,
         updated_at=now,
+        is_pinned=is_pinned,
+        is_teacher_answer=is_teacher_answer,
     )
 
 

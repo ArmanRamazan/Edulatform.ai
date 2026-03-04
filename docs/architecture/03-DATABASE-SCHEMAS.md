@@ -1141,15 +1141,17 @@ CREATE TABLE IF NOT EXISTS leaderboard_scores (
 
 ```sql
 CREATE TABLE IF NOT EXISTS comments (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lesson_id    UUID NOT NULL,
-    course_id    UUID NOT NULL,
-    user_id      UUID NOT NULL,
-    content      TEXT NOT NULL,
-    parent_id    UUID REFERENCES comments(id) ON DELETE CASCADE,
-    upvote_count INT NOT NULL DEFAULT 0,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lesson_id         UUID NOT NULL,
+    course_id         UUID NOT NULL,
+    user_id           UUID NOT NULL,
+    content           TEXT NOT NULL,
+    parent_id         UUID REFERENCES comments(id) ON DELETE CASCADE,
+    upvote_count      INT NOT NULL DEFAULT 0,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    is_pinned         BOOLEAN NOT NULL DEFAULT false,
+    is_teacher_answer BOOLEAN NOT NULL DEFAULT false
 );
 ```
 
@@ -1160,10 +1162,12 @@ CREATE TABLE IF NOT EXISTS comments (
 | `course_id` | UUID | NOT NULL | Курс |
 | `user_id` | UUID | NOT NULL | Автор комментария |
 | `content` | TEXT | NOT NULL | Текст комментария (1–5000 символов) |
-| `parent_id` | UUID | nullable, FK → comments(id) CASCADE | Ответ на комментарий |
+| `parent_id` | UUID | nullable, FK → comments(id) CASCADE | Ответ на комментарий (макс. 2 уровня) |
 | `upvote_count` | INT | NOT NULL, DEFAULT 0 | Кэшированный счётчик upvotes |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
 | `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата последнего изменения |
+| `is_pinned` | BOOLEAN | NOT NULL, DEFAULT false | Закреплённый комментарий (только teacher) |
+| `is_teacher_answer` | BOOLEAN | NOT NULL, DEFAULT false | Ответ учителя (только teacher) |
 
 **Индексы:** `idx_comments_lesson` (lesson_id, created_at DESC), `idx_comments_parent` (parent_id WHERE parent_id IS NOT NULL).
 
@@ -1186,7 +1190,7 @@ CREATE TABLE IF NOT EXISTS comment_upvotes (
 
 **Индексы:** UNIQUE (comment_id, user_id) — один upvote от пользователя на комментарий.
 
-**Бизнес-логика:** Upvote — toggle: повторный вызов снимает голос. upvote_count в comments обновляется при add/remove vote. Создание комментария любым авторизованным пользователем. Ответы через parent_id. Удаление каскадное (удаляет ответы и голоса).
+**Бизнес-логика:** Upvote — toggle: повторный вызов снимает голос. upvote_count в comments обновляется при add/remove vote. Создание комментария любым авторизованным пользователем. Ответы через parent_id (макс. 2 уровня — ответ на ответ запрещён). Pin и mark-answer — только teacher. Threaded listing: pinned first, then teacher answers, then by date. Удаление каскадное (удаляет ответы и голоса).
 
 ### Table: `xp_ledger`
 
@@ -1300,6 +1304,7 @@ CREATE TABLE IF NOT EXISTS pretest_answers (
 - `004_streaks.sql` — создание таблицы streaks
 - `006_leaderboard.sql` — создание таблицы leaderboard_scores с partial index
 - `007_discussions.sql` — создание таблиц comments, comment_upvotes с индексами
+- `012_discussion_enhancements.sql` — добавление is_pinned, is_teacher_answer в comments
 - `008_xp_badges.sql` — создание таблиц xp_ledger, badges с индексами
 - `009_pretests.sql` — создание таблиц pretests, pretest_answers с индексами
 - `010_activity_feed.sql` — создание таблицы activity_feed с индексами

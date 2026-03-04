@@ -11,6 +11,8 @@ from app.domain.discussion import (
     CommentListResponse,
     CommentResponse,
     CreateCommentRequest,
+    ReplyRequest,
+    ThreadedListResponse,
     UpdateCommentRequest,
     UpvoteResponse,
 )
@@ -58,15 +60,15 @@ async def create_comment(
     )
 
 
-@router.get("/lessons/{lesson_id}/comments", response_model=CommentListResponse)
+@router.get("/lessons/{lesson_id}/comments", response_model=ThreadedListResponse)
 async def list_comments(
     lesson_id: UUID,
     claims: Annotated[dict, Depends(_get_current_user_claims)],
     service: Annotated[DiscussionService, Depends(_get_discussion_service)],
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
-) -> CommentListResponse:
-    return await service.list_comments(lesson_id, limit=limit, offset=offset)
+) -> ThreadedListResponse:
+    return await service.list_threaded_comments(lesson_id, limit=limit, offset=offset)
 
 
 @router.patch("/comments/{comment_id}", response_model=CommentResponse)
@@ -104,4 +106,50 @@ async def toggle_upvote(
     return await service.toggle_upvote(
         comment_id=comment_id,
         user_id=claims["user_id"],
+    )
+
+
+@router.post(
+    "/comments/{comment_id}/reply",
+    response_model=CommentResponse,
+    status_code=201,
+)
+async def create_reply(
+    comment_id: UUID,
+    body: ReplyRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[DiscussionService, Depends(_get_discussion_service)],
+) -> CommentResponse:
+    return await service.create_reply(
+        user_id=claims["user_id"],
+        comment_id=comment_id,
+        content=body.content,
+    )
+
+
+@router.patch("/comments/{comment_id}/pin", response_model=CommentResponse)
+async def pin_comment(
+    comment_id: UUID,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[DiscussionService, Depends(_get_discussion_service)],
+) -> CommentResponse:
+    return await service.pin_comment(
+        user_id=claims["user_id"],
+        comment_id=comment_id,
+        role=claims["role"],
+    )
+
+
+@router.patch(
+    "/comments/{comment_id}/mark-answer", response_model=CommentResponse,
+)
+async def mark_teacher_answer(
+    comment_id: UUID,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[DiscussionService, Depends(_get_discussion_service)],
+) -> CommentResponse:
+    return await service.mark_teacher_answer(
+        user_id=claims["user_id"],
+        comment_id=comment_id,
+        role=claims["role"],
     )
