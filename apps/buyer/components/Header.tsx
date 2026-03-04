@@ -41,6 +41,9 @@ export function Header() {
             <Link href="/" className="text-sm hover:underline">
               Курсы
             </Link>
+            <Link href="/bundles" className="text-sm hover:underline">
+              Наборы
+            </Link>
 
             {loading ? (
               <span className="text-sm text-gray-400">...</span>

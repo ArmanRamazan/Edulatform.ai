@@ -892,6 +892,40 @@ export const pretests = {
   },
 };
 
+export interface CourseBundle {
+  id: string;
+  teacher_id: string;
+  title: string;
+  description: string;
+  price: number;
+  discount_percent: number;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface BundleList {
+  items: CourseBundle[];
+  total: number;
+}
+
+export interface BundleWithCourses extends CourseBundle {
+  courses: Course[];
+}
+
+export const bundles = {
+  list(params?: { limit?: number; offset?: number; teacher_id?: string }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    if (params?.teacher_id) sp.set("teacher_id", params.teacher_id);
+    const qs = sp.toString();
+    return request<BundleList>(`${COURSE_URL}/bundles${qs ? `?${qs}` : ""}`);
+  },
+  get(id: string) {
+    return request<BundleWithCourses>(`${COURSE_URL}/bundles/${id}`);
+  },
+};
+
 export const concepts = {
   getCourseGraph(token: string, courseId: string) {
     return request<CourseGraphResponse>(`${LEARNING_URL}/concepts/course/${courseId}`, {
