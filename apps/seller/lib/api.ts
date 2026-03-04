@@ -1,6 +1,7 @@
 const IDENTITY_URL = "/api/identity";
 const COURSE_URL = "/api/course";
 const PAYMENT_URL = "/api/payment";
+const AI_URL = "/api/ai";
 
 export interface TokenResponse {
   access_token: string;
@@ -148,6 +149,54 @@ export interface PayoutListResponse {
   total: number;
 }
 
+export interface ModuleCreate {
+  title: string;
+  order: number;
+}
+
+export interface LessonCreate {
+  title: string;
+  content: string;
+  video_url: string | null;
+  duration_minutes: number;
+  order: number;
+}
+
+export interface LessonUpdate {
+  title?: string;
+  content?: string;
+  video_url?: string | null;
+  duration_minutes?: number;
+  order?: number;
+}
+
+export interface OutlineLesson {
+  title: string;
+  description: string;
+  key_concepts: string[];
+  estimated_duration_minutes: number;
+}
+
+export interface OutlineModule {
+  title: string;
+  description: string;
+  lessons: OutlineLesson[];
+}
+
+export interface CourseOutlineResponse {
+  modules: OutlineModule[];
+  total_lessons: number;
+  estimated_duration_hours: number;
+  model_used: string;
+}
+
+export interface LessonContentResponse {
+  content: string;
+  key_concepts: string[];
+  estimated_duration_minutes: number;
+  model_used: string;
+}
+
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
   const res = await fetch(url, options);
   if (!res.ok) {
@@ -261,5 +310,77 @@ export const earnings = {
       `${PAYMENT_URL}/earnings/payouts?limit=${limit}&offset=${offset}`,
       { headers: authHeaders(token) },
     );
+  },
+};
+
+export const modules = {
+  create(token: string, courseId: string, body: ModuleCreate) {
+    return request<Module>(`${COURSE_URL}/courses/${courseId}/modules`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+  },
+
+  delete(token: string, moduleId: string) {
+    return fetch(`${COURSE_URL}/modules/${moduleId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export const lessons = {
+  create(token: string, moduleId: string, body: LessonCreate) {
+    return request<Lesson>(`${COURSE_URL}/modules/${moduleId}/lessons`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+  },
+
+  get(token: string, lessonId: string) {
+    return request<Lesson>(`${COURSE_URL}/lessons/${lessonId}`, {
+      headers: authHeaders(token),
+    });
+  },
+
+  update(token: string, lessonId: string, body: LessonUpdate) {
+    return request<Lesson>(`${COURSE_URL}/lessons/${lessonId}`, {
+      method: "PUT",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+  },
+
+  delete(token: string, lessonId: string) {
+    return fetch(`${COURSE_URL}/lessons/${lessonId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export const ai = {
+  generateCourseOutline(
+    token: string,
+    body: { topic: string; level: string; target_audience: string; num_modules: number },
+  ) {
+    return request<CourseOutlineResponse>(`${AI_URL}/ai/course/outline`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
+  },
+
+  generateLessonContent(
+    token: string,
+    body: { title: string; description?: string; course_context?: string; format: string },
+  ) {
+    return request<LessonContentResponse>(`${AI_URL}/ai/lesson/generate`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(body),
+    });
   },
 };

@@ -16,6 +16,7 @@
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, course outline generation (teacher/admin), lesson content generation (teacher/admin), personalized study plan generation, content moderation (teacher/admin), Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), service-to-service calls to Learning Service, GET /ai/credits/me |
 | Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, adaptive pre-test, learning velocity, 33 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
+| Seller Frontend | ✅ Готов | Next.js 15 — dashboard, course CRUD, module/lesson management, AI course outline generation, AI lesson content generation |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |

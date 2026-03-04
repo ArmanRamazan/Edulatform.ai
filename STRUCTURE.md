@@ -93,7 +93,7 @@ eduplatform/
 | `workers/` директория | Когда вырастет | Пока background jobs живут внутри сервисов. Выделим когда нужна независимая масштабируемость |
 | `libs/py/testing/` | Когда будет boilerplate | Пока fixtures живут в `tests/` каждого сервиса. Выделим когда увидим дублирование |
 | `terraform/` | Phase 2 | Пока Docker Compose хватает. IaC когда будет multi-env |
-| ~~`apps/seller/`~~ | ~~Phase 1.7~~ | ✅ Scaffolded (auth + API client, pages в процессе) |
+| ~~`apps/seller/`~~ | ~~Phase 1.7~~ | ✅ Dashboard, course CRUD, AI outline/lesson generation |
 
 ---
 
