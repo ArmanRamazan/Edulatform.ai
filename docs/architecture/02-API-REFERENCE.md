@@ -1118,7 +1118,7 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ## AI Service (`:8006`)
 
-Все AI-эндпоинты (quiz, summary, tutor/chat) потребляют 1 кредит за вызов из общего дневного пула.
+Все AI-эндпоинты (quiz, summary, tutor/chat, moderate) потребляют 1 кредит за вызов из общего дневного пула.
 Лимиты зависят от `subscription_tier` в JWT: `free` = 10/день, `student` = 100/день, `pro` = безлимит.
 
 ### GET /ai/credits/me
@@ -1408,6 +1408,49 @@ Mock оплата курса. Всегда возвращает `status=complete
 | 403 | Лимит кредитов исчерпан |
 | 422 | Невалидные параметры (course_id пустой, weeks вне диапазона) |
 | 502 | Ошибка Gemini API, невалидный JSON от LLM, или недоступен Learning Service |
+
+### POST /ai/moderate
+
+Проверка качества и безопасности контента курса (advisory, не блокирует). Только для **teacher** или **admin**. Потребляет 1 кредит.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "content": "Learn Python programming from scratch with hands-on projects.",
+  "content_type": "course_description"
+}
+```
+
+| Поле | Тип | Обязательно | Описание |
+|------|-----|-------------|----------|
+| content | string(1..10000) | ✅ | Текст контента для проверки |
+| content_type | string | ✅ | `course_description`, `lesson_content`, или `review_text` |
+
+**Response `200`:**
+```json
+{
+  "approved": true,
+  "flags": [],
+  "quality_score": 8,
+  "suggestions": ["Consider adding more examples"]
+}
+```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| approved | bool | `true` если quality_score ≥ 5 и нет critical flags |
+| flags | string[] | Флаги: `low_quality`, `potential_spam`, `inappropriate_content`, `hate_speech`, `off_topic`, `generic_template`, `promotional`, `moderation_unavailable` |
+| quality_score | int(1-10) | Оценка качества (0 если модерация недоступна) |
+| suggestions | string[] | Рекомендации по улучшению |
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Не teacher/admin или лимит кредитов исчерпан |
+| 422 | Невалидные параметры (content_type не из допустимых, content пустой или > 10000 символов) |
 
 ---
 

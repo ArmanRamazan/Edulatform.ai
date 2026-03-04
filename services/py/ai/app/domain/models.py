@@ -138,3 +138,15 @@ class StudyPlanResponse(BaseModel):
     estimated_completion: str
     total_estimated_hours: int
     model_used: str
+
+
+class ModerationRequest(BaseModel):
+    content: str = Field(min_length=1, max_length=10000)
+    content_type: str = Field(pattern=r"^(course_description|lesson_content|review_text)$")
+
+
+class ModerationResponse(BaseModel):
+    approved: bool
+    flags: list[str]
+    quality_score: int
+    suggestions: list[str]

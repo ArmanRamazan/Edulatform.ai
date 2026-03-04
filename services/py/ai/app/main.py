@@ -20,6 +20,7 @@ from app.services.ai_service import AIService
 from app.services.tutor_service import TutorService
 from app.services.credit_service import CreditService
 from app.services.study_plan_service import StudyPlanService
+from app.services.moderation_service import ModerationService
 from app.routes.ai import router as ai_router
 
 app_settings = Settings()
@@ -29,6 +30,7 @@ _ai_service: AIService | None = None
 _tutor_service: TutorService | None = None
 _credit_service: CreditService | None = None
 _study_plan_service: StudyPlanService | None = None
+_moderation_service: ModerationService | None = None
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -50,6 +52,11 @@ def get_credit_service() -> CreditService:
 def get_study_plan_service() -> StudyPlanService:
     assert _study_plan_service is not None
     return _study_plan_service
+
+
+def get_moderation_service() -> ModerationService:
+    assert _moderation_service is not None
+    return _moderation_service
 
 
 def _create_health_router() -> APIRouter:
@@ -88,7 +95,7 @@ def _create_health_router() -> APIRouter:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _http_client
+    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _http_client
 
     configure_logging(service_name="ai")
     logger = structlog.get_logger()
@@ -102,6 +109,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _tutor_service = TutorService(llm, cache, app_settings)
     _credit_service = CreditService(cache=cache)
     _study_plan_service = StudyPlanService(llm=llm, http_client=_http_client, settings=app_settings)
+    _moderation_service = ModerationService(llm=llm)
 
     logger.info("service_started", port=8006)
     yield

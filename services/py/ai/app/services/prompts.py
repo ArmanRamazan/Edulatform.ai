@@ -106,6 +106,31 @@ IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blo
 Return this exact JSON structure:
 {{"weeks": [{{"week_number": 1, "focus_areas": ["general review"], "lessons_to_complete": ["review course material"], "flashcard_sessions": 2, "quiz_practice": true, "estimated_hours": 8.0}}], "estimated_completion": "2 weeks", "total_estimated_hours": 16}}"""
 
+MODERATION_PROMPT_TEMPLATE = """You are a content moderator for an educational platform.
+Review the following {content_type} and evaluate it.
+
+Content:
+{content}
+
+Evaluate on these criteria:
+1. Appropriateness (no hate speech, violence, adult content)
+2. Quality (well-written, educational value)
+3. Spam indicators (repetitive, promotional, off-topic)
+4. Plagiarism indicators (generic/template content)
+
+IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blocks.
+
+Return this exact JSON structure:
+{{"quality_score": 7, "flags": ["flag1"] or [], "suggestions": ["suggestion1"] or [], "summary": "brief assessment"}}
+
+Rules for quality_score:
+- 1-3: Poor quality (spam, inappropriate, no educational value)
+- 4-6: Below average (needs significant improvement)
+- 7-8: Good quality (minor suggestions)
+- 9-10: Excellent quality (publication ready)
+
+Possible flags: low_quality, potential_spam, inappropriate_content, hate_speech, off_topic, generic_template, promotional"""
+
 TUTOR_SYSTEM_PROMPT = """You are a Socratic AI tutor for an online learning platform. Your role is to help students understand the lesson material through guided questioning.
 
 RULES:

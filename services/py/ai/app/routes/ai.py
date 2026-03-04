@@ -11,11 +11,13 @@ from app.domain.models import (
     CourseOutlineRequest, CourseOutlineResponse,
     LessonContentRequest, LessonContentResponse,
     StudyPlanRequest, StudyPlanResponse,
+    ModerationRequest, ModerationResponse,
 )
 from app.services.ai_service import AIService
 from app.services.tutor_service import TutorService
 from app.services.credit_service import CreditService
 from app.services.study_plan_service import StudyPlanService
+from app.services.moderation_service import ModerationService
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -38,6 +40,11 @@ def _get_credit_service() -> CreditService:
 def _get_study_plan_service() -> StudyPlanService:
     from app.main import get_study_plan_service
     return get_study_plan_service()
+
+
+def _get_moderation_service() -> ModerationService:
+    from app.main import get_moderation_service
+    return get_moderation_service()
 
 
 def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
@@ -190,4 +197,23 @@ async def generate_study_plan(
         course_id=body.course_id,
         available_hours_per_week=body.available_hours_per_week,
         goal=body.goal,
+    )
+
+
+@router.post("/moderate", response_model=ModerationResponse)
+async def moderate_content(
+    body: ModerationRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[ModerationService, Depends(_get_moderation_service)],
+    credit_service: Annotated[CreditService, Depends(_get_credit_service)],
+) -> ModerationResponse:
+    if claims["role"] not in ("teacher", "admin"):
+        raise ForbiddenError("Only teachers and admins can moderate content")
+    await credit_service.check_and_consume(
+        user_id=str(claims["user_id"]),
+        tier=claims["subscription_tier"],
+    )
+    return await service.moderate(
+        content=body.content,
+        content_type=body.content_type,
     )
