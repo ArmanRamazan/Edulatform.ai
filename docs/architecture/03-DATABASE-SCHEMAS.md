@@ -69,7 +69,9 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: badges
        ├── table: pretests
        ├── table: pretest_answers
-       └── table: activity_feed
+       ├── table: activity_feed
+       ├── table: study_groups
+       └── table: study_group_members
 ```
 
 **Итого: 36 таблиц в 6 базах данных.**
@@ -1301,6 +1303,7 @@ CREATE TABLE IF NOT EXISTS pretest_answers (
 - `008_xp_badges.sql` — создание таблиц xp_ledger, badges с индексами
 - `009_pretests.sql` — создание таблиц pretests, pretest_answers с индексами
 - `010_activity_feed.sql` — создание таблицы activity_feed с индексами
+- `011_study_groups.sql` — создание таблиц study_groups, study_group_members с индексами
 
 ### Table: `activity_feed`
 
@@ -1325,6 +1328,55 @@ CREATE TABLE IF NOT EXISTS activity_feed (
 **Индексы:** PK (id) + idx_activity_feed_user (user_id, created_at DESC) + idx_activity_feed_created (created_at DESC).
 
 **Бизнес-логика:** Записи создаются автоматически при завершении квизов, review флешкарт, получении бейджей, streak milestones и mastery концептов. Используется для ленты активности пользователя и социального фида.
+
+### Table: `study_groups`
+
+```sql
+CREATE TABLE IF NOT EXISTS study_groups (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id   UUID NOT NULL,
+    name        VARCHAR(100) NOT NULL,
+    description TEXT,
+    creator_id  UUID NOT NULL,
+    max_members INT NOT NULL DEFAULT 10,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор группы |
+| `course_id` | UUID | NOT NULL | Курс, к которому привязана группа |
+| `name` | VARCHAR(100) | NOT NULL | Название группы (1–100 символов) |
+| `description` | TEXT | nullable | Описание группы |
+| `creator_id` | UUID | NOT NULL | Создатель группы |
+| `max_members` | INT | NOT NULL, DEFAULT 10 | Максимум участников |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время создания |
+
+**Индексы:** PK (id) + idx_study_groups_course (course_id).
+
+### Table: `study_group_members`
+
+```sql
+CREATE TABLE IF NOT EXISTS study_group_members (
+    id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    group_id  UUID NOT NULL REFERENCES study_groups(id) ON DELETE CASCADE,
+    user_id   UUID NOT NULL,
+    joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(group_id, user_id)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор записи |
+| `group_id` | UUID | NOT NULL, FK → study_groups(id) CASCADE | Ссылка на группу |
+| `user_id` | UUID | NOT NULL | Пользователь-участник |
+| `joined_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время вступления |
+
+**Индексы:** PK (id) + UNIQUE(group_id, user_id) + idx_sgm_group (group_id) + idx_sgm_user (user_id).
+
+**Бизнес-логика:** Создатель автоматически добавляется как первый участник. Создатель не может покинуть группу (предотвращение осиротевших групп). Новый участник не может вступить, если count >= max_members.
 
 ---
 

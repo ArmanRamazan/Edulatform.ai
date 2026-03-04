@@ -14,7 +14,7 @@
 | Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, coupons/promo codes, invoice PDF generation, refunds (admin approval workflow), course gifting (POST /gifts, GET /gifts/me/sent, POST /gifts/redeem, GET /gifts/{gift_code}/info), GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read, streak-at-risk reminders, flashcard-due reminders |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, course outline generation (teacher/admin), lesson content generation (teacher/admin), personalized study plan generation, content moderation (teacher/admin), Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), service-to-service calls to Learning Service, GET /ai/credits/me |
-| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, adaptive pre-test, learning velocity, activity feed, 35 endpoints |
+| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, adaptive pre-test, learning velocity, activity feed, study groups (collaborative learning), 41 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Seller Frontend | ✅ Готов | Next.js 15 — dashboard, course CRUD, module/lesson management, AI course outline generation, AI lesson content generation |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
@@ -22,7 +22,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 687 тестов | identity 92, course 111, enrollment 28, payment 151, notification 38, ai 116, learning 147 (incl. pre-test: 20, velocity: 11, activity: 10), +4 coupon endpoints |
+| Unit Tests | ✅ 720 тестов | identity 92, course 111, enrollment 28, payment 151, notification 57, ai 116, learning 161 (incl. pre-test: 20, velocity: 11, activity: 10, study groups: 14) |
 
 ## Стек
 
