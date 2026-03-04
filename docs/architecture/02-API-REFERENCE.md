@@ -910,40 +910,49 @@ Phases: `recap` → `read` → `check` → `practice` → `wrap-up`
 
 ---
 
-### GET /ai/mission/daily (NEW)
+### GET /ai/mission/daily
 
-Получение ежедневной миссии для пользователя. Если миссия ещё не сгенерирована — генерирует через Strategist → Designer pipeline. Требует JWT.
+Получение ежедневной миссии. Orchestrator координирует Strategist → Designer pipeline. Кэшируется на день. Требует JWT. Потребляет 1 AI credit.
 
-**Query params:** `organization_id` (required).
+**Query params:** `org_id` (UUID, required).
 
 **Response `200`:**
 ```json
 {
-  "mission_id": "uuid",
-  "title": "Review Authentication Middleware",
-  "concept": "JWT Validation",
-  "estimated_minutes": 15,
-  "status": "pending",
-  "created_at": "2026-03-05T08:00:00Z"
+  "concept_name": "Python Decorators",
+  "concept_id": "uuid",
+  "recap_questions": [{"question": "...", "expected_answer": "...", "concept_ref": "closures"}],
+  "reading_content": "Decorators are functions...",
+  "check_questions": [{"question": "...", "options": ["A","B","C","D"], "correct_index": 1, "explanation": "..."}],
+  "code_case": {"code_snippet": "...", "language": "python", "question": "...", "expected_answer": "...", "source_path": "..."} | null
 }
 ```
 
+**Response `403`:** AI credit limit reached.
+**Response `404`:** No concept available (all mastered).
+
 ---
 
-### GET /ai/memory/{user_id} (NEW)
+### POST /ai/mission/complete
 
-Получение agent memory для пользователя. Требует JWT (admin или сам пользователь).
+Завершение сессии и адаптация learning path. Вызывает Coach.end_session → Orchestrator.complete_session (adapt path + update mastery). Требует JWT.
+
+**Request:**
+```json
+{
+  "session_id": "string",
+  "concept_id": "uuid",
+  "org_id": "uuid"
+}
+```
 
 **Response `200`:**
 ```json
 {
-  "user_id": "uuid",
-  "learning_style": "visual",
-  "preferred_difficulty": "intermediate",
-  "recent_topics": ["docker", "kubernetes"],
-  "strengths": ["backend", "sql"],
-  "weaknesses": ["frontend", "css"],
-  "last_updated": "2026-03-05T12:00:00Z"
+  "next_concept_preview": "Async Python" | null,
+  "total_completed": 5,
+  "score": 85.0,
+  "mastery_delta": 0.2
 }
 ```
 

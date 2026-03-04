@@ -24,8 +24,10 @@ from app.services.moderation_service import ModerationService
 from app.services.strategist_service import StrategistService
 from app.services.designer_service import DesignerService
 from app.services.coach_service import CoachService
+from app.services.orchestrator_service import AgentOrchestrator
 from app.routes.ai import router as ai_router
 from app.routes.coach_routes import router as coach_router
+from app.routes.orchestrator_routes import router as orchestrator_router
 
 app_settings = Settings()
 
@@ -38,6 +40,7 @@ _moderation_service: ModerationService | None = None
 _strategist_service: StrategistService | None = None
 _designer_service: DesignerService | None = None
 _coach_service: CoachService | None = None
+_orchestrator_service: AgentOrchestrator | None = None
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -81,6 +84,11 @@ def get_coach_service() -> CoachService:
     return _coach_service
 
 
+def get_orchestrator_service() -> AgentOrchestrator:
+    assert _orchestrator_service is not None
+    return _orchestrator_service
+
+
 def _create_health_router() -> APIRouter:
     router = APIRouter(tags=["health"])
 
@@ -117,7 +125,7 @@ def _create_health_router() -> APIRouter:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _strategist_service, _designer_service, _coach_service, _http_client
+    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _strategist_service, _designer_service, _coach_service, _orchestrator_service, _http_client
 
     configure_logging(service_name="ai")
     logger = structlog.get_logger()
@@ -139,6 +147,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         gemini_client=llm, cache=cache, http_client=_http_client, settings=app_settings,
     )
     _coach_service = CoachService(llm=llm, cache=cache, settings=app_settings)
+    _orchestrator_service = AgentOrchestrator(
+        strategist=_strategist_service,
+        designer=_designer_service,
+        cache=cache,
+        http_client=_http_client,
+        settings=app_settings,
+    )
 
     logger.info("service_started", port=8006)
     yield
@@ -164,6 +179,7 @@ app.add_middleware(
 )
 app.include_router(ai_router)
 app.include_router(coach_router)
+app.include_router(orchestrator_router)
 app.include_router(_create_health_router())
 
 Instrumentator().instrument(app).expose(app)
