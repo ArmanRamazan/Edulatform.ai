@@ -141,3 +141,45 @@ class TestGetCertificate:
 
         with pytest.raises(NotFoundError, match="Certificate not found"):
             await cert_service.get_certificate(cert_id)
+
+
+class TestAutoIssueCertificate:
+    async def test_auto_issue_new_certificate(
+        self, cert_service, mock_cert_repo, user_id, course_id,
+    ):
+        mock_cert_repo.get_by_user_and_course.return_value = None
+        cert = _make_certificate(user_id, course_id)
+        mock_cert_repo.create.return_value = cert
+
+        result, created = await cert_service.auto_issue_certificate(
+            user_id=user_id,
+            course_id=course_id,
+            student_name="John Doe",
+            course_title="Python 101",
+        )
+
+        assert result.user_id == user_id
+        assert created is True
+        mock_cert_repo.create.assert_awaited_once()
+        call_kwargs = mock_cert_repo.create.call_args.kwargs
+        assert call_kwargs["template_data"] == {
+            "student_name": "John Doe",
+            "course_title": "Python 101",
+        }
+
+    async def test_auto_issue_returns_existing_certificate(
+        self, cert_service, mock_cert_repo, user_id, course_id,
+    ):
+        existing = _make_certificate(user_id, course_id)
+        mock_cert_repo.get_by_user_and_course.return_value = existing
+
+        result, created = await cert_service.auto_issue_certificate(
+            user_id=user_id,
+            course_id=course_id,
+            student_name="John Doe",
+            course_title="Python 101",
+        )
+
+        assert result.id == existing.id
+        assert created is False
+        mock_cert_repo.create.assert_not_awaited()
