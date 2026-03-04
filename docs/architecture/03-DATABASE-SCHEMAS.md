@@ -42,7 +42,8 @@ payment-db (PostgreSQL 16 Alpine, :5436)
        ├── table: payouts
        ├── table: coupons
        ├── table: coupon_usages
-       └── table: refunds
+       ├── table: refunds
+       └── table: gift_purchases
 
 notification-db (PostgreSQL 16 Alpine, :5437)
   └── database: notification
@@ -456,6 +457,7 @@ CREATE TABLE IF NOT EXISTS payments (
 - `004_earnings_payouts.sql` — таблицы teacher_earnings и payouts
 - `005_coupons.sql` — таблицы coupons и coupon_usages
 - `006_refunds.sql` — таблица refunds
+- `007_gifts.sql` — таблица gift_purchases
 
 ### Table: `subscription_plans`
 
@@ -670,6 +672,54 @@ CREATE TABLE IF NOT EXISTS refunds (
 - Возврат доступен в течение 14 дней после оплаты
 - Только admin может одобрить/отклонить заявку
 - При одобрении статус оплаты меняется на 'refunded'
+
+---
+
+### Table: `gift_purchases`
+
+```sql
+CREATE TABLE IF NOT EXISTS gift_purchases (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    buyer_id UUID NOT NULL,
+    recipient_email VARCHAR(255) NOT NULL,
+    course_id UUID NOT NULL,
+    payment_id UUID REFERENCES payments(id),
+    gift_code VARCHAR(50) NOT NULL UNIQUE,
+    status VARCHAR(20) NOT NULL DEFAULT 'purchased'
+        CHECK (status IN ('purchased', 'redeemed', 'expired')),
+    message TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    redeemed_at TIMESTAMPTZ,
+    redeemed_by UUID,
+    expires_at TIMESTAMPTZ NOT NULL
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `buyer_id` | UUID | NOT NULL | ID покупателя-дарителя |
+| `recipient_email` | VARCHAR(255) | NOT NULL | Email получателя подарка |
+| `course_id` | UUID | NOT NULL | ID подаренного курса |
+| `payment_id` | UUID | FK → payments(id), nullable | ID связанной оплаты |
+| `gift_code` | VARCHAR(50) | NOT NULL, UNIQUE | Уникальный код активации |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'purchased' | Статус: purchased, redeemed, expired |
+| `message` | TEXT | nullable | Персональное сообщение от дарителя |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания подарка |
+| `redeemed_at` | TIMESTAMPTZ | nullable | Дата активации подарка |
+| `redeemed_by` | UUID | nullable | ID пользователя, активировавшего подарок |
+| `expires_at` | TIMESTAMPTZ | NOT NULL | Дата истечения срока действия кода |
+
+**Индексы:** PK (id) + UNIQUE (gift_code) + idx_gift_purchases_buyer (buyer_id) + idx_gift_purchases_recipient (recipient_email).
+
+**Бизнес-правила:**
+- Каждый подарок имеет уникальный код формата `GIFT-XXXX-XXXX-XXXX`
+- Код может быть активирован только один раз (status: purchased → redeemed)
+- Срок действия кода — 30 дней с момента покупки
+- Активировать подарок может любой аутентифицированный пользователь
+- Истёкшие коды имеют status 'expired' и не могут быть активированы
+
+**Миграция:** `007_gifts.sql`
 
 ---
 

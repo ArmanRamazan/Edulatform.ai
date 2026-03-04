@@ -1469,6 +1469,145 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### POST /gifts
+
+Подарить курс другому пользователю. Создаёт gift_purchase с уникальным gift_code. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "course_id": "uuid",
+  "recipient_email": "friend@example.com",
+  "message": "Enjoy the course!"
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "uuid",
+  "buyer_id": "uuid",
+  "recipient_email": "friend@example.com",
+  "course_id": "uuid",
+  "payment_id": "uuid",
+  "gift_code": "GIFT-XXXX-XXXX-XXXX",
+  "status": "purchased",
+  "message": "Enjoy the course!",
+  "created_at": "2026-03-04T10:00:00+00:00",
+  "redeemed_at": null,
+  "redeemed_by": null,
+  "expires_at": "2026-04-04T10:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 404 | Курс не найден |
+| 422 | Невалидные данные |
+
+---
+
+### GET /gifts/me/sent
+
+Список подаренных курсов (отправленных текущим пользователем). Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query params:** `limit` (default 20), `offset` (default 0)
+
+**Response `200`:**
+```json
+[
+  {
+    "id": "uuid",
+    "buyer_id": "uuid",
+    "recipient_email": "friend@example.com",
+    "course_id": "uuid",
+    "payment_id": "uuid",
+    "gift_code": "GIFT-XXXX-XXXX-XXXX",
+    "status": "purchased",
+    "message": "Enjoy the course!",
+    "created_at": "2026-03-04T10:00:00+00:00",
+    "redeemed_at": null,
+    "redeemed_by": null,
+    "expires_at": "2026-04-04T10:00:00+00:00"
+  }
+]
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+
+---
+
+### POST /gifts/redeem
+
+Активировать подарочный код и получить доступ к курсу. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "gift_code": "GIFT-XXXX-XXXX-XXXX"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "id": "uuid",
+  "buyer_id": "uuid",
+  "recipient_email": "friend@example.com",
+  "course_id": "uuid",
+  "payment_id": "uuid",
+  "gift_code": "GIFT-XXXX-XXXX-XXXX",
+  "status": "redeemed",
+  "message": "Enjoy the course!",
+  "created_at": "2026-03-04T10:00:00+00:00",
+  "redeemed_at": "2026-03-05T09:00:00+00:00",
+  "redeemed_by": "uuid",
+  "expires_at": "2026-04-04T10:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Код уже использован или истёк срок действия |
+| 401 | Отсутствует или невалидный токен |
+| 404 | Код не найден |
+
+---
+
+### GET /gifts/{gift_code}/info
+
+Публичная информация о подарке (без аутентификации). Возвращает ограниченный набор полей.
+
+**Response `200`:**
+```json
+{
+  "gift_code": "GIFT-XXXX-XXXX-XXXX",
+  "course_id": "uuid",
+  "status": "purchased",
+  "message": "Enjoy the course!",
+  "expires_at": "2026-04-04T10:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Код не найден |
+
+---
+
 ## Notification Service (`:8005`)
 
 ### POST /notifications

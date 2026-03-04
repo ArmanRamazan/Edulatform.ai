@@ -23,12 +23,15 @@ from app.services.coupon_service import CouponService
 from app.services.invoice_service import InvoiceService
 from app.services.refund_service import RefundService
 from app.repositories.refund_repo import RefundRepository
+from app.repositories.gift_repo import GiftRepository
 from app.adapters.invoice import InvoicePDFGenerator
+from app.services.gift_service import GiftService
 from app.routes.payments import router as payments_router
 from app.routes.earnings import router as earnings_router
 from app.routes.coupons import router as coupons_router
 from app.routes.invoices import router as invoices_router
 from app.routes.refunds import router as refunds_router
+from app.routes.gifts import router as gifts_router
 
 app_settings = Settings()
 
@@ -39,6 +42,7 @@ _earnings_service: EarningsService | None = None
 _coupon_service: CouponService | None = None
 _invoice_service: InvoiceService | None = None
 _refund_service: RefundService | None = None
+_gift_service: GiftService | None = None
 
 
 def get_payment_service() -> PaymentService:
@@ -66,9 +70,14 @@ def get_refund_service() -> RefundService:
     return _refund_service
 
 
+def get_gift_service() -> GiftService:
+    assert _gift_service is not None
+    return _gift_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _payment_service, _earnings_service, _coupon_service, _invoice_service, _refund_service
+    global _pool, _redis, _payment_service, _earnings_service, _coupon_service, _invoice_service, _refund_service, _gift_service
 
     configure_logging(service_name="payment")
     logger = structlog.get_logger()
@@ -92,6 +101,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/006_refunds.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/007_gifts.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
@@ -107,6 +118,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     )
     refund_repo = RefundRepository(_pool)
     _refund_service = RefundService(refund_repo=refund_repo, payment_repo=repo)
+    gift_repo = GiftRepository(_pool)
+    _gift_service = GiftService(gift_repo=gift_repo, payment_repo=repo)
     logger.info("service_started", port=8004)
     yield
     await _redis.aclose()
@@ -133,6 +146,7 @@ app.include_router(earnings_router)
 app.include_router(coupons_router)
 app.include_router(invoices_router)
 app.include_router(refunds_router)
+app.include_router(gifts_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
