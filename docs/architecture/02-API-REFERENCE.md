@@ -985,9 +985,12 @@ Mock оплата курса. Всегда возвращает `status=complete
 ```json
 {
   "course_id": "550e8400-e29b-41d4-a716-446655440000",
-  "amount": 49.99
+  "amount": 49.99,
+  "coupon_code": "SAVE20"
 }
 ```
+
+> `coupon_code` — опционально. Если указан, валидирует купон и применяет скидку к `amount`.
 
 **Response `201`:**
 ```json
@@ -1040,6 +1043,104 @@ Mock оплата курса. Всегда возвращает `status=complete
   "total": 3
 }
 ```
+
+---
+
+### POST /coupons
+
+Создание промокода. Только для `role=admin`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "code": "SAVE20",
+  "discount_type": "percentage",
+  "discount_value": 20,
+  "max_uses": 100,
+  "valid_from": "2026-03-01T00:00:00+00:00",
+  "valid_until": "2026-04-01T00:00:00+00:00",
+  "course_id": null
+}
+```
+
+> `max_uses` и `course_id` — опционально. `course_id=null` = все курсы.
+
+**Response `201`:** Объект `Coupon`.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Невалидный код, percentage > 100, valid_until <= valid_from |
+| 403 | `role != admin` |
+
+---
+
+### GET /coupons
+
+Список купонов. Только для `role=admin`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query params:** `limit`, `offset`.
+
+**Response `200`:**
+```json
+{
+  "items": [{ "id": "...", "code": "SAVE20", "discount_type": "percentage", "discount_value": "20.00", ... }],
+  "total": 5
+}
+```
+
+---
+
+### POST /coupons/validate
+
+Валидация купона и расчёт скидки. Требует JWT (любая роль).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "code": "SAVE20",
+  "course_id": "550e8400-e29b-41d4-a716-446655440000",
+  "amount": 100.00
+}
+```
+
+**Response `200`:**
+```json
+{
+  "original_price": "100.00",
+  "discount_amount": "20.00",
+  "final_price": "80.00",
+  "coupon_code": "SAVE20"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Купон уже использован этим пользователем |
+| 404 | Купон не найден, истёк, деактивирован, лимит исчерпан, не для этого курса |
+
+---
+
+### PATCH /coupons/{coupon_id}/deactivate
+
+Деактивация купона. Только для `role=admin`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `204`:** Без тела.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | `role != admin` |
+| 404 | Купон не найден |
 
 ---
 

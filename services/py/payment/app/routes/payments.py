@@ -51,18 +51,45 @@ def _to_response(p: "Payment") -> PaymentResponse:
     )
 
 
+def _get_coupon_service():
+    from app.main import get_coupon_service
+    return get_coupon_service()
+
+
 @router.post("", response_model=PaymentResponse, status_code=201)
 async def create_payment(
     body: PaymentCreate,
     claims: Annotated[dict, Depends(_get_current_user_claims)],
     service: Annotated[PaymentService, Depends(_get_payment_service)],
 ) -> PaymentResponse:
+    amount = body.amount
+    coupon_code = body.coupon_code
+
+    if coupon_code:
+        from app.services.coupon_service import CouponService
+        coupon_svc: CouponService = _get_coupon_service()
+        discount = await coupon_svc.validate_coupon(
+            code=coupon_code,
+            course_id=body.course_id,
+            user_id=claims["user_id"],
+            original_price=amount,
+        )
+        amount = discount.final_price
+
     payment = await service.create(
         student_id=claims["user_id"],
         role=claims["role"],
         course_id=body.course_id,
-        amount=body.amount,
+        amount=amount,
     )
+
+    if coupon_code:
+        await coupon_svc.apply_coupon(
+            code=coupon_code,
+            user_id=claims["user_id"],
+            payment_id=payment.id,
+        )
+
     return _to_response(payment)
 
 

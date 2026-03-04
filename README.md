@@ -42,8 +42,8 @@ EduPlatform — не очередной видеохостинг с прогре
 Монорепа: **Python** (бизнес-логика, 7 микросервисов) + **Next.js** (frontend) + **Rust** (performance-critical, Phase 4).
 
 - **7 сервисов**: Identity, Course, Enrollment, Payment, Notification, AI, Learning
-- **548 unit-тестов**, нагрузочное тестирование через Locust
-- **90 endpoint**, **31 таблица** в 6 БД
+- **586 unit-тестов**, нагрузочное тестирование через Locust
+- **94 endpoint**, **33 таблица** в 6 БД
 - **157 RPS, p99 = 51ms** на текущей стадии
 - **AI**: Quiz generation, Summary, Socratic Tutor, Study Plan (Gemini Flash), FSRS spaced repetition
 - **Knowledge Graph**: concepts, prerequisites, concept mastery tracking
@@ -59,7 +59,7 @@ docker compose -f docker-compose.dev.yml up
 # Фронтенд
 cd apps/buyer && pnpm install && pnpm dev
 
-# Тесты (548 тестов, 7 сервисов)
+# Тесты (586 тестов, 7 сервисов)
 uv sync --all-packages
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
@@ -91,7 +91,7 @@ cd tools/orchestrator
 
 ## Статус
 
-**Phase 3.2 — Monetization backend (завершён).** 7 сервисов, 90 endpoint, 548 тестов. AI-слой: quiz generation, summary, Socratic tutor, study plan. Learning Engine: квизы + FSRS flashcards + knowledge graph + gamification. Buyer App: 18 страниц (каталог, обучение, AI, геймификация, onboarding). Stripe backend: subscriptions, earnings, payouts. Course bundles.
+**Phase 3.2 — Monetization backend (завершён).** 7 сервисов, 94 endpoint, 586 тестов. AI-слой: quiz generation, summary, Socratic tutor, study plan. Learning Engine: квизы + FSRS flashcards + knowledge graph + gamification. Buyer App: 18 страниц (каталог, обучение, AI, геймификация, onboarding). Stripe backend: subscriptions, earnings, payouts, coupons. Course bundles.
 
 | Стадия | Пользователи | Статус |
 |--------|-------------|--------|

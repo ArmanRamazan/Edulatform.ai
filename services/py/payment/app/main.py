@@ -16,10 +16,13 @@ from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.payment_repo import PaymentRepository
 from app.repositories.earnings_repo import EarningsRepository
+from app.repositories.coupon_repo import CouponRepository
 from app.services.payment_service import PaymentService
 from app.services.earnings_service import EarningsService
+from app.services.coupon_service import CouponService
 from app.routes.payments import router as payments_router
 from app.routes.earnings import router as earnings_router
+from app.routes.coupons import router as coupons_router
 
 app_settings = Settings()
 
@@ -27,6 +30,7 @@ _pool: asyncpg.Pool | None = None
 _redis: Redis | None = None
 _payment_service: PaymentService | None = None
 _earnings_service: EarningsService | None = None
+_coupon_service: CouponService | None = None
 
 
 def get_payment_service() -> PaymentService:
@@ -39,9 +43,14 @@ def get_earnings_service() -> EarningsService:
     return _earnings_service
 
 
+def get_coupon_service() -> CouponService:
+    assert _coupon_service is not None
+    return _coupon_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _payment_service, _earnings_service
+    global _pool, _redis, _payment_service, _earnings_service, _coupon_service
 
     configure_logging(service_name="payment")
     logger = structlog.get_logger()
@@ -61,13 +70,17 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/004_earnings_payouts.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/005_coupons.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
     repo = PaymentRepository(_pool)
     earnings_repo = EarningsRepository(_pool)
+    coupon_repo = CouponRepository(_pool)
     _payment_service = PaymentService(repo, earnings_repo)
     _earnings_service = EarningsService(earnings_repo)
+    _coupon_service = CouponService(coupon_repo)
     logger.info("service_started", port=8004)
     yield
     await _redis.aclose()
@@ -91,6 +104,7 @@ app.add_middleware(
 )
 app.include_router(payments_router)
 app.include_router(earnings_router)
+app.include_router(coupons_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 

@@ -11,7 +11,7 @@
 | Identity Service | ✅ Готов | Регистрация, логин, JWT refresh tokens, роли, admin, email verification, forgot password |
 | Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization, course bundles, promotional pricing |
 | Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
-| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
+| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, coupons/promo codes, GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read, streak-at-risk reminders, flashcard-due reminders |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, course outline generation (teacher/admin), lesson content generation (teacher/admin), personalized study plan generation, content moderation (teacher/admin), Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), service-to-service calls to Learning Service, GET /ai/credits/me |
 | Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, adaptive pre-test, learning velocity, 33 endpoints |
@@ -21,7 +21,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 554 тестов | identity 63, course 111, enrollment 28, payment 61, notification 38, ai 116, learning 137 (incl. pre-test: 20, velocity: 11) |
+| Unit Tests | ✅ 586 тестов | identity 63, course 111, enrollment 28, payment 89, notification 38, ai 116, learning 137 (incl. pre-test: 20, velocity: 11), +4 coupon endpoints |
 
 ## Стек
 

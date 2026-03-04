@@ -39,7 +39,9 @@ payment-db (PostgreSQL 16 Alpine, :5436)
        ├── table: subscription_plans
        ├── table: user_subscriptions
        ├── table: teacher_earnings
-       └── table: payouts
+       ├── table: payouts
+       ├── table: coupons
+       └── table: coupon_usages
 
 notification-db (PostgreSQL 16 Alpine, :5437)
   └── database: notification
@@ -65,7 +67,7 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        └── table: pretest_answers
 ```
 
-**Итого: 31 таблица в 6 базах данных.**
+**Итого: 33 таблицы в 6 базах данных.**
 
 ---
 
@@ -451,6 +453,7 @@ CREATE TABLE IF NOT EXISTS payments (
 - `001_payments.sql` — создание ENUM payment_status и таблицы payments
 - `002_subscription_plans.sql` — таблицы subscription_plans и user_subscriptions
 - `004_earnings_payouts.sql` — таблицы teacher_earnings и payouts
+- `005_coupons.sql` — таблицы coupons и coupon_usages
 
 ### Table: `subscription_plans`
 
@@ -567,6 +570,66 @@ CREATE TABLE IF NOT EXISTS payouts (
 | `completed_at` | TIMESTAMPTZ | nullable | Дата завершения |
 
 **Индексы:** PK (id) + idx_payouts_teacher_id.
+
+### Table: `coupons`
+
+```sql
+CREATE TABLE IF NOT EXISTS coupons (
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code           VARCHAR(50) NOT NULL UNIQUE,
+    discount_type  VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
+    discount_value DECIMAL(10,2) NOT NULL CHECK (discount_value > 0),
+    max_uses       INT,
+    current_uses   INT NOT NULL DEFAULT 0,
+    valid_from     TIMESTAMPTZ NOT NULL,
+    valid_until    TIMESTAMPTZ NOT NULL,
+    course_id      UUID,
+    created_by     UUID NOT NULL,
+    is_active      BOOLEAN NOT NULL DEFAULT true,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (valid_until > valid_from)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `code` | VARCHAR(50) | UNIQUE, NOT NULL | Промокод (uppercase alphanumeric + hyphens) |
+| `discount_type` | VARCHAR(20) | NOT NULL, CHECK | Тип скидки: percentage или fixed |
+| `discount_value` | DECIMAL(10,2) | NOT NULL, > 0 | Значение скидки (% или фикс. сумма) |
+| `max_uses` | INT | nullable | Лимит использований (null = безлимит) |
+| `current_uses` | INT | NOT NULL, DEFAULT 0 | Текущее кол-во использований |
+| `valid_from` | TIMESTAMPTZ | NOT NULL | Начало действия |
+| `valid_until` | TIMESTAMPTZ | NOT NULL | Окончание действия |
+| `course_id` | UUID | nullable | Привязка к курсу (null = все курсы) |
+| `created_by` | UUID | NOT NULL | ID администратора-создателя |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Активен ли купон |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + UNIQUE (code).
+
+### Table: `coupon_usages`
+
+```sql
+CREATE TABLE IF NOT EXISTS coupon_usages (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    coupon_id  UUID NOT NULL REFERENCES coupons(id),
+    user_id    UUID NOT NULL,
+    payment_id UUID,
+    used_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(coupon_id, user_id)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `coupon_id` | UUID | FK → coupons(id), NOT NULL | ID купона |
+| `user_id` | UUID | NOT NULL | ID пользователя |
+| `payment_id` | UUID | nullable | ID оплаты |
+| `used_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата использования |
+
+**Индексы:** PK (id) + UNIQUE (coupon_id, user_id).
 
 ---
 

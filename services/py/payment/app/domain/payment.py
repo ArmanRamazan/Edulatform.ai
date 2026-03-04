@@ -29,6 +29,7 @@ class Payment:
 class PaymentCreate(BaseModel):
     course_id: UUID
     amount: Decimal = Field(gt=0)
+    coupon_code: str | None = None
 
 
 class PaymentResponse(BaseModel):
