@@ -23,7 +23,9 @@ from app.services.study_plan_service import StudyPlanService
 from app.services.moderation_service import ModerationService
 from app.services.strategist_service import StrategistService
 from app.services.designer_service import DesignerService
+from app.services.coach_service import CoachService
 from app.routes.ai import router as ai_router
+from app.routes.coach_routes import router as coach_router
 
 app_settings = Settings()
 
@@ -35,6 +37,7 @@ _study_plan_service: StudyPlanService | None = None
 _moderation_service: ModerationService | None = None
 _strategist_service: StrategistService | None = None
 _designer_service: DesignerService | None = None
+_coach_service: CoachService | None = None
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -73,6 +76,11 @@ def get_designer_service() -> DesignerService:
     return _designer_service
 
 
+def get_coach_service() -> CoachService:
+    assert _coach_service is not None
+    return _coach_service
+
+
 def _create_health_router() -> APIRouter:
     router = APIRouter(tags=["health"])
 
@@ -109,7 +117,7 @@ def _create_health_router() -> APIRouter:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _strategist_service, _designer_service, _http_client
+    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _strategist_service, _designer_service, _coach_service, _http_client
 
     configure_logging(service_name="ai")
     logger = structlog.get_logger()
@@ -130,6 +138,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _designer_service = DesignerService(
         gemini_client=llm, cache=cache, http_client=_http_client, settings=app_settings,
     )
+    _coach_service = CoachService(llm=llm, cache=cache, settings=app_settings)
 
     logger.info("service_started", port=8006)
     yield
@@ -154,6 +163,7 @@ app.add_middleware(
     window=60,
 )
 app.include_router(ai_router)
+app.include_router(coach_router)
 app.include_router(_create_health_router())
 
 Instrumentator().instrument(app).expose(app)
