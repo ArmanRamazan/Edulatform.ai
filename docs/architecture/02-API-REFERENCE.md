@@ -1306,6 +1306,169 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### POST /refunds
+
+Подать заявку на возврат средств. Только владелец оплаты, в течение 14 дней.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "payment_id": "uuid",
+  "reason": "Changed my mind"
+}
+```
+
+**Response (201):**
+```json
+{
+  "id": "uuid",
+  "payment_id": "uuid",
+  "user_id": "uuid",
+  "reason": "Changed my mind",
+  "status": "requested",
+  "amount": "49.99",
+  "admin_note": null,
+  "requested_at": "2026-03-01T12:00:00+00:00",
+  "processed_at": null
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Оплата не в статусе completed или прошло более 14 дней |
+| 401 | Отсутствует или невалидный токен |
+| 403 | Пользователь не является владельцем оплаты |
+| 404 | Оплата не найдена |
+| 409 | Заявка на возврат уже существует для этой оплаты |
+
+---
+
+### GET /refunds/me
+
+Мои заявки на возврат. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query:** `limit` (1-100, default 20), `offset` (default 0)
+
+**Response (200):**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "payment_id": "uuid",
+      "user_id": "uuid",
+      "reason": "Changed my mind",
+      "status": "requested",
+      "amount": "49.99",
+      "admin_note": null,
+      "requested_at": "2026-03-01T12:00:00+00:00",
+      "processed_at": null
+    }
+  ],
+  "total": 1
+}
+```
+
+---
+
+### GET /refunds
+
+Список всех заявок на возврат. Только admin.
+
+**Headers:** `Authorization: Bearer <token>` (admin)
+
+**Query:** `status` (optional: requested, approved, rejected, processed), `limit` (1-100, default 20), `offset` (default 0)
+
+**Response (200):**
+```json
+{
+  "items": [...],
+  "total": 5
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != admin` — "Only admins can list all refunds" |
+
+---
+
+### PATCH /refunds/{refund_id}/approve
+
+Одобрить заявку на возврат. Только admin. Устанавливает статус оплаты в 'refunded'.
+
+**Headers:** `Authorization: Bearer <token>` (admin)
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "payment_id": "uuid",
+  "user_id": "uuid",
+  "reason": "Changed my mind",
+  "status": "approved",
+  "amount": "49.99",
+  "admin_note": null,
+  "requested_at": "2026-03-01T12:00:00+00:00",
+  "processed_at": "2026-03-02T10:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Заявка уже обработана (status != requested) |
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != admin` |
+| 404 | Заявка не найдена |
+
+---
+
+### PATCH /refunds/{refund_id}/reject
+
+Отклонить заявку на возврат. Только admin.
+
+**Headers:** `Authorization: Bearer <token>` (admin)
+
+**Request:**
+```json
+{
+  "reason": "Course was already completed"
+}
+```
+
+**Response (200):**
+```json
+{
+  "id": "uuid",
+  "payment_id": "uuid",
+  "user_id": "uuid",
+  "reason": "Changed my mind",
+  "status": "rejected",
+  "amount": "49.99",
+  "admin_note": "Course was already completed",
+  "requested_at": "2026-03-01T12:00:00+00:00",
+  "processed_at": "2026-03-02T10:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Заявка уже обработана (status != requested) |
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != admin` |
+| 404 | Заявка не найдена |
+
+---
+
 ## Notification Service (`:8005`)
 
 ### POST /notifications

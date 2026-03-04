@@ -60,6 +60,20 @@ class PaymentRepository:
             )
         return [self._to_entity(r) for r in rows], count
 
+    async def update_status(
+        self, payment_id: UUID, status: PaymentStatus,
+    ) -> Payment | None:
+        row = await self._pool.fetchrow(
+            """
+            UPDATE payments SET status = $2
+            WHERE id = $1
+            RETURNING id, student_id, course_id, amount, status, created_at
+            """,
+            payment_id,
+            str(status),
+        )
+        return self._to_entity(row) if row else None
+
     @staticmethod
     def _to_entity(row: asyncpg.Record) -> Payment:
         return Payment(

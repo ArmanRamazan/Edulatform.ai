@@ -21,11 +21,14 @@ from app.services.payment_service import PaymentService
 from app.services.earnings_service import EarningsService
 from app.services.coupon_service import CouponService
 from app.services.invoice_service import InvoiceService
+from app.services.refund_service import RefundService
+from app.repositories.refund_repo import RefundRepository
 from app.adapters.invoice import InvoicePDFGenerator
 from app.routes.payments import router as payments_router
 from app.routes.earnings import router as earnings_router
 from app.routes.coupons import router as coupons_router
 from app.routes.invoices import router as invoices_router
+from app.routes.refunds import router as refunds_router
 
 app_settings = Settings()
 
@@ -35,6 +38,7 @@ _payment_service: PaymentService | None = None
 _earnings_service: EarningsService | None = None
 _coupon_service: CouponService | None = None
 _invoice_service: InvoiceService | None = None
+_refund_service: RefundService | None = None
 
 
 def get_payment_service() -> PaymentService:
@@ -57,9 +61,14 @@ def get_invoice_service() -> InvoiceService:
     return _invoice_service
 
 
+def get_refund_service() -> RefundService:
+    assert _refund_service is not None
+    return _refund_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _payment_service, _earnings_service, _coupon_service, _invoice_service
+    global _pool, _redis, _payment_service, _earnings_service, _coupon_service, _invoice_service, _refund_service
 
     configure_logging(service_name="payment")
     logger = structlog.get_logger()
@@ -81,6 +90,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/005_coupons.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/006_refunds.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
@@ -94,6 +105,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         payment_repo=repo,
         pdf_generator=InvoicePDFGenerator(),
     )
+    refund_repo = RefundRepository(_pool)
+    _refund_service = RefundService(refund_repo=refund_repo, payment_repo=repo)
     logger.info("service_started", port=8004)
     yield
     await _redis.aclose()
@@ -119,6 +132,7 @@ app.include_router(payments_router)
 app.include_router(earnings_router)
 app.include_router(coupons_router)
 app.include_router(invoices_router)
+app.include_router(refunds_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 

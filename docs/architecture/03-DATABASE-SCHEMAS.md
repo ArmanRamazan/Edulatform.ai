@@ -41,7 +41,8 @@ payment-db (PostgreSQL 16 Alpine, :5436)
        ├── table: teacher_earnings
        ├── table: payouts
        ├── table: coupons
-       └── table: coupon_usages
+       ├── table: coupon_usages
+       └── table: refunds
 
 notification-db (PostgreSQL 16 Alpine, :5437)
   └── database: notification
@@ -67,7 +68,7 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        └── table: pretest_answers
 ```
 
-**Итого: 33 таблицы в 6 базах данных.**
+**Итого: 34 таблицы в 6 базах данных.**
 
 ---
 
@@ -454,6 +455,7 @@ CREATE TABLE IF NOT EXISTS payments (
 - `002_subscription_plans.sql` — таблицы subscription_plans и user_subscriptions
 - `004_earnings_payouts.sql` — таблицы teacher_earnings и payouts
 - `005_coupons.sql` — таблицы coupons и coupon_usages
+- `006_refunds.sql` — таблица refunds
 
 ### Table: `subscription_plans`
 
@@ -630,6 +632,44 @@ CREATE TABLE IF NOT EXISTS coupon_usages (
 | `used_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата использования |
 
 **Индексы:** PK (id) + UNIQUE (coupon_id, user_id).
+
+### Table: `refunds`
+
+```sql
+CREATE TABLE IF NOT EXISTS refunds (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payment_id UUID NOT NULL UNIQUE REFERENCES payments(id),
+    user_id UUID NOT NULL,
+    reason TEXT NOT NULL,
+    status VARCHAR(20) NOT NULL DEFAULT 'requested'
+        CHECK (status IN ('requested', 'approved', 'rejected', 'processed')),
+    amount DECIMAL(10,2) NOT NULL,
+    admin_note TEXT,
+    requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    processed_at TIMESTAMPTZ
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `payment_id` | UUID | FK → payments(id), NOT NULL, UNIQUE | ID оплаты (одна заявка на оплату) |
+| `user_id` | UUID | NOT NULL | ID пользователя-заявителя |
+| `reason` | TEXT | NOT NULL | Причина возврата |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'requested' | Статус: requested, approved, rejected, processed |
+| `amount` | DECIMAL(10,2) | NOT NULL | Сумма возврата |
+| `admin_note` | TEXT | nullable | Комментарий администратора |
+| `requested_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата подачи заявки |
+| `processed_at` | TIMESTAMPTZ | nullable | Дата обработки заявки |
+
+**Индексы:** PK (id) + UNIQUE (payment_id) + idx_refunds_user (user_id) + idx_refunds_status (status).
+
+**Бизнес-правила:**
+- Одна заявка на возврат на одну оплату (UNIQUE payment_id)
+- Только владелец оплаты может подать заявку
+- Возврат доступен в течение 14 дней после оплаты
+- Только admin может одобрить/отклонить заявку
+- При одобрении статус оплаты меняется на 'refunded'
 
 ---
 
