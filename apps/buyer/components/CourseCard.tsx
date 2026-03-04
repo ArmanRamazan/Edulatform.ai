@@ -1,8 +1,10 @@
 import Link from "next/link";
 import type { Course } from "@/lib/api";
+import { WishlistButton } from "@/components/WishlistButton";
 
 interface CourseCardProps {
   course: Course;
+  token?: string | null;
 }
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -17,12 +19,17 @@ const LEVEL_COLORS: Record<string, string> = {
   advanced: "bg-red-100 text-red-700",
 };
 
-export function CourseCard({ course }: CourseCardProps) {
+export function CourseCard({ course, token }: CourseCardProps) {
   return (
     <Link
       href={`/courses/${course.id}`}
-      className="block rounded-lg border border-gray-200 bg-white p-4 transition hover:shadow-md"
+      className="relative block rounded-lg border border-gray-200 bg-white p-4 transition hover:shadow-md"
     >
+      {token && (
+        <div className="absolute right-2 top-2 z-10">
+          <WishlistButton token={token} courseId={course.id} />
+        </div>
+      )}
       <div className="mb-2 flex items-center gap-2">
         <span className={`rounded px-2 py-0.5 text-xs ${LEVEL_COLORS[course.level] || ""}`}>
           {LEVEL_LABELS[course.level] || course.level}

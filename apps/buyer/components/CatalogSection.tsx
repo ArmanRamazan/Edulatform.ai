@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { CourseCard } from "@/components/CourseCard";
 import { useCourseList, useCategories } from "@/hooks/use-courses";
+import { useAuth } from "@/hooks/use-auth";
 import { getErrorMessage } from "@/lib/errors";
 
 export function CatalogSection() {
+  const { token } = useAuth();
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState("");
   const [categoryId, setCategoryId] = useState("");
@@ -116,7 +118,7 @@ export function CatalogSection() {
           </p>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.items.map((c) => (
-              <CourseCard key={c.id} course={c} />
+              <CourseCard key={c.id} course={c} token={token} />
             ))}
           </div>
         </>

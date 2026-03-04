@@ -75,6 +75,9 @@ export function Header() {
                     )}
                   </Link>
                 )}
+                <Link href="/wishlist" className="text-sm hover:underline">
+                  Избранное
+                </Link>
                 <Link href="/referral" className="text-sm hover:underline">
                   Пригласить друзей
                 </Link>
