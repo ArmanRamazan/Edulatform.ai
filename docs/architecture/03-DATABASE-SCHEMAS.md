@@ -818,10 +818,55 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 **MVP:** Нет реальной отправки email. Уведомления хранятся в БД + лог в stdout.
 
+### Table: `conversations`
+
+```sql
+CREATE TABLE IF NOT EXISTS conversations (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    participant_1   UUID NOT NULL,
+    participant_2   UUID NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_message_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(participant_1, participant_2)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `participant_1` | UUID | NOT NULL | ID первого участника (меньший UUID) |
+| `participant_2` | UUID | NOT NULL | ID второго участника (больший UUID) |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+| `last_message_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время последнего сообщения |
+
+### Table: `messages`
+
+```sql
+CREATE TABLE IF NOT EXISTS messages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    conversation_id UUID NOT NULL REFERENCES conversations(id),
+    sender_id       UUID NOT NULL,
+    content         TEXT NOT NULL,
+    is_read         BOOLEAN NOT NULL DEFAULT false,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `conversation_id` | UUID | NOT NULL, FK → conversations | ID диалога |
+| `sender_id` | UUID | NOT NULL | ID отправителя |
+| `content` | TEXT | NOT NULL | Текст сообщения (1-2000 символов) |
+| `is_read` | BOOLEAN | NOT NULL, DEFAULT false | Прочитано получателем |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
 **Миграции:**
 - `001_notifications.sql` — создание ENUM notification_type и таблицы notifications
 - `003_streak_reminder_type.sql` — добавление `streak_reminder` в ENUM notification_type
 - `004_flashcard_reminder_type.sql` — добавление `flashcard_reminder` в ENUM notification_type
+- `005_conversations.sql` — создание таблицы conversations с индексами по participant_1, participant_2
+- `006_messages.sql` — создание таблицы messages с индексом по conversation_id
 
 ---
 
