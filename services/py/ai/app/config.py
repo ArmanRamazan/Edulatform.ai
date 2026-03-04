@@ -10,3 +10,5 @@ class Settings(BaseAppSettings):
     tutor_session_ttl: int = 3600
     tutor_daily_limit: int = 10
     learning_service_url: str = "http://localhost:8007"
+    rag_service_url: str = "http://localhost:8008"
+    strategist_path_ttl: int = 86400

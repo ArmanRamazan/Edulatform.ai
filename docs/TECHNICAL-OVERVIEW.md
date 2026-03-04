@@ -60,7 +60,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 
 | Agent | Роль | Input | Output |
 |-------|------|-------|--------|
-| **Strategist** | Анализ кодовой базы, определение learning path | RAG chunks + engineer profile | Weekly plan, topic sequence |
+| **Strategist** | Анализ кодовой базы, определение learning path, адаптация пути | RAG org concepts + Learning mastery + LLM | Ordered concept path (cached in Redis 24h), next concept, adapted path (remedial/skip) |
 | **Designer** | Генерация mission-контента из реального кода | Plan + RAG chunks + trust level | Mission steps, code snippets, questions |
 | **Coach** | Socratic dialog, review ответов, подсказки | Mission context + engineer answers | Feedback, hints, trust level recommendation |
 
@@ -115,12 +115,12 @@ cd services/py/course      && uv run --package course pytest tests/ -v       # 1
 cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 28 tests
 cd services/py/payment     && uv run --package payment pytest tests/ -v      # 151 tests
 cd services/py/notification && uv run --package notification pytest tests/ -v # 57 tests
-cd services/py/ai          && uv run --package ai pytest tests/ -v           # 116 tests
+cd services/py/ai          && uv run --package ai pytest tests/ -v           # 126 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 175 tests
 cd services/py/rag         && uv run --package rag pytest tests/ -v          # 115 tests
 ```
 
-**Итого:** 795 тестов по 8 сервисам.
+**Итого:** 805 тестов по 8 сервисам.
 
 ## Инфраструктура
 
