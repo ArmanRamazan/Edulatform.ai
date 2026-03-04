@@ -22,12 +22,14 @@ from app.repositories.course_repo import CourseRepository
 from app.repositories.module_repo import ModuleRepository
 from app.repositories.lesson_repo import LessonRepository
 from app.repositories.review_repo import ReviewRepository
+from app.repositories.wishlist_repo import WishlistRepository
 from app.services.bundle_service import BundleService
 from app.services.promotion_service import PromotionService
 from app.services.course_service import CourseService
 from app.services.module_service import ModuleService
 from app.services.lesson_service import LessonService
 from app.services.review_service import ReviewService
+from app.services.wishlist_service import WishlistService
 from app.routes.bundles import router as bundles_router
 from app.routes.promotions import router as promotions_router
 from app.routes.categories import router as categories_router
@@ -36,6 +38,7 @@ from app.routes.modules import router as modules_router
 from app.routes.lessons import router as lessons_router
 from app.routes.analytics import router as analytics_router
 from app.routes.reviews import router as reviews_router
+from app.routes.wishlist_routes import router as wishlist_router
 
 app_settings = Settings()
 
@@ -47,6 +50,7 @@ _course_service: CourseService | None = None
 _module_service: ModuleService | None = None
 _lesson_service: LessonService | None = None
 _review_service: ReviewService | None = None
+_wishlist_service: WishlistService | None = None
 _category_repo: CategoryRepository | None = None
 
 
@@ -80,6 +84,11 @@ def get_review_service() -> ReviewService:
     return _review_service
 
 
+def get_wishlist_service() -> WishlistService:
+    assert _wishlist_service is not None
+    return _wishlist_service
+
+
 def get_category_repo() -> CategoryRepository:
     assert _category_repo is not None
     return _category_repo
@@ -87,7 +96,7 @@ def get_category_repo() -> CategoryRepository:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _bundle_service, _promotion_service, _course_service, _module_service, _lesson_service, _review_service, _category_repo
+    global _pool, _redis, _bundle_service, _promotion_service, _course_service, _module_service, _lesson_service, _review_service, _wishlist_service, _category_repo
 
     configure_logging(service_name="course")
     logger = structlog.get_logger()
@@ -117,6 +126,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/009_promotions.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/010_wishlist.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
     _cache = CourseCache(_redis)
@@ -135,6 +146,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _module_service = ModuleService(module_repo, course_repo, cache=_cache)
     _lesson_service = LessonService(lesson_repo, module_repo, course_repo, cache=_cache)
     _review_service = ReviewService(review_repo, course_repo, cache=_cache)
+    wishlist_repo = WishlistRepository(_pool)
+    _wishlist_service = WishlistService(wishlist_repo, course_repo)
     logger.info("service_started", port=8002)
     yield
     await _redis.aclose()
@@ -164,6 +177,7 @@ app.include_router(courses_router)
 app.include_router(modules_router)
 app.include_router(lessons_router)
 app.include_router(reviews_router)
+app.include_router(wishlist_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 

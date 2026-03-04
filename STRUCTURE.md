@@ -26,12 +26,12 @@ eduplatform/
 ├── services/                      # Deployable сервисы
 │   ├── py/                        # Python сервисы (бизнес-логика)
 │   │   ├── identity/              #   Auth, JWT refresh tokens, roles, admin, email verification, forgot password
-│   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization, bundles
-│   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion
+│   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization, bundles, wishlist
+│   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion, recommendations
 │   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts, coupons, invoice PDF, refunds
 │   │   ├── notification/          #   In-app уведомления, direct messaging
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
-│   │   └── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed
+│   │   └── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed, certificates
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Routing, auth check, rate limiting
 │       ├── search/                #   Поисковый proxy + ranking

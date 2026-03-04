@@ -9,8 +9,8 @@
 | Компонент | Статус | Описание |
 |-----------|--------|----------|
 | Identity Service | ✅ Готов | Регистрация, логин, JWT refresh tokens, роли, admin, email verification, forgot password, referral program, public profiles, follows |
-| Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization, course bundles, promotional pricing |
-| Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
+| Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization, course bundles, promotional pricing, wishlist |
+| Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion, course recommendations (co-enrollment collaborative filtering) |
 | Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, coupons/promo codes, invoice PDF generation, refunds (admin approval workflow), course gifting (POST /gifts, GET /gifts/me/sent, POST /gifts/redeem, GET /gifts/{gift_code}/info), GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read, streak-at-risk reminders, flashcard-due reminders |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, course outline generation (teacher/admin), lesson content generation (teacher/admin), personalized study plan generation, content moderation (teacher/admin), Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), service-to-service calls to Learning Service, GET /ai/credits/me |
@@ -22,7 +22,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 720 тестов | identity 92, course 111, enrollment 28, payment 151, notification 57, ai 116, learning 161 (incl. pre-test: 20, velocity: 11, activity: 10, study groups: 14) |
+| Unit Tests | ✅ 749 тестов | identity 92, course 129 (incl. wishlist: 18), enrollment 39 (incl. recommendations: 11), payment 151, notification 57, ai 116, learning 161 (incl. pre-test: 20, velocity: 11, activity: 10, study groups: 14) |
 
 ## Стек
 
