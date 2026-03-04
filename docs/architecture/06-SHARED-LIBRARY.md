@@ -19,8 +19,9 @@ libs/py/common/
     ├── errors.py         # AppError hierarchy + register_error_handlers()
     ├── health.py         # create_health_router() — liveness + readiness
     ├── logging.py        # configure_logging() — structlog JSON/console
-    ├── rate_limit.py     # RateLimiter, RateLimitMiddleware
-    └── security.py       # create_access_token(), decode_token()
+    ├── rate_limit.py     # RateLimitConfig, RateLimiter, RateLimitMiddleware, rate_limit()
+    ├── security.py       # create_access_token(), decode_token()
+    └── sentry.py         # setup_sentry() — optional Sentry error tracking
 ```
 
 **Установка:** `uv pip install /libs/common` или `common = { workspace = true }` в pyproject.toml сервиса.
@@ -146,17 +147,73 @@ def create_health_router(
 ### `common.rate_limit`
 
 ```python
+@dataclass(frozen=True)
+class RateLimitConfig:
+    max_requests: int
+    window_seconds: int
+    key_type: str = "ip"              # "ip" | "user" | "ip_and_user"
+    exclude_roles: tuple[str, ...] = ()  # e.g. ("admin",) to bypass limits
+    dynamic_limit: Callable[[dict], int] | None = None  # returns 0 for unlimited
+
 class RateLimiter:
     def __init__(self, redis: Redis, limit: int, window_seconds: int) -> None
     async def check(self, key: str) -> bool  # True if under limit
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     def __init__(self, app, redis_getter, limit: int, window: int) -> None
+
+def rate_limit(
+    config: RateLimitConfig,
+    *,
+    redis_getter: Callable | None = None,
+    jwt_secret: str | None = None,
+) -> Callable  # FastAPI Depends() factory
 ```
 
+- `RateLimitConfig` — frozen dataclass for per-route rate limit configuration
 - `RateLimiter` — sliding window counter через Redis INCR + EXPIRE
 - `RateLimitMiddleware` — ASGI middleware, извлекает IP из `request.client.host`, при превышении возвращает `429 Too Many Requests` с `Retry-After` header
-- Пропускает `/health/` и `/metrics` endpoints
+- `rate_limit()` — FastAPI dependency factory supporting per-IP, per-user, and combined keys. Supports dynamic limits (callable returning limit based on JWT claims), role exclusions (e.g. admin bypass), and graceful degradation when Redis is unavailable
+
+**Примеры использования:**
+```python
+# Global IP-based (100 req/min)
+Depends(rate_limit(RateLimitConfig(key_type="ip", max_requests=100, window_seconds=60)))
+
+# Per-user (10 req/min)
+Depends(rate_limit(RateLimitConfig(key_type="user", max_requests=10, window_seconds=60)))
+
+# Dynamic per-tier (free=10, student=100, pro=unlimited)
+def get_ai_limit(claims: dict) -> int:
+    tier = claims.get("tier", "free")
+    return {"free": 10, "student": 100}.get(tier, 0)  # 0 = unlimited
+
+Depends(rate_limit(RateLimitConfig(key_type="user", dynamic_limit=get_ai_limit)))
+```
+
+---
+
+### `common.sentry`
+
+```python
+def setup_sentry(dsn: str | None, service_name: str, environment: str = "production") -> None
+```
+
+- Optional Sentry error tracking integration via `sentry-sdk[fastapi]`
+- If `dsn` is `None` or empty string — logs "Sentry disabled" and returns (no-op, zero overhead)
+- If `dsn` is set — calls `sentry_sdk.init()` with FastAPI integration
+- `send_default_pii=False` — never sends PII automatically
+- `_before_send` filter strips sensitive headers (`Authorization`, `Cookie`) and PII fields (`email`, `phone`) from user context
+- Low sampling: `traces_sample_rate=0.1`, `profiles_sample_rate=0.1`
+- Вызывается один раз в `lifespan()` каждого сервиса (после `configure_logging()`)
+
+**Использование:**
+```python
+from common.sentry import setup_sentry
+
+# В lifespan:
+setup_sentry(dsn=settings.sentry_dsn, service_name="identity", environment=settings.environment)
+```
 
 ---
 

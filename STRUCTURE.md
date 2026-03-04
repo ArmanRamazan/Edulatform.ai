@@ -17,7 +17,7 @@ eduplatform/
 │
 ├── libs/                          # Shared код (минимум, только DRY)
 │   ├── py/
-│   │   ├── common/                #   Config, errors, security, database, health, logging, rate_limit
+│   │   ├── common/                #   Config, errors, security, database, health, logging, rate_limit, sentry
 │   │   └── db/                    #   DB connection, migration helpers
 │   └── rs/
 │       ├── common/src/            #   Error types, config, tracing setup

@@ -153,6 +153,8 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "<port>"]
 | `JWT_TTL_SECONDS` | `3600` | Access token lifetime |
 | `ALLOWED_ORIGINS` | `http://localhost:3000,http://localhost:3001` | CORS allowed origins (comma-separated) |
 | `RATE_LIMIT_PER_MINUTE` | `100` | Global per-IP rate limit |
+| `SENTRY_DSN` | `""` (empty) | Sentry DSN; empty = disabled |
+| `ENVIRONMENT` | `production` | Environment name (production, staging, development) |
 
 ### Identity-specific
 
@@ -170,6 +172,14 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 |----------|---------|----------|
 | `STRIPE_SECRET_KEY` | `""` (empty) | Stripe API secret key |
 | `STRIPE_WEBHOOK_SECRET` | `""` (empty) | Stripe webhook signing secret |
+
+### Notification-specific
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `RESEND_API_KEY` | `""` (empty) | Resend API key; empty = StubEmailClient (logs only) |
+| `EMAIL_FROM_ADDRESS` | `noreply@eduplatform.ru` | Sender address for outgoing emails |
+| `LEARNING_SERVICE_URL` | `http://localhost:8007/api/learning` | Learning service URL for smart reminders |
 
 ### Dev compose values
 

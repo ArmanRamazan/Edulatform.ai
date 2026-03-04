@@ -17,12 +17,12 @@
 | Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (threaded replies, pinning, teacher answers), XP system, badges, streaks, leaderboard, adaptive pre-test, learning velocity, activity feed, study groups (collaborative learning), certificates, 47 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Seller Frontend | ✅ Готов | Next.js 15 — dashboard, course CRUD, module/lesson management, AI course outline generation, AI lesson content generation |
-| Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
+| Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting, Sentry integration |
 | Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 777 тестов | identity 92, course 129 (incl. wishlist: 18), enrollment 39 (incl. recommendations: 11), payment 151, notification 71 (incl. email: 14), ai 116, learning 189 (incl. pre-test: 20, velocity: 11, activity: 10, study groups: 14, certificates: 14) |
+| Unit Tests | ✅ 796 тестов | identity 101 (incl. sentry: 12), course 129 (incl. wishlist: 18), enrollment 39 (incl. recommendations: 11), payment 151, notification 71 (incl. email: 14), ai 116, learning 189 (incl. pre-test: 20, velocity: 11, activity: 10, study groups: 14, certificates: 14) |
 
 ## Стек
 
