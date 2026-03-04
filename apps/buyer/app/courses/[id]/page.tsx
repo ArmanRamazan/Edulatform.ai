@@ -13,6 +13,7 @@ import { useCourseReviews, useCreateReview } from "@/hooks/use-reviews";
 import { useCourseProgress, useCompletedLessons } from "@/hooks/use-progress";
 import { useCourseMastery } from "@/hooks/use-concepts";
 import { usePretestResults } from "@/hooks/use-pretest";
+import { StudyGroupsSection } from "@/components/StudyGroupsSection";
 import { getErrorMessage } from "@/lib/errors";
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -369,6 +370,13 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
                 </div>
               </div>
             )}
+
+            {/* Study Groups */}
+            <StudyGroupsSection
+              courseId={id}
+              token={token}
+              userId={user?.id ?? null}
+            />
           </>
         )}
       </main>
