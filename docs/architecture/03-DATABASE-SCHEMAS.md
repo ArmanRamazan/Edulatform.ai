@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS users (
     is_verified    BOOLEAN NOT NULL DEFAULT false,
     email_verified BOOLEAN NOT NULL DEFAULT false,
     referral_code  VARCHAR(12) UNIQUE,
+    is_public      BOOLEAN NOT NULL DEFAULT true,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
@@ -108,6 +109,7 @@ CREATE TABLE IF NOT EXISTS users (
 | `is_verified` | BOOLEAN | NOT NULL, DEFAULT false | Верификация преподавателя (admin only) |
 | `email_verified` | BOOLEAN | NOT NULL, DEFAULT false | Подтверждение email |
 | `referral_code` | VARCHAR(12) | UNIQUE | Реферальный код (REF-XXXXXXXX), генерируется при регистрации |
+| `is_public` | BOOLEAN | NOT NULL, DEFAULT true | Видимость публичного профиля |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
 
 **Индексы:** PK (id) + UNIQUE (email) + UNIQUE (referral_code).
@@ -120,6 +122,7 @@ CREATE TABLE IF NOT EXISTS users (
 - `005_email_verification.sql` — email_verified column + email_verification_tokens table
 - `006_password_reset.sql` — password_reset_tokens table
 - `007_referrals.sql` — referral_code column в users + таблица referrals
+- `008_add_is_public.sql` — is_public column для управления видимостью профиля
 
 ### Table: `refresh_tokens`
 

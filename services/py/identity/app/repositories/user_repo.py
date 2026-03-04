@@ -3,7 +3,7 @@ from uuid import UUID
 import asyncpg
 
 from app.domain.referral import generate_referral_code
-from app.domain.user import User, UserRole
+from app.domain.user import PublicProfile, User, UserRole
 
 _COLUMNS = "id, email, password_hash, name, role, is_verified, created_at, email_verified, referral_code"
 
@@ -101,6 +101,35 @@ class UserRepository:
             referral_code,
         )
         return referral_code
+
+    async def get_public_profile(self, user_id: UUID) -> PublicProfile | None:
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, name, bio, avatar_url, role, is_verified, created_at, is_public
+            FROM users
+            WHERE id = $1 AND is_public = true
+            """,
+            user_id,
+        )
+        if not row:
+            return None
+        return PublicProfile(
+            id=row["id"],
+            name=row["name"],
+            bio=row["bio"],
+            avatar_url=row["avatar_url"],
+            role=UserRole(row["role"]),
+            is_verified=row["is_verified"],
+            created_at=row["created_at"],
+            is_public=row["is_public"],
+        )
+
+    async def update_profile_visibility(self, user_id: UUID, is_public: bool) -> None:
+        await self._pool.execute(
+            "UPDATE users SET is_public = $2 WHERE id = $1",
+            user_id,
+            is_public,
+        )
 
     @staticmethod
     def _to_entity(row: asyncpg.Record) -> User:
