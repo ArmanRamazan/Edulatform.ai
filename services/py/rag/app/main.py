@@ -18,12 +18,16 @@ from app.repositories.embedding_client import (
     GeminiEmbeddingClient,
     StubEmbeddingClient,
 )
+from app.repositories.document_repository import DocumentRepository
+from app.routes.ingestion_routes import create_ingestion_router
+from app.services.ingestion_service import IngestionService
 
 app_settings = Settings()
 
 _pool: asyncpg.Pool | None = None
 _http_client: httpx.AsyncClient | None = None
 _embedding_client: EmbeddingClient | None = None
+_ingestion_service: IngestionService | None = None
 
 
 def get_embedding_client() -> EmbeddingClient:
@@ -31,9 +35,14 @@ def get_embedding_client() -> EmbeddingClient:
     return _embedding_client
 
 
+def get_ingestion_service() -> IngestionService:
+    assert _ingestion_service is not None
+    return _ingestion_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _http_client, _embedding_client
+    global _pool, _http_client, _embedding_client, _ingestion_service
 
     configure_logging(service_name="rag")
     logger = structlog.get_logger()
@@ -60,6 +69,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         _embedding_client = StubEmbeddingClient(dimensions=app_settings.embedding_dimensions)
         logger.info("embedding_client", mode="stub")
 
+    doc_repo = DocumentRepository(_pool)
+    _ingestion_service = IngestionService(
+        document_repo=doc_repo,
+        embedding_client=_embedding_client,
+    )
+
     logger.info("service_started", port=8008)
     yield
 
@@ -77,6 +92,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(create_health_router(lambda: _pool))
+app.include_router(
+    create_ingestion_router(
+        get_service=get_ingestion_service,
+        jwt_secret=app_settings.jwt_secret,
+        jwt_algorithm=app_settings.jwt_algorithm,
+    )
+)
 
 
 @app.middleware("http")
