@@ -5,15 +5,27 @@ from uuid import UUID
 
 from fsrs import Card, Rating, Scheduler, State
 
+import structlog
+
 from common.errors import ForbiddenError, NotFoundError
 from app.domain.flashcard import Flashcard
 from app.repositories.flashcard_repo import FlashcardRepository
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from app.services.activity_service import ActivityService
+
+logger = structlog.get_logger()
+
 
 class FlashcardService:
-    def __init__(self, repo: FlashcardRepository) -> None:
+    def __init__(
+        self, repo: FlashcardRepository, activity_service: ActivityService | None = None,
+    ) -> None:
         self._repo = repo
         self._scheduler = Scheduler()
+        self._activity_service = activity_service
 
     async def create_card(
         self,
@@ -104,6 +116,17 @@ class FlashcardService:
             rating=rating,
             review_duration_ms=review_duration_ms,
         )
+
+        if self._activity_service is not None:
+            try:
+                from app.domain.activity import ActivityType
+                await self._activity_service.record(
+                    user_id=student_id,
+                    activity_type=ActivityType.flashcard_reviewed,
+                    payload={"card_id": str(card_id), "rating": rating},
+                )
+            except Exception:
+                logger.warning("activity_record_failed", card_id=str(card_id))
 
         scheduling_info = {
             "new_stability": new_card.stability,

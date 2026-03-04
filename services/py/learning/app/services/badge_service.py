@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+import structlog
 
 from app.domain.badge import (
     BADGE_DEFINITIONS,
@@ -10,15 +13,36 @@ from app.domain.badge import (
 )
 from app.repositories.badge_repo import BadgeRepository
 
+if TYPE_CHECKING:
+    from app.services.activity_service import ActivityService
+
+logger = structlog.get_logger()
+
 
 class BadgeService:
-    def __init__(self, repo: BadgeRepository) -> None:
+    def __init__(
+        self, repo: BadgeRepository, activity_service: ActivityService | None = None,
+    ) -> None:
         self._repo = repo
+        self._activity_service = activity_service
 
     async def try_unlock(self, user_id: UUID, badge_type: str) -> Badge:
         if badge_type not in BADGE_DEFINITIONS:
             raise ValueError(f"Unknown badge type: {badge_type}")
-        return await self._repo.create(user_id, badge_type)
+        badge = await self._repo.create(user_id, badge_type)
+
+        if self._activity_service is not None:
+            try:
+                from app.domain.activity import ActivityType
+                await self._activity_service.record(
+                    user_id=user_id,
+                    activity_type=ActivityType.badge_earned,
+                    payload={"badge_type": badge_type},
+                )
+            except Exception:
+                logger.warning("activity_record_failed", badge_type=badge_type)
+
+        return badge
 
     async def get_badges(self, user_id: UUID) -> BadgeListResponse:
         badges = await self._repo.get_all(user_id)

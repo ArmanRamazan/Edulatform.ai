@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 
 from common.errors import ConflictError, ForbiddenError, NotFoundError
+
+if TYPE_CHECKING:
+    from app.services.activity_service import ActivityService
 from app.domain.concept import (
     Concept,
     ConceptResponse,
@@ -18,8 +22,11 @@ logger = structlog.get_logger()
 
 
 class ConceptService:
-    def __init__(self, repo: ConceptRepository) -> None:
+    def __init__(
+        self, repo: ConceptRepository, activity_service: ActivityService | None = None,
+    ) -> None:
         self._repo = repo
+        self._activity_service = activity_service
 
     # --- Teacher CRUD ---
 
@@ -170,3 +177,14 @@ class ConceptService:
             new_val = current_val + score_delta
             await self._repo.upsert_mastery(student_id, concept.id, new_val)
             logger.debug("mastery_updated", student_id=str(student_id), concept_id=str(concept.id), old_value=current_val, new_value=new_val)
+
+            if new_val >= 1.0 and current_val < 1.0 and self._activity_service is not None:
+                try:
+                    from app.domain.activity import ActivityType
+                    await self._activity_service.record(
+                        user_id=student_id,
+                        activity_type=ActivityType.concept_mastered,
+                        payload={"concept_id": str(concept.id), "concept_name": concept.name},
+                    )
+                except Exception:
+                    logger.warning("activity_record_failed", concept_id=str(concept.id))

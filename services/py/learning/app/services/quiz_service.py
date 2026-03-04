@@ -12,6 +12,7 @@ from app.repositories.quiz_repo import QuizRepository
 from app.repositories.flashcard_repo import FlashcardRepository
 
 if TYPE_CHECKING:
+    from app.services.activity_service import ActivityService
     from app.services.concept_service import ConceptService
 
 logger = structlog.get_logger()
@@ -23,10 +24,12 @@ class QuizService:
         repo: QuizRepository,
         concept_service: ConceptService | None = None,
         flashcard_repo: FlashcardRepository | None = None,
+        activity_service: ActivityService | None = None,
     ) -> None:
         self._repo = repo
         self._concept_service = concept_service
         self._flashcard_repo = flashcard_repo
+        self._activity_service = activity_service
 
     async def create_quiz(
         self,
@@ -92,6 +95,17 @@ class QuizService:
         attempt = await self._repo.create_attempt(
             quiz_id=quiz_id, student_id=student_id, answers=answers, score=score,
         )
+
+        if self._activity_service is not None:
+            try:
+                from app.domain.activity import ActivityType
+                await self._activity_service.record(
+                    user_id=student_id,
+                    activity_type=ActivityType.quiz_completed,
+                    payload={"quiz_id": str(quiz_id), "score": score},
+                )
+            except Exception:
+                logger.warning("activity_record_failed", quiz_id=str(quiz_id))
 
         if self._concept_service is not None:
             try:
