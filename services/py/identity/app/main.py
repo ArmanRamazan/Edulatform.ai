@@ -13,6 +13,7 @@ from common.errors import register_error_handlers
 from common.health import create_health_router
 from common.logging import configure_logging
 from common.rate_limit import RateLimitMiddleware
+from common.sentry import setup_sentry
 from app.config import Settings
 from app.repositories.user_repo import UserRepository
 from app.repositories.token_repo import TokenRepository
@@ -65,6 +66,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     global _pool, _redis, _auth_service, _referral_service, _profile_service, _follow_service
 
     configure_logging(service_name="identity")
+    setup_sentry(
+        dsn=app_settings.sentry_dsn,
+        service_name="identity",
+        environment=app_settings.environment,
+    )
     logger = structlog.get_logger()
 
     _pool = await create_pool(
