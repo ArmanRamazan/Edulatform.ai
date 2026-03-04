@@ -28,7 +28,8 @@ course-db (PostgreSQL 16 Alpine, :5434)
        ├── table: reviews
        ├── table: course_bundles
        ├── table: bundle_courses
-       └── table: course_promotions
+       ├── table: course_promotions
+       └── table: wishlist
 
 enrollment-db (PostgreSQL 16 Alpine, :5435)
   └── database: enrollment
@@ -71,10 +72,11 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: pretest_answers
        ├── table: activity_feed
        ├── table: study_groups
-       └── table: study_group_members
+       ├── table: study_group_members
+       └── table: certificates
 ```
 
-**Итого: 36 таблиц в 6 базах данных.**
+**Итого: 38 таблиц в 6 базах данных.**
 
 ---
 
@@ -311,6 +313,7 @@ CREATE TABLE IF NOT EXISTS courses (
 - `006_categories.sql` — таблица categories + seed data + category_id FK на courses
 - `008_bundles.sql` — таблицы course_bundles и bundle_courses
 - `009_promotions.sql` — таблица course_promotions с индексами
+- `010_wishlist.sql` — таблица wishlist (user_id + course_id UNIQUE)
 
 ### Table: `modules`
 
@@ -413,6 +416,31 @@ CREATE TABLE IF NOT EXISTS course_promotions (
 **Бизнес-логика:** Активная акция — запись где `starts_at <= now() <= ends_at`. `CourseResponse` включает `active_promotion` с полями `discount_percent`, `starts_at`, `ends_at` (null если нет активной акции). Просроченные акции деактивируются при запросе — `get_active` возвращает только текущие.
 
 **Миграция:** `009_promotions.sql`.
+
+### Table: `wishlist`
+
+```sql
+CREATE TABLE IF NOT EXISTS wishlist (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL,
+    course_id  UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, course_id)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `user_id` | UUID | NOT NULL | Пользователь, добавивший курс |
+| `course_id` | UUID | FK → courses(id) CASCADE, NOT NULL | Курс в вишлисте |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата добавления |
+
+**Индексы:** PK (id) + UNIQUE(user_id, course_id) + idx_wishlist_user_id (user_id).
+
+**Бизнес-логика:** Один пользователь может добавить один курс в вишлист один раз. При удалении курса запись автоматически удаляется (CASCADE).
+
+**Миграция:** `010_wishlist.sql`.
 
 ---
 
@@ -1309,6 +1337,7 @@ CREATE TABLE IF NOT EXISTS pretest_answers (
 - `009_pretests.sql` — создание таблиц pretests, pretest_answers с индексами
 - `010_activity_feed.sql` — создание таблицы activity_feed с индексами
 - `011_study_groups.sql` — создание таблиц study_groups, study_group_members с индексами
+- `013_certificates.sql` — создание таблицы certificates с индексами
 
 ### Table: `activity_feed`
 
@@ -1382,6 +1411,33 @@ CREATE TABLE IF NOT EXISTS study_group_members (
 **Индексы:** PK (id) + UNIQUE(group_id, user_id) + idx_sgm_group (group_id) + idx_sgm_user (user_id).
 
 **Бизнес-логика:** Создатель автоматически добавляется как первый участник. Создатель не может покинуть группу (предотвращение осиротевших групп). Новый участник не может вступить, если count >= max_members.
+
+### Table: `certificates`
+
+```sql
+CREATE TABLE IF NOT EXISTS certificates (
+    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id            UUID NOT NULL,
+    course_id          UUID NOT NULL,
+    issued_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    certificate_number VARCHAR(20) NOT NULL UNIQUE,
+    template_data      JSONB DEFAULT '{}',
+    UNIQUE(user_id, course_id)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор сертификата |
+| `user_id` | UUID | NOT NULL | Пользователь, получивший сертификат |
+| `course_id` | UUID | NOT NULL | Курс, за который выдан сертификат |
+| `issued_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата выдачи |
+| `certificate_number` | VARCHAR(20) | NOT NULL, UNIQUE | Уникальный номер формата CERT-YYYY-XXXXXX |
+| `template_data` | JSONB | DEFAULT '{}' | Расширяемые данные шаблона |
+
+**Индексы:** PK (id) + UNIQUE(certificate_number) + UNIQUE(user_id, course_id) + idx_certificates_user_id (user_id) + idx_certificates_course_id (course_id).
+
+**Бизнес-логика:** Один сертификат на пару (user, course). Номер генерируется автоматически в формате CERT-{YYYY}-{6 случайных символов}. Дубликаты предотвращаются UNIQUE constraint.
 
 ---
 
