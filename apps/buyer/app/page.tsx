@@ -1,6 +1,7 @@
 import { Header } from "@/components/Header";
 import { HeroCTA } from "@/components/HeroCTA";
 import { CatalogSection } from "@/components/CatalogSection";
+import { PersonalizedRecommendations } from "@/components/PersonalizedRecommendations";
 
 function HeroSection() {
   return (
@@ -84,6 +85,7 @@ export default function HomePage() {
       <HeroSection />
       <SocialProofSection />
       <main>
+        <PersonalizedRecommendations />
         <CatalogSection />
       </main>
     </>

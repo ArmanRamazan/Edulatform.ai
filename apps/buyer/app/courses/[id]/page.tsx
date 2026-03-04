@@ -14,6 +14,7 @@ import { useCourseProgress, useCompletedLessons } from "@/hooks/use-progress";
 import { useCourseMastery } from "@/hooks/use-concepts";
 import { usePretestResults } from "@/hooks/use-pretest";
 import { StudyGroupsSection } from "@/components/StudyGroupsSection";
+import { SimilarCourses } from "@/components/SimilarCourses";
 import { getErrorMessage } from "@/lib/errors";
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -377,6 +378,9 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
               token={token}
               userId={user?.id ?? null}
             />
+
+            {/* Similar Courses */}
+            <SimilarCourses courseId={id} />
           </>
         )}
       </main>

@@ -1245,6 +1245,77 @@ export const activity = {
   },
 };
 
+export interface CoEnrollmentRecommendation {
+  course_id: string;
+  co_enrollment_count: number;
+}
+
+export interface PersonalRecommendation {
+  course_id: string;
+  relevance_score: number;
+}
+
+export const recommendations = {
+  forCourse(courseId: string) {
+    return request<CoEnrollmentRecommendation[]>(
+      `${ENROLLMENT_URL}/recommendations/courses/${courseId}`,
+    );
+  },
+  forMe(token: string) {
+    return request<PersonalRecommendation[]>(
+      `${ENROLLMENT_URL}/recommendations/me`,
+      { headers: authHeaders(token) },
+    );
+  },
+};
+
+export interface WishlistItem {
+  id: string;
+  student_id: string;
+  course_id: string;
+  created_at: string;
+  course: Course;
+}
+
+export interface WishlistList {
+  items: WishlistItem[];
+  total: number;
+}
+
+export interface WishlistCheck {
+  in_wishlist: boolean;
+}
+
+export const wishlist = {
+  add(token: string, courseId: string) {
+    return request<WishlistItem>(`${COURSE_URL}/wishlist`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ course_id: courseId }),
+    });
+  },
+  remove(token: string, courseId: string) {
+    return requestVoid(`${COURSE_URL}/wishlist/${courseId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+  },
+  me(token: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<WishlistList>(`${COURSE_URL}/wishlist/me${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+  check(token: string, courseId: string) {
+    return request<WishlistCheck>(`${COURSE_URL}/wishlist/check/${courseId}`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
 export const concepts = {
   getCourseGraph(token: string, courseId: string) {
     return request<CourseGraphResponse>(`${LEARNING_URL}/concepts/course/${courseId}`, {
