@@ -116,3 +116,25 @@ class LessonContentResponse(BaseModel):
     key_concepts: list[str]
     estimated_duration_minutes: int
     model_used: str
+
+
+class StudyPlanRequest(BaseModel):
+    course_id: UUID
+    available_hours_per_week: int = Field(default=10, ge=1, le=40)
+    goal: str | None = Field(default=None, max_length=500)
+
+
+class WeekPlan(BaseModel):
+    week_number: int
+    focus_areas: list[str]
+    lessons_to_complete: list[str]
+    flashcard_sessions: int
+    quiz_practice: bool
+    estimated_hours: float
+
+
+class StudyPlanResponse(BaseModel):
+    weeks: list[WeekPlan]
+    estimated_completion: str
+    total_estimated_hours: int
+    model_used: str

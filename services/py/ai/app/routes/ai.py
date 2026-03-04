@@ -10,10 +10,12 @@ from app.domain.models import (
     TutorChatRequest, TutorChatResponse, TutorFeedbackRequest, TutorFeedbackResponse,
     CourseOutlineRequest, CourseOutlineResponse,
     LessonContentRequest, LessonContentResponse,
+    StudyPlanRequest, StudyPlanResponse,
 )
 from app.services.ai_service import AIService
 from app.services.tutor_service import TutorService
 from app.services.credit_service import CreditService
+from app.services.study_plan_service import StudyPlanService
 
 router = APIRouter(prefix="/ai", tags=["ai"])
 
@@ -31,6 +33,11 @@ def _get_tutor_service() -> TutorService:
 def _get_credit_service() -> CreditService:
     from app.main import get_credit_service
     return get_credit_service()
+
+
+def _get_study_plan_service() -> StudyPlanService:
+    from app.main import get_study_plan_service
+    return get_study_plan_service()
 
 
 def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
@@ -164,4 +171,23 @@ async def tutor_feedback(
         session_id=body.session_id,
         message_index=body.message_index,
         rating=body.rating,
+    )
+
+
+@router.post("/study-plan", response_model=StudyPlanResponse)
+async def generate_study_plan(
+    body: StudyPlanRequest,
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[StudyPlanService, Depends(_get_study_plan_service)],
+    credit_service: Annotated[CreditService, Depends(_get_credit_service)],
+) -> StudyPlanResponse:
+    await credit_service.check_and_consume(
+        user_id=str(claims["user_id"]),
+        tier=claims["subscription_tier"],
+    )
+    return await service.generate_plan(
+        user_id=claims["user_id"],
+        course_id=body.course_id,
+        available_hours_per_week=body.available_hours_per_week,
+        goal=body.goal,
     )

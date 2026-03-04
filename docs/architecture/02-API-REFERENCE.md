@@ -1361,6 +1361,56 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### POST /ai/study-plan
+
+Генерация персонализированного недельного плана обучения. Учитывает текущий уровень mastery по концептам курса (через service-to-service вызов к Learning Service). Требует JWT (любой авторизованный пользователь). Потребляет 1 AI кредит.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "course_id": "550e8400-e29b-41d4-a716-446655440000",
+  "weeks": 4,
+  "hours_per_week": 5
+}
+```
+
+> `course_id`: UUID курса (обязательный)
+> `weeks`: количество недель (1–12, default 4)
+> `hours_per_week`: часов в неделю (1–40, default 5)
+
+**Response `200`:**
+```json
+{
+  "course_id": "550e8400-e29b-41d4-a716-446655440000",
+  "weeks": [
+    {
+      "week_number": 1,
+      "theme": "Fundamentals of Variables and Data Types",
+      "goals": ["Understand variable assignment", "Learn primitive data types"],
+      "tasks": [
+        "Complete lessons 1-3",
+        "Practice quiz on variables",
+        "Review flashcards for data types"
+      ],
+      "estimated_hours": 5
+    }
+  ],
+  "model_used": "gemini-2.0-flash-lite"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Лимит кредитов исчерпан |
+| 422 | Невалидные параметры (course_id пустой, weeks вне диапазона) |
+| 502 | Ошибка Gemini API, невалидный JSON от LLM, или недоступен Learning Service |
+
+---
+
 ## Learning Engine Service (`:8007`)
 
 ### POST /quizzes

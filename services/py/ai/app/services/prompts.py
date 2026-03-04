@@ -68,6 +68,44 @@ IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blo
 Return this exact JSON structure:
 {{"content": "full markdown tutorial content here", "key_concepts": ["concept1", "concept2", "concept3"]}}"""
 
+STUDY_PLAN_PROMPT_TEMPLATE = """You are an expert learning coach. Create a personalized weekly study plan for a student.
+
+Course concepts and current mastery levels:
+{concepts_with_mastery}
+
+Weak areas (mastery < 0.5): {weak_concepts}
+Strong areas (mastery >= 0.7): {strong_concepts}
+Available hours per week: {hours}
+Student's goal: {goal}
+
+Rules:
+- Prioritize weak areas first, then medium areas, then review strong areas
+- Each week should have a realistic workload within the available hours
+- Include flashcard sessions for memorization-heavy concepts
+- Recommend quiz practice when the student needs to assess their progress
+- Estimated hours per week should not exceed the available hours
+
+IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blocks.
+
+Return this exact JSON structure:
+{{"weeks": [{{"week_number": 1, "focus_areas": ["concept1", "concept2"], "lessons_to_complete": ["lesson title 1", "lesson title 2"], "flashcard_sessions": 3, "quiz_practice": true, "estimated_hours": 8.0}}], "estimated_completion": "3 weeks", "total_estimated_hours": 17}}"""
+
+STUDY_PLAN_GENERIC_PROMPT_TEMPLATE = """You are an expert learning coach. Create a general weekly study plan for a student.
+
+No mastery data available — generate a general study plan for a course.
+Available hours per week: {hours}
+Student's goal: {goal}
+
+Rules:
+- Distribute study time evenly across weeks
+- Include flashcard sessions and quiz practice
+- Keep the plan motivating and achievable
+
+IMPORTANT: Return ONLY valid JSON with no additional text, markdown, or code blocks.
+
+Return this exact JSON structure:
+{{"weeks": [{{"week_number": 1, "focus_areas": ["general review"], "lessons_to_complete": ["review course material"], "flashcard_sessions": 2, "quiz_practice": true, "estimated_hours": 8.0}}], "estimated_completion": "2 weeks", "total_estimated_hours": 16}}"""
+
 TUTOR_SYSTEM_PROMPT = """You are a Socratic AI tutor for an online learning platform. Your role is to help students understand the lesson material through guided questioning.
 
 RULES:

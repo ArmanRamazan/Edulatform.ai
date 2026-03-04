@@ -13,7 +13,7 @@
 | Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
 | Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read, streak-at-risk reminders, flashcard-due reminders |
-| AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, course outline generation (teacher/admin), lesson content generation (teacher/admin), Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), GET /ai/credits/me |
+| AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, course outline generation (teacher/admin), lesson content generation (teacher/admin), personalized study plan generation, Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), service-to-service calls to Learning Service, GET /ai/credits/me |
 | Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, adaptive pre-test, learning velocity, 33 endpoints |
 | Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
 | Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting |
@@ -21,7 +21,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 457 тестов | identity 52, course 71, enrollment 28, payment 61, notification 32, ai 80, learning 137 (incl. pre-test: 20, velocity: 11) |
+| Unit Tests | ✅ 472 тестов | identity 52, course 71, enrollment 28, payment 61, notification 32, ai 95, learning 137 (incl. pre-test: 20, velocity: 11) |
 
 ## Стек
 
@@ -63,7 +63,7 @@ cd apps/seller && pnpm install && pnpm dev   # http://localhost:3002
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 7 сервисов (415 тестов)
+# Все 7 сервисов (487 тестов)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
@@ -118,7 +118,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ├── services/py/enrollment/  — Enrollment: запись на курс, прогресс, lesson completion, auto-completion
 ├── services/py/payment/     — Payment: mock-оплата, teacher earnings, payouts
 ├── services/py/notification/— Notifications: in-app, mark as read
-├── services/py/ai/          — AI: quiz gen, summary, Socratic tutor, Gemini Flash, Redis cache, credit tracking
+├── services/py/ai/          — AI: quiz gen, summary, Socratic tutor, study plan, Gemini Flash, Redis cache, credit tracking
 ├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, knowledge graph, discussions
 ├── apps/buyer/              — Next.js student frontend
 ├── apps/seller/             — Next.js teacher dashboard

@@ -9,3 +9,4 @@ class Settings(BaseAppSettings):
     summary_cache_ttl: int = 86400
     tutor_session_ttl: int = 3600
     tutor_daily_limit: int = 10
+    learning_service_url: str = "http://localhost:8007"
