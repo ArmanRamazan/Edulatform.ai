@@ -841,6 +841,57 @@ export const streaks = {
   },
 };
 
+export interface PretestStartResponse {
+  pretest_id: string;
+  question: string;
+  concept_id: string;
+  answer_id: string;
+  total_concepts: number;
+}
+
+export interface ConceptResult {
+  concept_id: string;
+  name: string;
+  mastery: number;
+  tested: boolean;
+}
+
+export interface PretestResultsResponse {
+  course_id: string;
+  concepts: ConceptResult[];
+  overall_readiness: number;
+}
+
+export interface AnswerNextResponse {
+  next_question: string | null;
+  concept_id: string | null;
+  answer_id: string | null;
+  progress: number;
+  completed: boolean;
+  results: PretestResultsResponse | null;
+}
+
+export const pretests = {
+  start(token: string, courseId: string) {
+    return request<PretestStartResponse>(`${LEARNING_URL}/pretests/course/${courseId}/start`, {
+      method: "POST",
+      headers: authHeaders(token),
+    });
+  },
+  answer(token: string, pretestId: string, data: { answer_id: string; answer: string }) {
+    return request<AnswerNextResponse>(`${LEARNING_URL}/pretests/${pretestId}/answer`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  results(token: string, courseId: string) {
+    return request<PretestResultsResponse>(`${LEARNING_URL}/pretests/course/${courseId}/results`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
 export const concepts = {
   getCourseGraph(token: string, courseId: string) {
     return request<CourseGraphResponse>(`${LEARNING_URL}/concepts/course/${courseId}`, {

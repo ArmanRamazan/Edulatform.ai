@@ -10,6 +10,7 @@ import { useMyEnrollments, useEnrollmentCount, useEnroll } from "@/hooks/use-enr
 import { useCourseReviews, useCreateReview } from "@/hooks/use-reviews";
 import { useCourseProgress, useCompletedLessons } from "@/hooks/use-progress";
 import { useCourseMastery } from "@/hooks/use-concepts";
+import { usePretestResults } from "@/hooks/use-pretest";
 import { getErrorMessage } from "@/lib/errors";
 
 const LEVEL_LABELS: Record<string, string> = {
@@ -54,6 +55,8 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   const completedLessonIds = new Set(completedData?.completed_lesson_ids ?? []);
 
   const { data: masteryData } = useCourseMastery(enrolled ? token : null, id);
+  const { data: pretestResults, isError: pretestNotFound } = usePretestResults(enrolled ? token : null, id);
+  const showPretestButton = enrolled && !pretestResults && pretestNotFound;
 
   const enroll = useEnroll(token);
   const [enrolling, setEnrolling] = useState(false);
@@ -182,6 +185,14 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
                         className="rounded bg-blue-600 px-4 py-2 text-sm text-white hover:bg-blue-700"
                       >
                         Начать обучение
+                      </Link>
+                    )}
+                    {showPretestButton && (
+                      <Link
+                        href={`/courses/${id}/pretest`}
+                        className="rounded border border-blue-200 bg-blue-50 px-4 py-2 text-sm text-blue-700 hover:bg-blue-100"
+                      >
+                        Пройти вступительный тест
                       </Link>
                     )}
                   </>
