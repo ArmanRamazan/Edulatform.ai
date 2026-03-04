@@ -16,10 +16,13 @@ from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.enrollment_repo import EnrollmentRepository
 from app.repositories.progress_repo import ProgressRepository
+from app.repositories.recommendation_repo import RecommendationRepository
 from app.services.enrollment_service import EnrollmentService
 from app.services.progress_service import ProgressService
+from app.services.recommendation_service import RecommendationService
 from app.routes.enrollments import router as enrollments_router
 from app.routes.progress import router as progress_router
+from app.routes.recommendation_routes import router as recommendation_router
 
 app_settings = Settings()
 
@@ -27,6 +30,7 @@ _pool: asyncpg.Pool | None = None
 _redis: Redis | None = None
 _enrollment_service: EnrollmentService | None = None
 _progress_service: ProgressService | None = None
+_recommendation_service: RecommendationService | None = None
 
 
 def get_enrollment_service() -> EnrollmentService:
@@ -39,9 +43,14 @@ def get_progress_service() -> ProgressService:
     return _progress_service
 
 
+def get_recommendation_service() -> RecommendationService:
+    assert _recommendation_service is not None
+    return _recommendation_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _enrollment_service, _progress_service
+    global _pool, _redis, _enrollment_service, _progress_service, _recommendation_service
 
     configure_logging(service_name="enrollment")
     logger = structlog.get_logger()
@@ -66,8 +75,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     enrollment_repo = EnrollmentRepository(_pool)
     progress_repo = ProgressRepository(_pool)
+    recommendation_repo = RecommendationRepository(_pool)
     _enrollment_service = EnrollmentService(enrollment_repo)
     _progress_service = ProgressService(progress_repo, enrollment_repo=enrollment_repo)
+    _recommendation_service = RecommendationService(recommendation_repo)
     logger.info("service_started", port=8003)
     yield
     await _redis.aclose()
@@ -91,6 +102,7 @@ app.add_middleware(
 )
 app.include_router(enrollments_router)
 app.include_router(progress_router)
+app.include_router(recommendation_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
