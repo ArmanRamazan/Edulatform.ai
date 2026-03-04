@@ -819,7 +819,7 @@ CREATE TABLE IF NOT EXISTS gift_purchases (
 ### ENUM: `notification_type`
 
 ```sql
-CREATE TYPE notification_type AS ENUM ('registration', 'enrollment', 'payment', 'streak_reminder', 'flashcard_reminder');
+CREATE TYPE notification_type AS ENUM ('registration', 'enrollment', 'payment', 'streak_reminder', 'flashcard_reminder', 'welcome', 'course_completed', 'review_received', 'streak_at_risk');
 ```
 
 ### Table: `notifications`
@@ -832,7 +832,8 @@ CREATE TABLE IF NOT EXISTS notifications (
     title      VARCHAR(500) NOT NULL,
     body       TEXT NOT NULL DEFAULT '',
     is_read    BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    email_sent BOOLEAN DEFAULT false
 );
 ```
 
@@ -845,8 +846,9 @@ CREATE TABLE IF NOT EXISTS notifications (
 | `body` | TEXT | NOT NULL, DEFAULT '' | Тело уведомления |
 | `is_read` | BOOLEAN | NOT NULL, DEFAULT false | Прочитано |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+| `email_sent` | BOOLEAN | DEFAULT false | Email-уведомление отправлено |
 
-**MVP:** Нет реальной отправки email. Уведомления хранятся в БД + лог в stdout.
+**Email:** Для lifecycle-типов (welcome, course_completed, review_received, streak_at_risk) при наличии email отправляется уведомление через EmailAdapter (логирование в stdout). Результат сохраняется в `email_sent`.
 
 ### Table: `conversations`
 
@@ -897,6 +899,7 @@ CREATE TABLE IF NOT EXISTS messages (
 - `004_flashcard_reminder_type.sql` — добавление `flashcard_reminder` в ENUM notification_type
 - `005_conversations.sql` — создание таблицы conversations с индексами по participant_1, participant_2
 - `006_messages.sql` — создание таблицы messages с индексом по conversation_id
+- `007_email_sent.sql` — добавление колонки `email_sent` и новых типов `welcome`, `course_completed`, `review_received`, `streak_at_risk` в ENUM
 
 ---
 
