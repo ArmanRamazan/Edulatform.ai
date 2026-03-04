@@ -32,7 +32,7 @@ eduplatform/
 │   │   ├── notification/          #   In-app уведомления, email (lifecycle events), direct messaging
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
 │   │   ├── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed, certificates
-│   │   └── rag/                   #   Document ingestion, pgvector semantic search, knowledge base
+│   │   └── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Routing, auth check, rate limiting
 │       ├── search/                #   Поисковый proxy + ranking
