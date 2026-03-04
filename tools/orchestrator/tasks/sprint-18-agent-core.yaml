@@ -1,0 +1,388 @@
+phase: "sprint-18"
+description: "Tri-Agent System — Strategist, Designer, Coach agents in AI service"
+
+tasks:
+  - id: strategist-agent
+    title: "Strategist Agent: adaptive learning path planner"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Build the Strategist Agent — plans and adapts the macro learning path for each user based on their knowledge graph mastery.
+
+      CONTEXT:
+      - AI service: services/py/ai/ (FastAPI, GeminiClient, AICache, Redis)
+      - Learning service has: concepts (knowledge graph), concept_mastery (per-user), FSRS flashcards
+      - RAG service (port 8008) will have: org_concepts, concept_relationships
+      - Existing StudyPlanService in ai/app/services/study_plan_service.py calls Learning Service for mastery data
+      - GeminiClient: async generate(prompt) -> tuple[str, int, int]
+      - Config: learning_service_url = "http://localhost:8007"
+      - httpx.AsyncClient for inter-service calls
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/domain/agent.py (new):
+         @dataclass(frozen=True) LearningPath:
+           user_id: UUID
+           organization_id: UUID
+           concepts_ordered: list[PathConcept]  # ordered by dependency + priority
+           current_index: int
+           created_at: datetime
+
+         @dataclass(frozen=True) PathConcept:
+           concept_id: UUID
+           name: str
+           priority: int  # 1=critical, 2=important, 3=nice-to-have
+           estimated_sessions: int
+           prerequisites: list[UUID]
+           mastery: float  # current mastery 0-1
+
+      2. app/services/strategist_service.py:
+         - StrategistService(gemini_client, cache, http_client, settings):
+
+           async plan_path(user_id, org_id, user_profile: dict) -> LearningPath:
+             1. Fetch org concepts from RAG service: GET {rag_url}/concepts?org_id={org_id}
+             2. Fetch user mastery from Learning service: GET {learning_url}/concepts/mastery/course/{org_id}
+             3. Build prompt for Gemini:
+                "Given this engineer profile: {user_profile}
+                 And these company concepts with relationships: {concepts_json}
+                 And current mastery levels: {mastery_json}
+                 Create an optimal learning path. Order concepts by:
+                 1. Dependencies (prerequisites first)
+                 2. Priority for the role
+                 3. Current mastery (lowest first)
+                 Return JSON: [{concept_id, name, priority, estimated_sessions, prerequisites}]"
+             4. Parse response, merge with mastery data
+             5. Cache in Redis: ai:path:{user_id} (TTL 24h)
+             Return LearningPath
+
+           async get_next_concept(user_id, org_id) -> PathConcept | None:
+             1. Load path from cache
+             2. If no path, plan_path first
+             3. Find first concept where mastery < 0.7
+             Return that concept
+
+           async adapt_path(user_id, org_id, session_result: dict) -> LearningPath:
+             1. Load current path
+             2. If session score < 0.5 on concept X:
+                - Find prerequisite concepts of X
+                - Insert remedial concepts before X in path
+             3. If session score > 0.9:
+                - Skip estimated remaining sessions for this concept
+                - Move to next
+             4. Save updated path to cache
+             Return updated path
+
+      3. Add to config: rag_service_url: str = "http://localhost:8008"
+
+      4. Tests (tests/test_strategist_service.py):
+         - Test plan_path with mocked HTTP responses (concepts, mastery)
+         - Test get_next_concept returns lowest-mastery concept
+         - Test adapt_path inserts remedial on failure
+         - Test adapt_path skips on high score
+         - Mock GeminiClient.generate for LLM responses
+
+      RULES:
+      - TDD mandatory
+      - Follow existing service pattern (constructor injection, async methods)
+      - Inter-service HTTP calls via httpx, wrapped in try/except
+      - Redis cache for paths (24h TTL)
+      - Clean Architecture: no route logic in service
+
+      COMMIT: feat(ai): add Strategist Agent for adaptive learning path planning
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: []
+
+  - id: designer-agent
+    title: "Content Designer Agent: mission assembler from RAG"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Build the Designer Agent — assembles a 15-minute Mission from RAG content and LLM generation.
+
+      CONTEXT:
+      - AI service: services/py/ai/
+      - RAG service (8008): POST /search {query, org_id, limit} → {results: [{content, similarity, document_title, source_path}]}
+      - Existing AIService.generate_quiz generates quiz questions from content
+      - GeminiClient: async generate(prompt) -> tuple[str, int, int]
+      - A Mission has: recap_questions (2), reading_content (2-min), check_questions (3), code_case (1)
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/domain/mission.py (new):
+         @dataclass(frozen=True) MissionBlueprint:
+           concept_name: str
+           concept_id: UUID
+           recap_questions: list[RecapQuestion]  # 2 spaced-repetition questions from yesterday
+           reading_content: str  # 2-min reading assembled from RAG
+           check_questions: list[CheckQuestion]  # 3 comprehension questions
+           code_case: CodeCase | None  # practical case from real code
+
+         @dataclass(frozen=True) RecapQuestion: question (str), expected_answer (str), concept_ref (str)
+         @dataclass(frozen=True) CheckQuestion: question (str), options (list[str]), correct_index (int), explanation (str)
+         @dataclass(frozen=True) CodeCase: code_snippet (str), language (str), question (str), expected_answer (str), source_path (str)
+
+      2. app/services/designer_service.py:
+         - DesignerService(gemini_client, cache, http_client, settings):
+
+           async design_mission(concept_name: str, concept_id: UUID, org_id: UUID,
+                                previous_concepts: list[str] = []) -> MissionBlueprint:
+             1. Search RAG for concept content:
+                POST {rag_url}/search {query: concept_name, org_id, limit: 10}
+             2. If previous_concepts, search RAG for recap material:
+                POST {rag_url}/search {query: prev_concept, org_id, limit: 3}
+             3. Build prompt for reading content:
+                "Create a 2-minute technical reading (~400 words) about {concept_name}
+                 using these source materials: {rag_results}
+                 Target audience: experienced engineer, new to this codebase.
+                 Include code examples where relevant."
+             4. Build prompt for check questions:
+                "Generate 3 multiple-choice questions testing understanding of {concept_name}.
+                 Base questions on this material: {reading_content}
+                 Return JSON: [{question, options: [4 strings], correct_index, explanation}]"
+             5. Build prompt for code case (if code sources available):
+                "Generate a practical code analysis task from this real code: {code_snippets}
+                 Ask the engineer to identify a bug, explain a pattern, or predict behavior.
+                 Return JSON: {code_snippet, language, question, expected_answer, source_path}"
+             6. Build recap questions from previous concepts (simpler prompt)
+             7. Assemble MissionBlueprint
+
+           async _search_rag(query: str, org_id: UUID, limit: int = 5) -> list[dict]:
+             HTTP call to RAG service search endpoint
+
+      3. Tests (tests/test_designer_service.py):
+         - Test design_mission with mocked RAG search + mocked Gemini
+         - Test reading content generation prompt includes RAG results
+         - Test check questions are valid MCQ format
+         - Test code case uses real source paths
+         - Test recap questions reference previous concepts
+         - Test graceful handling when RAG returns no results
+
+      RULES:
+      - TDD mandatory
+      - RAG results are the GROUNDING — all generated content must reference company code/docs
+      - Prompts instruct LLM to use source material, not hallucinate
+      - Code cases must reference real file paths from RAG sources
+      - JSON parsing with fallback (strip markdown fences, validate)
+
+      COMMIT: feat(ai): add Designer Agent for RAG-grounded mission assembly
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: [strategist-agent]
+
+  - id: coach-agent
+    title: "Coach Agent: evolve Socratic tutor into session conductor"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Evolve the existing TutorService into a Coach Agent that conducts structured 15-minute mission sessions.
+
+      CONTEXT:
+      - AI service: services/py/ai/
+      - Existing TutorService: services/py/ai/app/services/tutor_service.py
+        - chat(user_id, lesson_id, message, lesson_content, session_id, credits_remaining) -> TutorChatResponse
+        - Uses Redis conversation memory (AICache.get_conversation, save_conversation)
+        - Socratic prompting already implemented
+      - MissionBlueprint from Designer: recap_questions, reading_content, check_questions, code_case
+      - GeminiClient for LLM calls
+      - AICache for conversation persistence
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/services/coach_service.py (new, does NOT replace TutorService):
+         - CoachService(gemini_client, cache, settings):
+
+           async start_session(user_id: UUID, mission: MissionBlueprint, personality: str = "friendly") -> CoachMessage:
+             1. Build system prompt:
+                "You are a Coach AI mentoring an engineer through a 15-minute learning session.
+                 Personality: {personality}
+                 Session structure:
+                 Phase 1 (RECAP): Ask 2 quick questions about previous material
+                 Phase 2 (READ): Present reading, ask if anything is unclear
+                 Phase 3 (CHECK): Walk through 3 comprehension questions one by one
+                 Phase 4 (PRACTICE): Present code case, discuss solution
+                 Phase 5 (WRAP-UP): Summarize what was learned, preview tomorrow
+
+                 Rules:
+                 - Never give answers directly — ask guiding questions (Socratic method)
+                 - If user struggles, break down the question, don't skip it
+                 - Keep responses concise (2-4 sentences)
+                 - Track which phase you're in"
+             2. Save system prompt + mission data to session cache
+             3. Return opening message with first recap question
+
+           async chat(user_id: UUID, session_id: str, message: str) -> CoachMessage:
+             1. Load conversation from cache
+             2. Append user message
+             3. Call Gemini with full conversation
+             4. Parse response, detect phase transitions
+             5. Save conversation to cache
+             6. Return CoachMessage with current phase info
+
+           async end_session(user_id: UUID, session_id: str) -> SessionResult:
+             1. Load conversation
+             2. Build evaluation prompt: "Based on this session, rate the user's understanding 0-100
+                for each question. Return JSON: {overall_score, concept_mastery_delta, strengths, gaps}"
+             3. Parse evaluation
+             4. Return SessionResult (score, mastery_delta, duration)
+
+         @dataclass(frozen=True) CoachMessage: content (str), phase (str), phase_progress (int), session_id (str)
+         @dataclass(frozen=True) SessionResult: session_id (str), score (float), mastery_delta (float), duration_seconds (int), strengths (list[str]), gaps (list[str])
+
+      2. app/routes/coach_routes.py:
+         POST /ai/coach/start — Body: {user_id, mission_id, personality?}. Returns CoachMessage.
+         POST /ai/coach/chat — Body: {session_id, message}. Returns CoachMessage.
+         POST /ai/coach/end — Body: {session_id}. Returns SessionResult.
+
+      3. Tests:
+         - test_coach_service.py:
+           - Test start_session creates conversation with system prompt
+           - Test chat appends messages and calls Gemini
+           - Test end_session evaluates and returns scores
+           - Test Socratic behavior (prompt contains "don't give answers directly")
+           - Mock GeminiClient and AICache
+
+      RULES:
+      - TDD mandatory
+      - Do NOT modify existing TutorService — create CoachService alongside it
+      - Coach uses same Redis conversation pattern as Tutor
+      - Session phases: recap → read → check → practice → wrap-up
+      - Credits consumed per session (reuse CreditService)
+
+      COMMIT: feat(ai): add Coach Agent for structured mission sessions
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: [designer-agent]
+
+  - id: agent-orchestrator
+    title: "Agent orchestrator: Strategist → Designer → Coach pipeline"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Build the orchestrator that coordinates the three agents into a single "get next mission" flow.
+
+      CONTEXT:
+      - AI service: services/py/ai/
+      - StrategistService: plan_path, get_next_concept, adapt_path
+      - DesignerService: design_mission
+      - CoachService: start_session, chat, end_session
+      - All three are in app/services/
+      - Redis cache available for state
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/services/orchestrator_service.py:
+         - AgentOrchestrator(strategist, designer, coach, cache):
+
+           async get_daily_mission(user_id: UUID, org_id: UUID, user_profile: dict = {}) -> MissionBlueprint:
+             1. Check cache for today's mission: ai:daily:{user_id}:{date}
+             2. If cached, return it
+             3. Get next concept from Strategist:
+                concept = await strategist.get_next_concept(user_id, org_id)
+             4. Get previous concepts (last 3 completed) from cache: ai:completed:{user_id}
+             5. Design mission from Designer:
+                mission = await designer.design_mission(concept.name, concept.concept_id, org_id, previous_concepts)
+             6. Cache mission for today
+             7. Return mission
+
+           async complete_session(user_id: UUID, org_id: UUID, session_result: SessionResult) -> dict:
+             1. Record completed concept in cache: push to ai:completed:{user_id}
+             2. Adapt path via Strategist:
+                await strategist.adapt_path(user_id, org_id, session_result)
+             3. Update mastery in Learning service (HTTP):
+                PATCH {learning_url}/concepts/mastery with new mastery value
+             4. Return {next_concept_preview, total_completed, trust_level_progress}
+
+      2. app/routes/orchestrator_routes.py:
+         GET /ai/mission/daily — Auth required. Returns MissionBlueprint for today.
+         POST /ai/mission/complete — Auth required. Body: {session_id}. Finalizes and adapts path.
+
+      3. Tests:
+         - test_orchestrator.py:
+           - Test get_daily_mission calls strategist then designer
+           - Test caching (second call returns cached mission)
+           - Test complete_session adapts path
+           - Mock all three sub-services
+
+      RULES:
+      - TDD mandatory
+      - Orchestrator coordinates, does not contain business logic
+      - Each agent remains independently testable
+      - Clean error handling: if one agent fails, return meaningful error
+
+      COMMIT: feat(ai): add agent orchestrator for Strategist→Designer→Coach pipeline
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: [coach-agent]
+
+  - id: agent-memory
+    title: "Persistent agent memory: user profile, session history, mastery timeline"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Add persistent memory layer so agents remember user context across sessions.
+
+      CONTEXT:
+      - AI service: services/py/ai/ (stateless, uses Redis for cache)
+      - Currently: conversation memory lives in Redis with TTL (temporary)
+      - Need: persistent storage of user learning profile, session history, mastery progression
+      - AI service has no database — use Redis with long TTL or add lightweight storage
+      - Decision: Use Redis with long TTL (30 days) for simplicity. No new database.
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/repositories/agent_memory.py:
+         - AgentMemory(redis):
+
+           async save_user_profile(user_id: UUID, profile: dict) -> None
+             Key: ai:profile:{user_id}, TTL: 30 days
+             Profile: {name, role, experience_years, tech_stack, organization_id, preferred_personality, joined_at}
+
+           async get_user_profile(user_id: UUID) -> dict | None
+             Fetch from Redis, parse JSON
+
+           async save_session_result(user_id: UUID, result: dict) -> None
+             Key: ai:sessions:{user_id}
+             Redis LPUSH (list of session results, newest first)
+             LTRIM to keep last 100 sessions
+
+           async get_session_history(user_id: UUID, limit: int = 10) -> list[dict]
+             Redis LRANGE on ai:sessions:{user_id}
+
+           async get_completed_concepts(user_id: UUID) -> list[str]
+             Key: ai:completed:{user_id}
+             Redis SMEMBERS (set of concept names)
+
+           async add_completed_concept(user_id: UUID, concept_name: str) -> None
+             Redis SADD to ai:completed:{user_id}
+
+           async get_weak_areas(user_id: UUID) -> list[dict]:
+             Scan session history for concepts with score < 0.5
+             Return [{concept_name, last_score, attempts}]
+
+      2. Wire AgentMemory into orchestrator and strategist (DI via constructor)
+
+      3. Update StrategistService.plan_path to use user_profile from memory
+
+      4. Update AgentOrchestrator.complete_session to save session result
+
+      5. Routes:
+         GET /ai/profile/me — returns user learning profile
+         PATCH /ai/profile/me — update preferences (personality, schedule)
+         GET /ai/sessions/me — returns session history
+
+      6. Tests:
+         - test_agent_memory.py: mock Redis, test all CRUD operations
+         - test_profile persistence across sessions
+
+      RULES:
+      - TDD mandatory
+      - Redis-only (no new database for AI service)
+      - TTL: profiles 30 days, sessions 90 days, completed concepts no expiry (PERSIST)
+      - JSON serialization for complex objects
+      - Graceful fallback if Redis unavailable
+
+      COMMIT: feat(ai): add persistent agent memory for user profiles and session history
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: [agent-orchestrator]
