@@ -62,6 +62,18 @@ CLAUDE_TIMEOUT = 900  # 15 min per task
 TEST_TIMEOUT = 300    # 5 min per test
 DISPATCH_INTERVAL = 2  # seconds between queue scans
 
+# Quota retry config
+QUOTA_RETRY_INTERVAL = 1800  # 30 min between retries
+QUOTA_MAX_RETRIES = 12       # 12 retries = 6 hours max wait
+_QUOTA_PATTERNS = [
+    "rate limit", "rate_limit", "ratelimit",
+    "too many request", "429",
+    "overloaded", "over capacity",
+    "quota exceeded", "quota limit",
+    "request limit", "usage limit",
+    "capacity", "throttl",
+]
+
 # ---------------------------------------------------------------------------
 # Process management
 # ---------------------------------------------------------------------------
@@ -179,6 +191,39 @@ def _load_env() -> None:
         key, _, value = line.partition("=")
         if not os.environ.get(key.strip()):
             os.environ[key.strip()] = value.strip()
+
+
+def _is_quota_error(exit_code: int, output: str) -> bool:
+    """Detect API quota/rate limit errors in Claude CLI output."""
+    if exit_code == 0:
+        return False
+    output_lower = output.lower()
+    return any(p in output_lower for p in _QUOTA_PATTERNS)
+
+
+def _wait_for_quota(attempt: int) -> bool:
+    """Wait for quota reset. Returns False if shutdown requested (Ctrl+C)."""
+    minutes = QUOTA_RETRY_INTERVAL // 60
+    next_try = time.strftime("%H:%M", time.localtime(time.time() + QUOTA_RETRY_INTERVAL))
+    _p(f"\n  {'!' * 50}")
+    _p(f"  QUOTA LIMIT HIT — waiting {minutes} min (attempt {attempt}/{QUOTA_MAX_RETRIES})")
+    _p(f"  Next retry at {next_try}. Press Ctrl+C to abort.")
+    _p(f"  {'!' * 50}\n")
+
+    # Wait in small increments so Ctrl+C is responsive
+    elapsed = 0
+    while elapsed < QUOTA_RETRY_INTERVAL:
+        if _should_stop():
+            _p("  Quota wait interrupted by shutdown signal.")
+            return False
+        time.sleep(10)
+        elapsed += 10
+        remaining = (QUOTA_RETRY_INTERVAL - elapsed) // 60
+        if elapsed % 300 == 0 and remaining > 0:  # log every 5 min
+            _p(f"  ... {remaining} min remaining until retry")
+
+    _p(f"  Quota wait done. Retrying...")
+    return True
 
 
 # ---------------------------------------------------------------------------
@@ -365,14 +410,30 @@ def run_claude(
     task_id: str | None = None,
     timeout: int | None = None,
 ) -> tuple[int, str]:
-    """Execute task via Claude Code CLI."""
+    """Execute task via Claude Code CLI. Auto-retries on quota limits."""
     work_dir = str(cwd or ROOT)
     cmd = ["claude", "--dangerously-skip-permissions", "-p", prompt]
-    _p("  +-- Claude Code starting...", task_id)
-    prefix = f"  [{task_id}] |  " if task_id else "  |  "
-    code, output = _stream_process(cmd, work_dir, timeout or CLAUDE_TIMEOUT, prefix=prefix, task_id=task_id)
-    _p(f"  +-- Claude Code done (exit={code})", task_id)
-    return code, output
+
+    for quota_attempt in range(1, QUOTA_MAX_RETRIES + 1):
+        _p("  +-- Claude Code starting...", task_id)
+        prefix = f"  [{task_id}] |  " if task_id else "  |  "
+        code, output = _stream_process(cmd, work_dir, timeout or CLAUDE_TIMEOUT, prefix=prefix, task_id=task_id)
+        _p(f"  +-- Claude Code done (exit={code})", task_id)
+
+        if not _is_quota_error(code, output):
+            return code, output
+
+        # Quota hit — wait and retry
+        _p(f"  +-- QUOTA ERROR detected in output", task_id)
+        if quota_attempt >= QUOTA_MAX_RETRIES:
+            _p(f"  +-- Max quota retries ({QUOTA_MAX_RETRIES}) exhausted. Giving up.", task_id)
+            return code, output
+
+        if not _wait_for_quota(quota_attempt):
+            # Shutdown requested during wait
+            return code, output
+
+    return code, output  # unreachable, but satisfies type checker
 
 
 def run_tests(command: str, cwd: Path | None = None, task_id: str | None = None) -> tuple[int, str]:
