@@ -50,6 +50,33 @@ class PendingTeacherResponse(BaseModel):
     created_at: datetime
 
 
+@dataclass(frozen=True)
+class PublicProfile:
+    id: UUID
+    name: str
+    bio: str | None
+    avatar_url: str | None
+    role: UserRole
+    is_verified: bool
+    created_at: datetime
+    is_public: bool
+
+
+class VisibilityUpdate(BaseModel):
+    is_public: bool
+
+
+class PublicProfileResponse(BaseModel):
+    id: UUID
+    name: str
+    bio: str | None
+    avatar_url: str | None
+    role: UserRole
+    is_verified: bool
+    created_at: datetime
+    is_public: bool
+
+
 class UserResponse(BaseModel):
     id: UUID
     email: str

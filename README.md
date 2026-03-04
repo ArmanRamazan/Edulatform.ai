@@ -42,8 +42,8 @@ EduPlatform — не очередной видеохостинг с прогре
 Монорепа: **Python** (бизнес-логика, 7 микросервисов) + **Next.js** (frontend) + **Rust** (performance-critical, Phase 4).
 
 - **7 сервисов**: Identity, Course, Enrollment, Payment, Notification, AI, Learning
-- **599 unit-тестов**, нагрузочное тестирование через Locust
-- **95 endpoint**, **33 таблица** в 6 БД
+- **659 unit-тестов**, нагрузочное тестирование через Locust
+- **98 endpoint**, **33 таблица** в 6 БД
 - **157 RPS, p99 = 51ms** на текущей стадии
 - **AI**: Quiz generation, Summary, Socratic Tutor, Study Plan (Gemini Flash), FSRS spaced repetition
 - **Knowledge Graph**: concepts, prerequisites, concept mastery tracking

@@ -385,6 +385,73 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 
 ---
 
+### GET /users/{user_id}/profile
+
+Публичный профиль пользователя. Не требует авторизации. Возвращает 404 если профиль приватный.
+
+**Response `200`:**
+```json
+{
+  "id": "uuid",
+  "name": "Ivan Petrov",
+  "bio": "About me...",
+  "avatar_url": "https://...",
+  "role": "teacher",
+  "is_verified": true,
+  "created_at": "2026-01-01T00:00:00Z",
+  "is_public": true
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Пользователь не найден или профиль приватный |
+
+---
+
+### GET /users/{user_id}/stats
+
+Публичная статистика пользователя (только данные Identity сервиса).
+
+**Response `200`:**
+```json
+{
+  "name": "Ivan Petrov",
+  "role": "teacher",
+  "is_verified": true,
+  "member_since": "2026-01-01T00:00:00Z"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Пользователь не найден или профиль приватный |
+
+---
+
+### PATCH /users/me/visibility
+
+Переключение видимости профиля. Требует авторизации (Bearer token).
+
+**Request:**
+```json
+{
+  "is_public": false
+}
+```
+
+**Response:** `204 No Content`
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 422 | Невалидные данные |
+
+---
+
 ## Course Service (`:8002`)
 
 ### GET /categories
