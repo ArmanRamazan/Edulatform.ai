@@ -177,6 +177,32 @@ class CoachEndResponse(BaseModel):
     gaps: list[str]
 
 
+class MissionCompleteRequest(BaseModel):
+    session_id: str
+    concept_id: UUID
+    org_id: UUID
+
+
+class DailyMissionResponse(BaseModel):
+    concept_name: str
+    concept_id: UUID
+    recap_questions: list[dict]
+    reading_content: str
+    check_questions: list[dict]
+    code_case: dict | None
+
+
+class MissionCompleteResponse(BaseModel):
+    next_concept_preview: str | None
+    total_completed: int
+    score: float
+    mastery_delta: float
+
+
+class MissionDailyRequest(BaseModel):
+    org_id: UUID
+
+
 class ModerationRequest(BaseModel):
     content: str = Field(min_length=1, max_length=10000)
     content_type: str = Field(pattern=r"^(course_description|lesson_content|review_text)$")
