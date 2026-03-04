@@ -287,6 +287,8 @@ CLAUDE.md явно требует:
 | 4 | Pydantic enum для sort_by | LOW | ✅ ИСПРАВЛЕНО — добавлен `CourseSortField(StrEnum)` |
 | 5 | FastAPI import в common/errors.py | LOW | ✅ ЗАКРЫТО — соответствует PEP 8 (top-level imports), новое правило в CLAUDE.md |
 | 6 | Синхронизация метрик в README/docs | LOW | ⏳ TODO |
+| 7 | Orchestrator не следует CLAUDE.md | MEDIUM | ✅ ИСПРАВЛЕНО — TDD preamble, dynamic commit type |
+| 8 | Удалить реализованные задачи из sprint YAML | LOW | ✅ ИСПРАВЛЕНО — 14 задач удалено из sprint-10/12 |
 
 ---
 
@@ -299,8 +301,8 @@ CLAUDE.md явно требует:
 3. **sort_by validation**: Добавлен `CourseSortField(StrEnum)` в `domain/course.py`, routes используют enum вместо `str`
 4. **Clean Architecture**: `asyncpg.UniqueViolationError` перехватывается в repositories, services получают `ConflictError`
 5. **Тесты обновлены**: 5 тестов обновлены для работы с `ConflictError` вместо `asyncpg.UniqueViolationError`
-6. **Orchestrator**: Добавлен `type` field в Task, TDD preamble в промпты, динамический тип коммита
-7. **Sprint tasks**: Удалены реализованные задачи из sprint-10 (7 backend) и sprint-12 (7 backend)
+6. **Orchestrator**: Добавлен `type` field в Task, TDD preamble в промпты, динамический тип коммита *(коммит: chore(orchestrator))*
+7. **Sprint tasks**: Удалены реализованные задачи из sprint-10 (7 backend) и sprint-12 (7 backend) *(коммит: chore(orchestrator))*
 
 ### Результаты тестов после исправлений:
 - Course: **111 passed**
