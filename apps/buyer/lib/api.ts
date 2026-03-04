@@ -926,6 +926,37 @@ export const bundles = {
   },
 };
 
+export interface QuizScoreTrend {
+  week: string;
+  avg_score: number;
+}
+
+export interface VelocityCourseProgress {
+  course_id: string;
+  total_concepts: number;
+  mastered: number;
+  mastery_pct: number;
+  estimated_weeks_left: number;
+}
+
+export interface VelocityResponse {
+  concepts_mastered_this_week: number;
+  concepts_mastered_last_week: number;
+  trend: "up" | "down" | "stable";
+  quiz_score_trend: QuizScoreTrend[];
+  flashcard_retention_rate: number;
+  streak_days: number;
+  course_progress: VelocityCourseProgress[];
+}
+
+export const velocity = {
+  me(token: string) {
+    return request<VelocityResponse>(`${LEARNING_URL}/velocity/me`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
 export const concepts = {
   getCourseGraph(token: string, courseId: string) {
     return request<CourseGraphResponse>(`${LEARNING_URL}/concepts/course/${courseId}`, {

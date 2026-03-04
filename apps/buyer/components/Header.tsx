@@ -59,6 +59,11 @@ export function Header() {
                   </Link>
                 )}
                 {user.role === "student" && (
+                  <Link href="/velocity" className="text-sm hover:underline">
+                    Статистика
+                  </Link>
+                )}
+                {user.role === "student" && (
                   <Link href="/flashcards" className="relative text-sm hover:underline">
                     Повторение
                     {(dueCount.data ?? 0) > 0 && (
