@@ -1992,6 +1992,8 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 Создать уведомление. Логирует `[NOTIFICATION]` в stdout. Требует JWT.
 
+Для типов `welcome`, `course_completed`, `review_received`, `streak_at_risk` — если передан `email`, автоматически отправляет email-уведомление через EmailAdapter. При ошибке отправки email уведомление всё равно создаётся с `email_sent: false`.
+
 **Headers:** `Authorization: Bearer <token>`
 
 **Request:**
@@ -1999,9 +2001,18 @@ Mock оплата курса. Всегда возвращает `status=complete
 {
   "type": "enrollment",
   "title": "Вы записались на курс: Python 101",
-  "body": "Бесплатная запись"
+  "body": "Бесплатная запись",
+  "email": "user@example.com"  // optional, triggers email for lifecycle types
 }
 ```
+
+**Email subjects by type:**
+| Type | Subject |
+|------|---------|
+| `welcome` | Добро пожаловать в EduPlatform! |
+| `course_completed` | Поздравляем с завершением курса! |
+| `review_received` | Новый отзыв на ваш курс |
+| `streak_at_risk` | Ваша серия под угрозой! |
 
 **Response `201`:**
 ```json
@@ -2012,7 +2023,8 @@ Mock оплата курса. Всегда возвращает `status=complete
   "title": "...",
   "body": "...",
   "is_read": false,
-  "created_at": "2026-02-20T12:00:00+00:00"
+  "created_at": "2026-02-20T12:00:00+00:00",
+  "email_sent": false
 }
 ```
 
