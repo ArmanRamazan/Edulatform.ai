@@ -8,6 +8,7 @@ Usage:
     ./run.sh tasks/phase-2.5.yaml              # run a task file
     ./run.sh tasks/phase-2.5.yaml --dry-run    # preview tasks
     ./run.sh tasks/phase-2.5.yaml --workers 3  # parallel mode (3 workers)
+    ./run.sh tasks/phase-2.5.yaml --multi-agent  # multi-agent mode (wave-based)
     ./run.sh --resume                          # continue from saved state
     ./run.sh --status                          # show progress
     ./run.sh --reset                           # clear state
@@ -358,13 +359,18 @@ def _augment_prompt(prompt: str, scope: str) -> str:
     return prompt + _TDD_PREAMBLE
 
 
-def run_claude(prompt: str, cwd: Path | None = None, task_id: str | None = None) -> tuple[int, str]:
+def run_claude(
+    prompt: str,
+    cwd: Path | None = None,
+    task_id: str | None = None,
+    timeout: int | None = None,
+) -> tuple[int, str]:
     """Execute task via Claude Code CLI."""
     work_dir = str(cwd or ROOT)
     cmd = ["claude", "--dangerously-skip-permissions", "-p", prompt]
     _p("  +-- Claude Code starting...", task_id)
     prefix = f"  [{task_id}] |  " if task_id else "  |  "
-    code, output = _stream_process(cmd, work_dir, CLAUDE_TIMEOUT, prefix=prefix, task_id=task_id)
+    code, output = _stream_process(cmd, work_dir, timeout or CLAUDE_TIMEOUT, prefix=prefix, task_id=task_id)
     _p(f"  +-- Claude Code done (exit={code})", task_id)
     return code, output
 
@@ -925,6 +931,239 @@ def execute_parallel(state: State, workers: int, dry_run: bool = False) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Task execution — multi-agent (Claude dispatches parallel agents per wave)
+# ---------------------------------------------------------------------------
+
+MAX_WAVE_TIMEOUT = 3600  # 1 hour cap per wave
+
+
+def _topological_waves(tasks: list[Task], task_map: dict[str, Task]) -> list[list[Task]]:
+    """Group tasks into waves by dependency depth.
+
+    Wave 0: tasks with no deps (or all deps already passed/outside this run).
+    Wave N: tasks whose deps are all in waves < N.
+    """
+    assigned: dict[str, int] = {}  # task_id -> wave number
+    waves: list[list[Task]] = []
+
+    # Pre-mark tasks already done
+    for t in tasks:
+        if t.status in ("passed", "failed", "skipped"):
+            assigned[t.id] = -1  # sentinel: already terminal
+
+    max_passes = len(tasks) + 1
+    for _ in range(max_passes):
+        made_progress = False
+        for t in tasks:
+            if t.id in assigned:
+                continue
+            # All deps must be assigned already
+            dep_waves: list[int] = []
+            all_resolved = True
+            for dep_id in t.depends_on:
+                if dep_id not in task_map:
+                    continue  # external dep, ignore
+                if dep_id in assigned:
+                    dep_waves.append(assigned[dep_id])
+                else:
+                    all_resolved = False
+                    break
+            if not all_resolved:
+                continue
+            wave_num = max(dep_waves, default=-1) + 1
+            assigned[t.id] = wave_num
+            made_progress = True
+        if not made_progress:
+            break
+
+    # Build wave lists (skip terminal tasks)
+    wave_nums = sorted(set(w for w in assigned.values() if w >= 0))
+    for wn in wave_nums:
+        wave = [t for t in tasks if assigned.get(t.id) == wn]
+        if wave:
+            waves.append(wave)
+
+    # Unassigned tasks (circular deps) go into a final wave
+    unassigned = [t for t in tasks if t.id not in assigned]
+    if unassigned:
+        waves.append(unassigned)
+
+    return waves
+
+
+def _build_multi_agent_prompt(wave: list[Task]) -> str:
+    """Build a single prompt for a wave of tasks using Agent tool dispatch."""
+    # Single task — no multi-agent overhead
+    if len(wave) == 1:
+        return _augment_prompt(wave[0].prompt, wave[0].scope)
+
+    parts: list[str] = []
+    parts.append(
+        f"You are an orchestrator. Execute these {len(wave)} tasks IN PARALLEL "
+        f"using the Agent tool.\n\n"
+        f"For EACH task below, launch an Agent with:\n"
+        f'- subagent_type: "general-purpose"\n'
+        f'- isolation: "worktree"\n'
+        f"- The task prompt (provided below) as the agent's prompt\n\n"
+        f"Launch ALL agents in a SINGLE message (parallel execution). "
+        f"Do NOT run them sequentially.\n\n"
+        f"After all agents finish, for each successful agent:\n"
+        f"1. Check that the agent reported success\n"
+        f"2. If the worktree has changes, they will be on the returned branch\n\n"
+        f"IMPORTANT: Do NOT modify any code yourself. Only dispatch agents.\n"
+    )
+
+    for i, task in enumerate(wave, 1):
+        scope_short = task.scope.split(":")[-1] if ":" in task.scope else task.scope
+        commit_msg = f"{task.type}({scope_short}): {task.title.lower()}"
+        augmented = _augment_prompt(task.prompt, task.scope)
+
+        parts.append(f"\n{'=' * 40}")
+        parts.append(f"== TASK {i}: {task.id} ==")
+        parts.append(f"{'=' * 40}")
+        parts.append(f"Title: {task.title}")
+        parts.append(f"Scope: {task.scope}")
+        if task.test:
+            parts.append(f"Test command: {task.test}")
+        parts.append(f"Commit message: {commit_msg}")
+        parts.append(f"\n{augmented}")
+
+    return "\n".join(parts)
+
+
+def _verify_wave_results(wave: list[Task], state: State) -> None:
+    """After Claude finishes a wave, independently verify each task's tests."""
+    for task in wave:
+        if task.status in ("passed", "failed", "skipped"):
+            continue
+
+        _p(f"\n  Verifying task {task.id}: {task.title}")
+
+        # Check if there were git changes (committed by the agent)
+        # We verify by running the test command on the current state
+        if task.test:
+            test_code, test_out = run_tests(task.test)
+            if test_code == 0:
+                _p(f"  V Task {task.id}: tests PASSED")
+                task.status = "passed"
+                task.finished_at = _now()
+            else:
+                _p(f"  X Task {task.id}: tests FAILED")
+                task.status = "failed"
+                task.error = test_out[-500:]
+                task.finished_at = _now()
+        else:
+            # No test command — mark passed if Claude succeeded
+            _p(f"  V Task {task.id}: no test command, marking passed")
+            task.status = "passed"
+            task.finished_at = _now()
+
+        with _state_lock:
+            state.save()
+
+
+def execute_multi_agent(state: State, dry_run: bool = False) -> None:
+    """Multi-agent execution: Claude dispatches parallel agents per wave."""
+    tasks = state.tasks
+    total = len(tasks)
+    task_map = {t.id: t for t in tasks}
+
+    waves = _topological_waves(tasks, task_map)
+
+    _p(f"\n{'#' * 60}")
+    _p(f"  Phase {state.phase} — {total} tasks — {len(waves)} waves (multi-agent)")
+    _p(f"{'#' * 60}")
+
+    for wave_idx, wave in enumerate(waves):
+        # Filter out already-terminal tasks
+        active = [t for t in wave if t.status not in ("passed", "failed", "skipped")]
+        if not active:
+            continue
+
+        if _should_stop():
+            _p("\n  STOP requested. Saving state...")
+            state.paused_at = _now()
+            state.save()
+            _print_report(state)
+            return
+
+        # Check deps — skip wave if any dep failed
+        skip_wave = False
+        for task in active:
+            deps_failed = any(
+                task_map[dep].status in ("failed", "skipped")
+                for dep in task.depends_on
+                if dep in task_map
+            )
+            if deps_failed:
+                task.status = "skipped"
+                task.error = f"Dependency failed: {task.depends_on}"
+                with _state_lock:
+                    state.save()
+
+        active = [t for t in active if t.status == "pending"]
+        if not active:
+            continue
+
+        _p(f"\n{'=' * 60}")
+        _p(f"  Wave {wave_idx + 1}/{len(waves)}: {len(active)} tasks")
+        for t in active:
+            _p(f"    {t.id} [{t.scope}] {t.title}")
+        _p(f"{'=' * 60}")
+
+        if dry_run:
+            prompt = _build_multi_agent_prompt(active)
+            _p(f"  [DRY RUN] prompt ({len(prompt)} chars)")
+            _p(f"  {prompt[:500]}...")
+            for t in active:
+                t.status = "passed"
+            state.save()
+            continue
+
+        # Mark all as running
+        for t in active:
+            t.started_at = _now()
+            t.status = "running"
+            t.attempts += 1
+        state.save()
+
+        # Build and run the multi-agent prompt
+        prompt = _build_multi_agent_prompt(active)
+        wave_timeout = min(CLAUDE_TIMEOUT * len(active), MAX_WAVE_TIMEOUT)
+
+        exit_code, output = run_claude(prompt, timeout=wave_timeout)
+        _save_log(active[0], active[0].attempts, output)  # log under first task
+
+        if _shutdown_requested:
+            state.paused_at = _now()
+            state.save()
+            _print_report(state)
+            return
+
+        if exit_code != 0 and "TIMEOUT" in output:
+            _p("  X WAVE TIMEOUT")
+            for t in active:
+                t.status = "failed"
+                t.error = "Wave timeout"
+                t.finished_at = _now()
+            state.save()
+            continue
+
+        # Verify results independently
+        _verify_wave_results(active, state)
+
+        # Progress update
+        passed = sum(1 for t in tasks if t.status == "passed")
+        failed = sum(1 for t in tasks if t.status == "failed")
+        _p(f"\n  Progress: {passed}/{total} passed, {failed} failed")
+
+    _p(f"\n{'#' * 60}")
+    _p("  EXECUTION COMPLETE")
+    _p(f"{'#' * 60}")
+    _print_report(state)
+
+
+# ---------------------------------------------------------------------------
 # Report
 # ---------------------------------------------------------------------------
 
@@ -948,7 +1187,12 @@ def _print_report(state: State) -> None:
 # Multi-file mode: run multiple YAML files sequentially
 # ---------------------------------------------------------------------------
 
-def execute_files(paths: list[Path], dry_run: bool = False, workers: int = 1) -> None:
+def execute_files(
+    paths: list[Path],
+    dry_run: bool = False,
+    workers: int = 1,
+    multi_agent: bool = False,
+) -> None:
     """Load and execute multiple YAML task files in order."""
     for path in paths:
         _p(f"\n  Loading: {path.name}")
@@ -964,7 +1208,9 @@ def execute_files(paths: list[Path], dry_run: bool = False, workers: int = 1) ->
             tasks=tf.tasks,
         )
 
-        if workers > 1:
+        if multi_agent:
+            execute_multi_agent(state, dry_run=dry_run)
+        elif workers > 1:
             execute_parallel(state, workers=workers, dry_run=dry_run)
         else:
             execute(state, dry_run=dry_run)
@@ -994,6 +1240,7 @@ Examples:
   ./run.sh tasks/phase-*.yaml                Run multiple files
   ./run.sh tasks/phase-2.5.yaml --dry-run    Preview tasks
   ./run.sh tasks/phase-2.5.yaml --workers 3  Parallel mode (3 workers)
+  ./run.sh tasks/phase-2.5.yaml --multi-agent  Multi-agent mode (wave-based)
   ./run.sh --resume                          Resume from saved state
   ./run.sh --status                          Show progress
   ./run.sh --reset                           Clear state
@@ -1013,6 +1260,7 @@ Stop:
     parser.add_argument("--is-running", action="store_true", help="Check if orchestrator is running")
     parser.add_argument("--yes", "-y", action="store_true", help="Skip confirmation")
     parser.add_argument("--workers", type=int, default=1, help="Number of parallel workers (default: 1 = sequential)")
+    parser.add_argument("--multi-agent", action="store_true", help="Multi-agent mode: Claude dispatches parallel agents per wave")
     args = parser.parse_args()
 
     # --is-running
@@ -1051,7 +1299,7 @@ Stop:
         return
 
     # Startup cleanup: prune stale worktrees
-    if args.workers > 1:
+    if args.workers > 1 or args.multi_agent:
         _prune_worktrees()
 
     # --resume
@@ -1064,7 +1312,9 @@ Stop:
         _p(f"\n  Resuming Phase {state.phase}")
         if state.paused_at:
             _p(f"  Paused at: {state.paused_at}")
-        if args.workers > 1:
+        if args.multi_agent:
+            execute_multi_agent(state, dry_run=args.dry_run)
+        elif args.workers > 1:
             execute_parallel(state, workers=args.workers, dry_run=args.dry_run)
         else:
             execute(state, dry_run=args.dry_run)
@@ -1089,7 +1339,12 @@ Stop:
     # Sort by filename for consistent order
     paths.sort(key=lambda p: p.name)
 
-    mode = f"{args.workers} workers (parallel)" if args.workers > 1 else "sequential"
+    if args.multi_agent:
+        mode = "multi-agent (wave-based)"
+    elif args.workers > 1:
+        mode = f"{args.workers} workers (parallel)"
+    else:
+        mode = "sequential"
     _p(f"\n  EduPlatform Orchestrator v2")
     _p(f"  Root: {ROOT}")
     _p(f"  Mode: {mode}")
@@ -1113,7 +1368,7 @@ Stop:
             _p("  Aborted.")
             return
 
-    execute_files(paths, dry_run=args.dry_run, workers=args.workers)
+    execute_files(paths, dry_run=args.dry_run, workers=args.workers, multi_agent=args.multi_agent)
 
 
 if __name__ == "__main__":
