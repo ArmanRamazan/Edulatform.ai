@@ -390,8 +390,6 @@ tasks:
   - id: error-tracking
     title: "Error tracking with Sentry integration"
     scope: backend:identity
-    depends_on:
-      - structured-logging
     prompt: |
       Task: Add optional Sentry error tracking integration to the common library and identity service.
 

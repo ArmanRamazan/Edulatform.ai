@@ -1,0 +1,401 @@
+phase: "sprint-21"
+description: "Frontend Redesign — Mission UX, Coach Chat, Knowledge Graph, Trust Level Progress"
+
+tasks:
+  - id: mission-dashboard
+    title: "Mission dashboard: daily session overview"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build the main mission dashboard page — the first thing a user sees after login.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind, TanStack Query)
+      - API: Learning service GET /daily/me returns DailySummary:
+        {mission, trust_level, due_flashcards, streak_days, greeting}
+      - Mission object: {id, concept_id, mission_type, status, blueprint, score, started_at, completed_at}
+      - TrustLevel: {level, total_missions_completed, total_concepts_mastered, unlocked_areas}
+      - Existing patterns: apps/buyer/hooks/ for TanStack Query, apps/buyer/lib/api.ts for API client
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/lib/api.ts — add daily namespace:
+         daily: {
+           getSummary: () => GET /daily/me → DailySummary
+         }
+         missions: {
+           start: (id) => POST /missions/{id}/start
+           complete: (id, sessionId) => POST /missions/{id}/complete {session_id}
+           getHistory: (limit, offset) => GET /missions/me?limit&offset
+           getStreak: () => GET /missions/streak
+         }
+
+      2. apps/buyer/hooks/use-daily.ts:
+         - useDailySummary() — TanStack Query hook for GET /daily/me (staleTime: 60s)
+         - useStartMission() — mutation for POST /missions/{id}/start
+         - useCompleteMission() — mutation for POST /missions/{id}/complete
+         - useMissionHistory(limit) — paginated query for mission history
+
+      3. apps/buyer/app/dashboard/page.tsx (Server Component wrapper):
+         - Fetch initial data server-side
+         - Render DashboardContent client component
+
+      4. apps/buyer/components/dashboard/DashboardContent.tsx ("use client"):
+         Layout:
+         ```
+         ┌──────────────────────────────────────────┐
+         │  {greeting}                    Day {streak}│
+         ├──────────────────────────────────────────┤
+         │  ┌─────────────┐  ┌─────────────────────┐│
+         │  │ Trust Level  │  │ Today's Mission     ││
+         │  │ Level 2      │  │ [concept_name]      ││
+         │  │ ████░░ 60%   │  │ Status: pending     ││
+         │  │ Contributor  │  │ [Start Mission →]   ││
+         │  └─────────────┘  └─────────────────────┘│
+         │  ┌─────────────┐  ┌─────────────────────┐│
+         │  │ Flashcards  │  │ Mission History     ││
+         │  │ 12 due      │  │ ✓ Day 11: CI/CD    ││
+         │  │ [Review →]  │  │ ✓ Day 10: Docker   ││
+         │  └─────────────┘  │ ✓ Day 9: Git Flow  ││
+         │                    └─────────────────────┘│
+         └──────────────────────────────────────────┘
+         ```
+
+      5. apps/buyer/components/dashboard/TrustLevelCard.tsx:
+         - Shows current level name + number
+         - Progress bar to next level
+         - Unlocked areas list
+
+      6. apps/buyer/components/dashboard/MissionCard.tsx:
+         - Shows today's mission concept
+         - Status badge (pending/in_progress/completed)
+         - "Start Mission" button (pending) or "Continue" (in_progress) or score (completed)
+
+      7. apps/buyer/components/dashboard/StreakBadge.tsx:
+         - Fire icon + streak count
+         - Animation on milestone days (7, 30, 100)
+
+      RULES:
+      - Server Components by default, "use client" only where needed
+      - TanStack Query for all data fetching in client components
+      - Tailwind only, no CSS modules
+      - Named exports only
+      - Loading skeleton via loading.tsx
+      - Error boundary via error.tsx
+
+      COMMIT: feat(buyer): add mission dashboard with daily summary and trust level
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: coach-chat-ui
+    title: "Coach chat interface: Socratic dialogue UI"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build the Coach chat interface — the interactive 15-minute session where users learn through Socratic dialogue.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind, TanStack Query)
+      - API: AI service endpoints:
+        POST /ai/coach/start {mission_id} → {session_id, greeting, phase: "recap"}
+        POST /ai/coach/chat {session_id, message} → {reply, phase, progress, hint?}
+        POST /ai/coach/end {session_id} → {summary, score, mastery_delta, recommendations}
+      - Mission phases: recap → reading → questions → code_case → wrap_up
+      - Existing tutor chat: apps/buyer/app/tutor/ — REUSE patterns, don't duplicate
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/lib/api.ts — add coach namespace:
+         coach: {
+           startSession: (missionId) => POST /ai/coach/start {mission_id}
+           sendMessage: (sessionId, message) => POST /ai/coach/chat {session_id, message}
+           endSession: (sessionId) => POST /ai/coach/end {session_id}
+         }
+
+      2. apps/buyer/hooks/use-coach.ts:
+         - useCoachSession() — manages session state (sessionId, phase, messages[])
+         - useStartCoachSession() — mutation to start session
+         - useSendCoachMessage() — mutation to send message (optimistic UI)
+         - useEndCoachSession() — mutation to end session
+
+      3. apps/buyer/app/mission/[id]/page.tsx:
+         - Route: /mission/{mission_id}
+         - Server Component: fetch mission data
+         - Render MissionSession client component
+
+      4. apps/buyer/components/mission/MissionSession.tsx ("use client"):
+         Main session container with phase indicator:
+         ```
+         ┌──────────────────────────────────────────┐
+         │  Mission: [concept_name]     Phase 2/5   │
+         │  ○ Recap  ● Reading  ○ Questions  ○ Code │
+         ├──────────────────────────────────────────┤
+         │                                          │
+         │  Coach: "Давай посмотрим на этот код.    │
+         │  Что делает эта функция?"                │
+         │                                          │
+         │  You: "Она обрабатывает HTTP запросы"     │
+         │                                          │
+         │  Coach: "Верно! А какой паттерн здесь    │
+         │  используется для обработки ошибок?"     │
+         │                                          │
+         ├──────────────────────────────────────────┤
+         │  [Type your answer...]        [Send →]   │
+         └──────────────────────────────────────────┘
+         ```
+
+      5. apps/buyer/components/mission/PhaseIndicator.tsx:
+         - Horizontal stepper: recap → reading → questions → code → wrap_up
+         - Current phase highlighted, completed phases checked
+
+      6. apps/buyer/components/mission/ChatMessage.tsx:
+         - Coach messages: left-aligned, with avatar
+         - User messages: right-aligned
+         - Code blocks: syntax highlighted (use dynamic import for highlight.js)
+         - Hint button: if hint available, show expandable hint
+
+      7. apps/buyer/components/mission/MissionComplete.tsx:
+         - Score display with animation
+         - Mastery delta: "+0.15 mastery"
+         - Recommendations list
+         - "Back to Dashboard" button
+
+      8. apps/buyer/components/mission/CodeBlock.tsx:
+         - Syntax-highlighted code display
+         - Copy button
+         - Language label
+         - Dynamic import for highlight.js (keep bundle small)
+
+      RULES:
+      - Streaming feel: show typing indicator while waiting for coach response
+      - Auto-scroll to latest message
+      - Disable input while coach is "typing"
+      - Phase transitions triggered by coach response (phase field)
+      - Session timeout: 20 minutes max (show warning at 15 min)
+      - Named exports, Tailwind only
+      - Reuse chat patterns from existing tutor (apps/buyer/app/tutor/)
+
+      COMMIT: feat(buyer): add Coach chat interface with Socratic dialogue and phase tracking
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [mission-dashboard]
+
+  - id: knowledge-graph-viz
+    title: "Knowledge graph visualization with concept nodes"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build an interactive knowledge graph visualization showing company concepts and their relationships.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind)
+      - API: RAG service GET /kb/{org_id}/concepts returns:
+        {nodes: [{id, name, description}], edges: [{source, target, type}]}
+      - Learning service GET /concepts/mastery returns user's mastery per concept
+      - Need to merge: graph structure from RAG + mastery levels from Learning
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/lib/api.ts — add kb namespace:
+         kb: {
+           getStats: (orgId) => GET /kb/{org_id}/stats
+           getConcepts: (orgId) => GET /kb/{org_id}/concepts
+           search: (orgId, query, limit) => POST /kb/{org_id}/search {query, limit}
+         }
+
+      2. apps/buyer/hooks/use-knowledge-base.ts:
+         - useConceptGraph(orgId) — fetches concept graph + merges mastery data
+         - useKBStats(orgId) — fetches knowledge base stats
+         - useKBSearch(orgId) — mutation for semantic search
+
+      3. apps/buyer/app/knowledge/page.tsx:
+         - Route: /knowledge
+         - Server Component wrapper
+
+      4. apps/buyer/components/knowledge/ConceptGraph.tsx ("use client"):
+         - Canvas-based graph using dynamic import of a lightweight lib
+         - Nodes: circles colored by mastery (gray=0, yellow=0.3, green=0.7, gold=1.0)
+         - Edges: lines between related concepts
+         - Click node → show concept detail panel
+         - Zoom/pan support
+         - Force-directed layout
+
+         Implementation approach:
+         - Use HTML5 Canvas with requestAnimationFrame for rendering
+         - Simple force simulation (repulsion between nodes, attraction on edges)
+         - No heavy library — keep it lightweight (~200 lines)
+         - Fallback: if >100 nodes, show list view instead
+
+      5. apps/buyer/components/knowledge/ConceptDetail.tsx:
+         - Slide-in panel when node clicked
+         - Shows: name, description, mastery level, related concepts
+         - "Start Mission on this concept" button
+         - Related documents list (from RAG)
+
+      6. apps/buyer/components/knowledge/KBStats.tsx:
+         - Stats cards: total documents, total concepts, total chunks
+         - Last updated timestamp
+
+      7. apps/buyer/components/knowledge/SearchPanel.tsx:
+         - Search input for semantic search
+         - Results list with similarity scores
+         - Click result → highlight concept in graph
+
+      RULES:
+      - Dynamic import for canvas rendering (not in initial bundle)
+      - Graceful degradation: if graph too large, show filterable list
+      - Mastery colors consistent with existing concept mastery UI
+      - Named exports, Tailwind only
+      - Responsive: graph fills available space
+
+      COMMIT: feat(buyer): add knowledge graph visualization with mastery overlay
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [mission-dashboard]
+
+  - id: trust-level-ui
+    title: "Trust level progress page with unlocked areas"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build the Trust Level progress page showing the user's progression through access levels.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind, TanStack Query)
+      - API: Learning service:
+        GET /trust-level/me → {level, total_missions_completed, total_concepts_mastered, unlocked_areas, level_up_at}
+      - Level names: 0=Newcomer, 1=Explorer, 2=Contributor, 3=Builder, 4=Guardian, 5=Architect
+      - Level thresholds defined in backend (missions + concepts_mastered required)
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/lib/api.ts — add trustLevel namespace:
+         trustLevel: {
+           getMyLevel: () => GET /trust-level/me
+         }
+
+      2. apps/buyer/hooks/use-trust-level.ts:
+         - useTrustLevel() — TanStack Query hook
+
+      3. apps/buyer/app/progress/page.tsx:
+         - Route: /progress
+         - Server Component wrapper
+
+      4. apps/buyer/components/progress/TrustLevelPage.tsx ("use client"):
+         Layout:
+         ```
+         ┌──────────────────────────────────────────┐
+         │  Your Trust Level                         │
+         │                                          │
+         │  Level 2: Contributor                     │
+         │  ████████████░░░░░░░░ 60%                │
+         │  15/30 missions · 8/15 concepts          │
+         │                                          │
+         │  ┌─ Level Journey ──────────────────────┐│
+         │  │ ✅ 0 Newcomer     — Read docs only   ││
+         │  │ ✅ 1 Explorer     — Dev environment  ││
+         │  │ 🔵 2 Contributor  — Staging repos    ││
+         │  │ 🔒 3 Builder      — Prod repos (read)││
+         │  │ 🔒 4 Guardian     — Code review      ││
+         │  │ 🔒 5 Architect    — Full access      ││
+         │  └──────────────────────────────────────┘│
+         │                                          │
+         │  Unlocked Areas:                         │
+         │  ✓ Company documentation                 │
+         │  ✓ Dev environment access                │
+         │  ✓ Staging repository access             │
+         └──────────────────────────────────────────┘
+         ```
+
+      5. apps/buyer/components/progress/LevelJourney.tsx:
+         - Vertical timeline of all 6 levels
+         - Completed levels: green check
+         - Current level: blue dot with progress
+         - Locked levels: lock icon, grayed out
+         - Each level shows: name, description, requirements
+
+      6. apps/buyer/components/progress/UnlockedAreas.tsx:
+         - List of unlocked areas with check marks
+         - Next unlock preview (what you'll get at next level)
+
+      7. apps/buyer/components/progress/MissionStats.tsx:
+         - Missions completed / total needed for next level
+         - Concepts mastered / total needed
+         - Streak info
+         - Best score
+
+      RULES:
+      - Clean, motivational design — show progress, not pressure
+      - Smooth animations on level-up (if level_up_at is recent)
+      - Named exports, Tailwind only
+      - Accessible: proper ARIA labels for progress indicators
+
+      COMMIT: feat(buyer): add trust level progress page with level journey visualization
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [mission-dashboard]
+
+  - id: org-switcher
+    title: "Organization switcher and onboarding flow"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build organization selection UI — user picks their company, sees onboarding status.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind, TanStack Query)
+      - API: Identity service:
+        GET /organizations/me → list of user's organizations
+        GET /organizations/{id} → organization details
+        GET /organizations/{id}/members → member list
+      - User may belong to multiple organizations
+      - Active org stored in JWT (organization_id claim) and localStorage
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/lib/api.ts — add organizations namespace:
+         organizations: {
+           getMyOrgs: () => GET /organizations/me
+           getOrg: (id) => GET /organizations/{id}
+           getMembers: (id) => GET /organizations/{id}/members
+         }
+
+      2. apps/buyer/hooks/use-organizations.ts:
+         - useMyOrganizations() — list user's orgs
+         - useActiveOrg() — get/set active organization (localStorage + context)
+         - useOrgMembers(orgId) — member list
+
+      3. apps/buyer/components/layout/OrgSwitcher.tsx ("use client"):
+         - Dropdown in top nav bar
+         - Shows current org name + logo
+         - Click → dropdown with all user's orgs
+         - Switch org → update localStorage, invalidate all queries, refresh page
+
+      4. apps/buyer/app/onboarding/page.tsx:
+         - Route: /onboarding
+         - First-time flow after joining an organization
+         - Steps: Welcome → Profile check → First mission intro → Start
+
+      5. apps/buyer/components/onboarding/WelcomeStep.tsx:
+         - Company logo + name
+         - "Welcome to {org_name}!"
+         - Brief explanation of how the system works
+
+      6. apps/buyer/components/onboarding/OnboardingFlow.tsx ("use client"):
+         - Multi-step wizard (3 steps)
+         - Step 1: Welcome message
+         - Step 2: Confirm profile (name, role, experience level)
+         - Step 3: "Your first mission is ready. Let's go!"
+         - Complete → redirect to /dashboard
+
+      7. Update apps/buyer/app/layout.tsx:
+         - Add OrgSwitcher to header (only if user has organizations)
+         - Active org context provider
+
+      RULES:
+      - Organization context available app-wide via React Context
+      - All API calls include org_id from active org context
+      - No org selected → redirect to /onboarding or org selection
+      - Named exports, Tailwind only
+      - Smooth transitions between onboarding steps
+
+      COMMIT: feat(buyer): add organization switcher and onboarding flow
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [mission-dashboard]

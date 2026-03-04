@@ -1,0 +1,347 @@
+phase: "sprint-17"
+description: "RAG Foundation — new RAG service with pgvector, document ingestion, semantic search"
+
+tasks:
+  - id: rag-scaffold
+    title: "Scaffold RAG service with FastAPI, config, health"
+    scope: backend:rag
+    type: feat
+    prompt: |
+      Task: Create a new Python service `rag` at services/py/rag/ following the exact same patterns as other services (identity, course, ai, etc).
+
+      CONTEXT:
+      - Monorepo with uv workspace. Root pyproject.toml has workspace members.
+      - Existing service pattern: services/py/<name>/app/{main.py, config.py, routes/, services/, domain/, repositories/}
+      - Existing service pattern: services/py/<name>/tests/conftest.py + test files
+      - Existing service pattern: services/py/<name>/pyproject.toml (virtual package, hatchling)
+      - Common lib: libs/py/common/ — BaseAppSettings, create_pool, create_health_router, configure_logging, errors
+      - Port: 8008 (next available after learning:8007)
+      - DB: rag-db on port 5439
+
+      WHAT TO BUILD:
+      1. services/py/rag/pyproject.toml:
+         - name = "rag", version = "0.1.0"
+         - dependencies: fastapi, uvicorn, pyjwt, pydantic-settings, prometheus-fastapi-instrumentator, asyncpg, httpx, common (workspace)
+         - dev: pytest, pytest-asyncio
+         - [tool.hatch.build.targets.wheel] packages = ["app"]
+         - [tool.pytest.ini_options] asyncio_mode = "auto"
+
+      2. app/config.py:
+         - class Settings(BaseAppSettings) with:
+           database_url: str = "postgresql://postgres:postgres@localhost:5439/rag_db"
+           openai_api_key: str = ""  (for embeddings, optional — can use Gemini too)
+           embedding_model: str = "text-embedding-004"
+           embedding_dimensions: int = 768
+           chunk_size: int = 1000
+           chunk_overlap: int = 200
+
+      3. app/main.py:
+         - FastAPI app with lifespan (create_pool, Redis optional)
+         - Mount health router
+         - Prometheus instrumentator
+         - CORS middleware
+         - No routes yet (just health)
+
+      4. migrations/001_init.sql:
+         - CREATE EXTENSION IF NOT EXISTS vector;
+         - CREATE TABLE IF NOT EXISTS documents (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             organization_id UUID NOT NULL,
+             source_type VARCHAR(50) NOT NULL,  -- 'github', 'markdown', 'confluence'
+             source_path TEXT NOT NULL,
+             title TEXT NOT NULL,
+             content TEXT NOT NULL,
+             metadata JSONB DEFAULT '{}',
+             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+           );
+         - CREATE TABLE IF NOT EXISTS chunks (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+             content TEXT NOT NULL,
+             chunk_index INT NOT NULL,
+             embedding vector(768),
+             metadata JSONB DEFAULT '{}',
+             created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+           );
+         - CREATE INDEX idx_chunks_embedding ON chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+         - CREATE INDEX idx_documents_org ON documents(organization_id);
+         - CREATE INDEX idx_chunks_document ON chunks(document_id);
+
+      5. tests/conftest.py — minimal pytest fixtures (mock pool)
+
+      6. Add "rag" to root pyproject.toml workspace members
+
+      7. Add rag service to docker-compose.dev.yml:
+         - rag-db (postgres:15, port 5439, rag_db)
+         - rag service (port 8008, depends_on rag-db)
+
+      RULES:
+      - Follow EXACT patterns from services/py/identity/ or services/py/ai/
+      - Common lib imports: from common.config import BaseAppSettings, from common.database import create_pool
+      - from common.health import create_health_router
+      - Type hints on all public functions
+      - No placeholder code — only what's described above
+
+      COMMIT: feat(rag): scaffold RAG service with FastAPI, pgvector, and health checks
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: []
+
+  - id: embedding-client
+    title: "Embedding generation client (Gemini or OpenAI)"
+    scope: backend:rag
+    type: feat
+    prompt: |
+      Task: Create an embedding client adapter in the RAG service that generates vector embeddings from text.
+
+      CONTEXT:
+      - RAG service: services/py/rag/ (just scaffolded)
+      - Config has: openai_api_key, embedding_model, embedding_dimensions
+      - The AI service already uses GeminiClient in services/py/ai/app/repositories/llm_client.py for text generation
+      - We need embeddings — Gemini has text-embedding-004 (768 dims), OpenAI has text-embedding-3-small (1536 dims)
+      - Use Gemini embedding API to stay consistent with existing stack
+      - httpx is already a dependency
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/domain/embedding.py:
+         @dataclass(frozen=True) EmbeddingResult: text (str), vector (list[float]), model (str), token_count (int)
+
+      2. app/repositories/embedding_client.py:
+         - ABC: EmbeddingClient
+           async def embed(self, text: str) -> list[float]
+           async def embed_batch(self, texts: list[str]) -> list[list[float]]
+         - GeminiEmbeddingClient(EmbeddingClient):
+           __init__(http_client: httpx.AsyncClient, api_key: str, model: str = "text-embedding-004")
+           POST https://generativelanguage.googleapis.com/v1beta/models/{model}:embedContent
+           Body: {"model": "models/{model}", "content": {"parts": [{"text": text}]}}
+           Parse response: embedding.values
+         - StubEmbeddingClient(EmbeddingClient): returns zero vectors (for dev/tests)
+
+      3. Wire into main.py lifespan: create GeminiEmbeddingClient if api_key set, else StubEmbeddingClient
+
+      4. Tests (tests/test_embedding_client.py):
+         - Test StubEmbeddingClient returns correct dimensions
+         - Test GeminiEmbeddingClient with mocked httpx (200 response)
+         - Test GeminiEmbeddingClient with error response (retry/graceful fail)
+         - Test embed_batch processes multiple texts
+
+      RULES:
+      - TDD mandatory
+      - ABC + implementations pattern (like StubEmailClient/ResendEmailClient in notification service)
+      - httpx for HTTP calls
+      - Graceful fallback on errors
+      - Configurable via env vars (api key empty = stub mode)
+
+      COMMIT: feat(rag): add embedding generation client with Gemini and stub adapters
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [rag-scaffold]
+
+  - id: document-ingester
+    title: "Document ingestion pipeline: parse, chunk, embed, store"
+    scope: backend:rag
+    type: feat
+    prompt: |
+      Task: Build the document ingestion pipeline — accepts text/markdown/code, chunks it, generates embeddings, stores in pgvector.
+
+      CONTEXT:
+      - RAG service: services/py/rag/
+      - DB has: documents table (org_id, source_type, source_path, title, content, metadata)
+      - DB has: chunks table (document_id, content, chunk_index, embedding vector(768), metadata)
+      - EmbeddingClient exists: embed(text) -> list[float], embed_batch(texts) -> list[list[float]]
+      - asyncpg pool available via lifespan
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/services/chunker.py:
+         - chunk_text(text: str, chunk_size: int = 1000, overlap: int = 200) -> list[str]
+           Split text by paragraphs first, then by sentences if paragraph > chunk_size.
+           Overlap: include last `overlap` chars from previous chunk at start of next.
+         - chunk_code(code: str, chunk_size: int = 1500) -> list[str]
+           Split by function/class definitions (split on \ndef , \nclass , \nasync def).
+           Keep each function/class as one chunk if under chunk_size.
+
+      2. app/repositories/document_repository.py:
+         - DocumentRepository(pool):
+           async create_document(org_id, source_type, source_path, title, content, metadata) -> Document
+           async create_chunks(document_id, chunks: list[dict]) -> list[UUID]
+             Each chunk: {content, chunk_index, embedding (vector), metadata}
+             Use: INSERT INTO chunks (document_id, content, chunk_index, embedding, metadata) VALUES ($1,$2,$3,$4,$5)
+             For pgvector: pass embedding as string "[0.1,0.2,...]" format
+           async get_document(document_id) -> Document | None
+           async get_documents_by_org(org_id, limit, offset) -> list[Document]
+           async delete_document(document_id) -> bool (cascades to chunks)
+
+      3. app/domain/document.py:
+         @dataclass(frozen=True) Document: id, organization_id, source_type, source_path, title, content, metadata, created_at
+         @dataclass(frozen=True) Chunk: id, document_id, content, chunk_index, metadata
+
+      4. app/services/ingestion_service.py:
+         - IngestionService(document_repo, embedding_client, settings):
+           async ingest(org_id, source_type, source_path, title, content, metadata={}) -> Document
+             1. Create document record
+             2. Choose chunker: chunk_code if source_type in ('github', 'code'), else chunk_text
+             3. Generate embeddings via embed_batch
+             4. Store chunks with embeddings
+             5. Return document
+           async delete(document_id) -> bool
+
+      5. app/routes/ingestion_routes.py:
+         POST /documents — Auth required (admin/teacher). Body: {org_id, source_type, source_path, title, content}
+         GET /documents?org_id=...&limit=20&offset=0 — Auth required
+         DELETE /documents/{id} — Auth required (admin)
+
+      6. Tests:
+         - test_chunker.py: test text chunking, code chunking, overlap, edge cases
+         - test_ingestion_service.py: mock repo + embedding client, verify pipeline
+         - test_ingestion_routes.py: mock service, verify HTTP responses
+
+      RULES:
+      - TDD mandatory
+      - Clean Architecture: routes → services → domain ← repositories
+      - Parameterized SQL ($1, $2, ...)
+      - pgvector embedding stored as text representation for asyncpg
+      - No external dependencies beyond httpx, asyncpg (already in pyproject.toml)
+
+      COMMIT: feat(rag): add document ingestion pipeline with chunking and embedding
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [embedding-client]
+
+  - id: semantic-search
+    title: "Semantic search API with pgvector similarity"
+    scope: backend:rag
+    type: feat
+    prompt: |
+      Task: Build semantic search — embed query, find nearest chunks via pgvector cosine similarity.
+
+      CONTEXT:
+      - RAG service: services/py/rag/
+      - chunks table has: embedding vector(768) with ivfflat index
+      - EmbeddingClient: embed(text) -> list[float]
+      - DocumentRepository exists for document CRUD
+      - asyncpg pool available
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/repositories/search_repository.py:
+         - SearchRepository(pool):
+           async search(query_embedding: list[float], org_id: UUID, limit: int = 5) -> list[dict]
+             SQL: SELECT c.id, c.content, c.metadata, c.chunk_index,
+                         d.title as document_title, d.source_type, d.source_path,
+                         1 - (c.embedding <=> $1::vector) as similarity
+                  FROM chunks c
+                  JOIN documents d ON c.document_id = d.id
+                  WHERE d.organization_id = $2
+                  ORDER BY c.embedding <=> $1::vector
+                  LIMIT $3
+             Return list of dicts with content, similarity score, source info
+
+      2. app/services/search_service.py:
+         - SearchService(search_repo, embedding_client):
+           async search(query: str, org_id: UUID, limit: int = 5) -> list[SearchResult]
+             1. Embed query text
+             2. Search pgvector
+             3. Return results with similarity scores
+           async search_for_concept(concept_name: str, org_id: UUID) -> list[SearchResult]
+             Build expanded query: concept_name + context keywords
+             Search and return top results
+
+      3. app/domain/search.py:
+         @dataclass(frozen=True) SearchResult: chunk_id, content, similarity, document_title, source_type, source_path, metadata
+
+      4. app/routes/search_routes.py:
+         POST /search — Auth required. Body: {query: str, org_id: UUID, limit: int = 5}
+         Returns: {results: SearchResult[], query: str}
+
+      5. Tests:
+         - test_search_service.py: mock repo + embedding client, verify flow
+         - test_search_routes.py: mock service, verify HTTP responses
+
+      RULES:
+      - TDD mandatory
+      - pgvector cosine distance: <=> operator
+      - Parameterized SQL only
+      - Clean Architecture
+
+      COMMIT: feat(rag): add semantic search API with pgvector cosine similarity
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [document-ingester]
+
+  - id: entity-extractor
+    title: "Extract concepts and relationships from documents via LLM"
+    scope: backend:rag
+    type: feat
+    prompt: |
+      Task: Build entity extraction — use LLM to extract concepts, terms, and relationships from ingested documents. Store as knowledge graph nodes.
+
+      CONTEXT:
+      - RAG service: services/py/rag/
+      - Learning service has: concepts table, concept_mastery, concept prerequisites (concept_edges)
+      - We need to extract entities from company docs/code and create concept nodes
+      - GeminiClient pattern from AI service: POST to Gemini API, parse JSON response
+      - But we don't want to duplicate GeminiClient — instead, call AI service via HTTP
+        OR create a lightweight LLM call in RAG service
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/services/extraction_service.py:
+         - ExtractionService(embedding_client, http_client, settings):
+           async extract_concepts(document_id: UUID, content: str) -> list[ExtractedConcept]
+             Build prompt: "Extract the key technical concepts from this document.
+             For each concept return: name, description, related_concepts (list of names).
+             Return JSON array."
+             Call Gemini via HTTP (same pattern as AI service GeminiClient)
+             Parse JSON, return list of ExtractedConcept
+           async extract_from_code(document_id: UUID, code: str, language: str) -> list[ExtractedConcept]
+             Specialized prompt for code: "Extract classes, functions, patterns, and architectural concepts..."
+
+      2. app/domain/extraction.py:
+         @dataclass(frozen=True) ExtractedConcept: name (str), description (str), related_concepts (list[str]), source_document_id (UUID)
+
+      3. app/repositories/concept_store.py:
+         - ConceptStoreRepository(pool):
+           async upsert_concept(org_id, name, description, source_document_id) -> UUID
+           async add_relationship(concept_id, related_concept_id, relationship_type) -> None
+           async get_org_concepts(org_id) -> list[dict]
+         - New table in migration 002_concepts.sql:
+           CREATE TABLE IF NOT EXISTS org_concepts (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             organization_id UUID NOT NULL,
+             name VARCHAR(200) NOT NULL,
+             description TEXT,
+             source_document_id UUID REFERENCES documents(id) ON DELETE SET NULL,
+             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+             UNIQUE(organization_id, name)
+           );
+           CREATE TABLE IF NOT EXISTS concept_relationships (
+             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+             concept_id UUID NOT NULL REFERENCES org_concepts(id) ON DELETE CASCADE,
+             related_concept_id UUID NOT NULL REFERENCES org_concepts(id) ON DELETE CASCADE,
+             relationship_type VARCHAR(50) NOT NULL DEFAULT 'related',
+             UNIQUE(concept_id, related_concept_id)
+           );
+
+      4. Hook extraction into ingestion pipeline:
+         After ingestion completes, auto-extract concepts (fire-and-forget, log errors)
+
+      5. Routes:
+         GET /concepts?org_id=... — returns organization's concept graph
+         POST /concepts/extract/{document_id} — manually trigger extraction
+
+      6. Tests:
+         - test_extraction_service.py: mock HTTP/LLM response, verify concept parsing
+         - test_concept_store.py: mock pool, verify SQL calls
+
+      RULES:
+      - TDD mandatory
+      - LLM response parsing: strip markdown fences, parse JSON, validate
+      - Graceful failure: extraction errors don't break ingestion
+      - UNIQUE constraint on (org_id, name) — upsert, not fail
+
+      COMMIT: feat(rag): add LLM-based concept extraction from documents
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [semantic-search]

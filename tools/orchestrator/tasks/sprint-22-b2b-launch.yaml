@@ -1,0 +1,299 @@
+phase: "sprint-22"
+description: "B2B Launch — Admin dashboard, team analytics, pricing, Stripe subscription"
+
+tasks:
+  - id: org-admin-dashboard
+    title: "Organization admin dashboard"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build the admin dashboard for organization owners — manage team, view progress, configure onboarding.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind, TanStack Query)
+      - APIs available:
+        Identity: GET /organizations/{id}/members, POST /organizations/{id}/members, DELETE /organizations/{id}/members/{user_id}
+        Learning: GET /trust-level/org/{org_id} → team trust levels
+        RAG: GET /kb/{org_id}/stats, GET /kb/{org_id}/sources, POST /sources/github, POST /upload/markdown
+        RAG: GET /templates?org_id=..., POST /templates, POST /templates/{id}/stages
+      - Admin = org member with role "owner" or "admin"
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/app/admin/page.tsx:
+         - Route: /admin (protected — admin/owner only)
+         - Redirect non-admins to /dashboard
+         - Tabs: Team | Knowledge Base | Templates | Settings
+
+      2. apps/buyer/components/admin/TeamTab.tsx ("use client"):
+         - Table of org members: name, email, role, trust level, missions completed, last active
+         - Invite member button → modal with email + role select
+         - Remove member button (with confirmation)
+         - Sort by: name, trust level, activity
+
+      3. apps/buyer/components/admin/KnowledgeBaseTab.tsx ("use client"):
+         - KB stats cards (documents, chunks, concepts)
+         - Source list with type badges (github, markdown, confluence)
+         - "Add GitHub Repo" button → form: owner, repo, branch, extensions
+         - "Upload Documents" button → file upload (drag & drop)
+         - Refresh button per source
+
+      4. apps/buyer/components/admin/TemplatesTab.tsx ("use client"):
+         - List onboarding templates
+         - Create template: name, description
+         - Edit template stages: drag-reorder, add/remove stages
+         - Each stage: name, description, trust_level_required, concept selection
+         - Set default template toggle
+
+      5. apps/buyer/components/admin/SettingsTab.tsx ("use client"):
+         - Organization name, logo upload
+         - Billing info link (→ /admin/billing)
+         - Danger zone: deactivate org
+
+      6. apps/buyer/hooks/use-admin.ts:
+         - useOrgMembers(orgId) — member list with trust levels
+         - useInviteMember() — mutation
+         - useRemoveMember() — mutation
+         - useKBSources(orgId) — source list
+         - useIndexGitHub() — mutation
+         - useUploadDocuments() — mutation
+         - useTemplates(orgId) — template list
+         - useCreateTemplate() — mutation
+
+      7. apps/buyer/lib/api.ts — add admin namespace:
+         admin: {
+           getTeamLevels: (orgId) => GET /trust-level/org/{org_id}
+           indexGitHub: (data) => POST /sources/github
+           uploadMarkdown: (formData) => POST /upload/markdown
+           uploadBulk: (formData) => POST /upload/bulk
+         }
+         templates: {
+           list: (orgId) => GET /templates?org_id={orgId}
+           create: (data) => POST /templates
+           get: (id) => GET /templates/{id}
+           addStage: (id, data) => POST /templates/{id}/stages
+           updateStage: (id, stageId, data) => PUT /templates/{id}/stages/{stageId}
+           deleteStage: (id, stageId) => DELETE /templates/{id}/stages/{stageId}
+         }
+
+      RULES:
+      - Admin check at route level (middleware or layout)
+      - File upload via FormData, show progress
+      - Confirmation dialogs for destructive actions
+      - Named exports, Tailwind only
+      - Responsive table with horizontal scroll on mobile
+
+      COMMIT: feat(buyer): add organization admin dashboard with team and KB management
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: team-analytics
+    title: "Team progress analytics for admins"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build analytics views for org admins — team progress over time, concept coverage, bottlenecks.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind, TanStack Query)
+      - APIs:
+        Learning: GET /trust-level/org/{org_id} → [{user_id, level, missions, concepts, level_up_at}]
+        RAG: GET /kb/{org_id}/concepts → {nodes, edges}
+        Learning: GET /missions/me per user (admin proxy)
+      - Charts: use lightweight SVG-based approach (no heavy chart library)
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/app/admin/analytics/page.tsx:
+         - Route: /admin/analytics
+         - Admin only
+
+      2. apps/buyer/components/admin/analytics/TeamOverview.tsx ("use client"):
+         - Summary cards:
+           Total members | Avg trust level | Active today | Completion rate
+         - Team trust level distribution bar chart (how many at each level)
+
+      3. apps/buyer/components/admin/analytics/ProgressChart.tsx ("use client"):
+         - SVG bar chart: missions completed per member (horizontal bars)
+         - Color by trust level
+         - Sortable: by missions, by level, by name
+
+      4. apps/buyer/components/admin/analytics/ConceptCoverage.tsx ("use client"):
+         - Heatmap: concepts × team members
+         - Green = mastered, yellow = in progress, gray = not started
+         - Identifies knowledge gaps: concepts where most team members are weak
+
+      5. apps/buyer/components/admin/analytics/BottleneckReport.tsx ("use client"):
+         - List of concepts where >50% of team is stuck
+         - Recommendation: "Consider adding more documentation about X"
+         - Average time-to-complete per concept
+
+      6. apps/buyer/hooks/use-analytics.ts:
+         - useTeamAnalytics(orgId) — aggregated team data
+         - useConceptCoverage(orgId) — concept × member matrix
+
+      RULES:
+      - SVG charts, no external chart library (keep bundle small)
+      - Dynamic import for chart components
+      - Data aggregation in hooks, not components
+      - Named exports, Tailwind only
+      - Print-friendly layout (admin might export reports)
+
+      COMMIT: feat(buyer): add team analytics with progress charts and concept coverage
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [org-admin-dashboard]
+
+  - id: b2b-pricing
+    title: "B2B pricing and subscription management"
+    scope: backend:payment
+    type: feat
+    prompt: |
+      Task: Add B2B subscription plans for organizations — pilot, enterprise tiers with per-seat pricing.
+
+      CONTEXT:
+      - Payment service: services/py/payment/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing: subscription_plans table, user_subscriptions table, StripeClient adapter
+      - Need: organization-level subscriptions (not individual user subscriptions)
+      - Pricing: Pilot $1K-3K/mo (up to 20 seats), Enterprise $10K+/mo (unlimited)
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. Migration:
+         CREATE TABLE IF NOT EXISTS org_subscriptions (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           organization_id UUID NOT NULL UNIQUE,
+           plan_tier VARCHAR(20) NOT NULL DEFAULT 'pilot',  -- pilot, enterprise
+           stripe_subscription_id VARCHAR(200),
+           stripe_customer_id VARCHAR(200),
+           max_seats INT NOT NULL DEFAULT 20,
+           current_seats INT NOT NULL DEFAULT 0,
+           price_cents INT NOT NULL,
+           status VARCHAR(20) NOT NULL DEFAULT 'active',  -- active, past_due, canceled
+           trial_ends_at TIMESTAMPTZ,
+           current_period_start TIMESTAMPTZ,
+           current_period_end TIMESTAMPTZ,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+
+      2. Domain: app/domain/org_subscription.py
+         @dataclass(frozen=True) OrgSubscription: all fields above
+         PLAN_TIERS = {
+           "pilot": {"max_seats": 20, "price_cents": 100000, "features": ["1_repo", "basic_agents"]},
+           "enterprise": {"max_seats": 999, "price_cents": 1000000, "features": ["unlimited_repos", "custom_agents", "integrations"]}
+         }
+
+      3. Repository: app/repositories/org_subscription_repository.py
+         OrgSubscriptionRepository(pool):
+         - create(org_id, plan_tier, stripe_subscription_id, stripe_customer_id) -> OrgSubscription
+         - get_by_org(org_id) -> OrgSubscription | None
+         - update_seats(org_id, seats) -> OrgSubscription
+         - update_status(org_id, status) -> OrgSubscription
+         - cancel(org_id) -> OrgSubscription
+
+      4. Service: app/services/org_subscription_service.py
+         OrgSubscriptionService(repo, stripe_client):
+         - create_subscription(org_id, plan_tier, payment_method_id) -> OrgSubscription
+           Call Stripe: create customer, create subscription
+         - check_seat_limit(org_id) -> bool
+           current_seats < max_seats
+         - add_seat(org_id) -> OrgSubscription
+           Increment seats, update Stripe quantity
+         - remove_seat(org_id) -> OrgSubscription
+         - cancel_subscription(org_id) -> OrgSubscription
+         - handle_webhook(event) -> None
+           Process: invoice.paid, invoice.payment_failed, customer.subscription.deleted
+
+      5. Routes: app/routes/org_subscription_routes.py
+         POST /org-subscriptions — Create subscription. Body: {org_id, plan_tier, payment_method_id}
+         GET /org-subscriptions/{org_id} — Get subscription status.
+         POST /org-subscriptions/{org_id}/cancel — Cancel subscription.
+         POST /webhooks/stripe-org — Stripe webhook handler.
+
+      6. Tests: full service + route tests, mock Stripe
+
+      RULES:
+      - TDD mandatory
+      - Seat limit enforced when adding org members (service checks before adding)
+      - Stripe integration via existing StripeClient adapter pattern
+      - Webhook idempotency (check event ID)
+      - Clean Architecture
+
+      COMMIT: feat(payment): add B2B organization subscription with seat-based pricing
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/payment && uv run --package payment pytest tests/ -v"
+    depends_on: []
+
+  - id: billing-page
+    title: "Billing page for org admins"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build billing management page for organization admins — view plan, manage subscription, see invoices.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js App Router, Tailwind, TanStack Query)
+      - API: Payment service:
+        GET /org-subscriptions/{org_id} → OrgSubscription
+        POST /org-subscriptions/{org_id}/cancel
+      - Stripe Elements for payment form (use @stripe/stripe-js, @stripe/react-stripe-js)
+
+      WHAT TO BUILD:
+
+      1. Install Stripe packages:
+         pnpm add @stripe/stripe-js @stripe/react-stripe-js
+
+      2. apps/buyer/app/admin/billing/page.tsx:
+         - Route: /admin/billing
+         - Admin only
+
+      3. apps/buyer/components/admin/billing/BillingPage.tsx ("use client"):
+         Layout:
+         ```
+         ┌──────────────────────────────────────────┐
+         │  Current Plan: Pilot                      │
+         │  $1,000/month · 12/20 seats used          │
+         │  Next billing: March 15, 2026             │
+         │  [Upgrade to Enterprise]  [Cancel Plan]   │
+         ├──────────────────────────────────────────┤
+         │  Plan Comparison                          │
+         │  ┌─────────────┐  ┌─────────────────────┐│
+         │  │ Pilot       │  │ Enterprise          ││
+         │  │ $1K-3K/mo   │  │ $10K+/mo            ││
+         │  │ 20 seats    │  │ Unlimited seats     ││
+         │  │ 1 repo      │  │ All integrations    ││
+         │  │ Basic agents│  │ Custom agents       ││
+         │  └─────────────┘  └─────────────────────┘│
+         └──────────────────────────────────────────┘
+         ```
+
+      4. apps/buyer/components/admin/billing/PlanCard.tsx:
+         - Plan name, price, features list
+         - Current plan badge
+         - "Select" or "Current" button
+
+      5. apps/buyer/components/admin/billing/PaymentForm.tsx ("use client"):
+         - Stripe Elements CardElement
+         - Handles subscription creation
+         - Loading state during payment processing
+
+      6. apps/buyer/hooks/use-billing.ts:
+         - useOrgSubscription(orgId) — current subscription
+         - useCreateSubscription() — mutation
+         - useCancelSubscription() — mutation
+
+      7. apps/buyer/lib/api.ts — add billing namespace:
+         billing: {
+           getSubscription: (orgId) => GET /org-subscriptions/{org_id}
+           createSubscription: (data) => POST /org-subscriptions
+           cancelSubscription: (orgId) => POST /org-subscriptions/{org_id}/cancel
+         }
+
+      RULES:
+      - Stripe publishable key via NEXT_PUBLIC_STRIPE_KEY env var
+      - Dynamic import for Stripe Elements (heavy bundle)
+      - Confirmation dialog before cancel
+      - Named exports, Tailwind only
+
+      COMMIT: feat(buyer): add billing page with Stripe subscription management
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [b2b-pricing, org-admin-dashboard]
