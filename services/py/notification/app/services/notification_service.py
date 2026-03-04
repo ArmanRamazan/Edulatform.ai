@@ -5,7 +5,7 @@ from uuid import UUID
 import structlog
 
 from common.errors import NotFoundError
-from app.adapters.email import EmailAdapter
+from app.adapters.email import EmailClient
 from app.domain.notification import (
     EMAIL_SUBJECTS,
     EMAIL_TRIGGERING_TYPES,
@@ -21,7 +21,7 @@ class NotificationService:
     def __init__(
         self,
         repo: NotificationRepository,
-        email_adapter: EmailAdapter | None = None,
+        email_adapter: EmailClient | None = None,
     ) -> None:
         self._repo = repo
         self._email_adapter = email_adapter
@@ -44,9 +44,9 @@ class NotificationService:
             subject = EMAIL_SUBJECTS[type]
             try:
                 email_sent = await self._email_adapter.send(
-                    to_email=email,
+                    to=email,
                     subject=subject,
-                    body=body,
+                    html_body=body,
                 )
             except Exception:
                 logger.warning(
