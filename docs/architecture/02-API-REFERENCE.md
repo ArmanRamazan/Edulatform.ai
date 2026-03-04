@@ -2010,6 +2010,105 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### POST /messages
+
+Отправить прямое сообщение другому пользователю. Создаёт conversation при первом сообщении. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "recipient_id": "uuid",
+  "content": "Hello, I have a question about the course"
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "...",
+  "conversation_id": "...",
+  "sender_id": "...",
+  "content": "Hello, I have a question about the course",
+  "is_read": false,
+  "created_at": "2026-03-04T12:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Самому себе или пустой/длинный контент (1-2000 символов) |
+
+---
+
+### GET /conversations/me
+
+Мои диалоги с превью последнего сообщения. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query params:** `limit` (default 20), `offset` (default 0).
+
+**Response `200`:**
+```json
+{
+  "items": [
+    {
+      "conversation_id": "...",
+      "other_user_id": "...",
+      "last_message_content": "Hello!",
+      "last_message_at": "...",
+      "unread_count": 2
+    }
+  ],
+  "total": 5
+}
+```
+
+---
+
+### GET /conversations/{conversation_id}/messages
+
+Сообщения в диалоге. Требует JWT. Только участники диалога.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Query params:** `limit` (default 50), `offset` (default 0).
+
+**Response `200`:**
+```json
+{
+  "items": [{ "id": "...", "conversation_id": "...", "sender_id": "...", "content": "...", "is_read": false, "created_at": "..." }],
+  "total": 10
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Не участник диалога |
+| 404 | Диалог не найден |
+
+---
+
+### PATCH /messages/{message_id}/read
+
+Пометить сообщение как прочитанное. Только получатель (не отправитель) может пометить. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `204`:** No content.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Только получатель может пометить |
+| 404 | Сообщение не найдено |
+
+---
+
 ## AI Service (`:8006`)
 
 Все AI-эндпоинты (quiz, summary, tutor/chat, moderate) потребляют 1 кредит за вызов из общего дневного пула.

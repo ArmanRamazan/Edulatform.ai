@@ -16,9 +16,13 @@ from common.logging import configure_logging
 from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.notification_repo import NotificationRepository
+from app.repositories.conversation_repo import ConversationRepository
+from app.repositories.message_repo import MessageRepository
 from app.services.notification_service import NotificationService
 from app.services.smart_reminder_service import SmartReminderService
+from app.services.messaging_service import MessagingService
 from app.routes.notifications import router as notifications_router
+from app.routes.messaging import router as messaging_router
 
 app_settings = Settings()
 
@@ -26,6 +30,7 @@ _pool: asyncpg.Pool | None = None
 _redis: Redis | None = None
 _notification_service: NotificationService | None = None
 _smart_reminder_service: SmartReminderService | None = None
+_messaging_service: MessagingService | None = None
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -39,9 +44,14 @@ def get_smart_reminder_service() -> SmartReminderService:
     return _smart_reminder_service
 
 
+def get_messaging_service() -> MessagingService:
+    assert _messaging_service is not None
+    return _messaging_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _notification_service, _smart_reminder_service, _http_client
+    global _pool, _redis, _notification_service, _smart_reminder_service, _messaging_service, _http_client
 
     configure_logging(service_name="notification")
     logger = structlog.get_logger()
@@ -61,11 +71,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/004_flashcard_reminder_type.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/005_conversations.sql") as f:
+            await conn.execute(f.read())
+        with open("migrations/006_messages.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
     repo = NotificationRepository(_pool)
     _notification_service = NotificationService(repo)
+
+    conversation_repo = ConversationRepository(_pool)
+    message_repo = MessageRepository(_pool)
+    _messaging_service = MessagingService(
+        conversation_repo=conversation_repo,
+        message_repo=message_repo,
+    )
 
     _http_client = httpx.AsyncClient()
     _smart_reminder_service = SmartReminderService(
@@ -98,6 +119,7 @@ app.add_middleware(
     window=60,
 )
 app.include_router(notifications_router)
+app.include_router(messaging_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
