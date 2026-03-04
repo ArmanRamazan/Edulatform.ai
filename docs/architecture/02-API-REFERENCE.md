@@ -452,6 +452,91 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 
 ---
 
+### POST /follow/{user_id}
+
+Подписаться на пользователя. Требует авторизации (Bearer token).
+
+**Response `201`:**
+```json
+{
+  "id": "uuid",
+  "follower_id": "uuid",
+  "following_id": "uuid",
+  "created_at": "2026-03-04T12:00:00Z"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Попытка подписаться на себя |
+| 401 | Отсутствует или невалидный токен |
+| 404 | Целевой пользователь не найден |
+| 409 | Уже подписан на этого пользователя |
+
+---
+
+### DELETE /follow/{user_id}
+
+Отписаться от пользователя. Требует авторизации (Bearer token).
+
+**Response:** `204 No Content`
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 404 | Не подписан на этого пользователя |
+
+---
+
+### GET /followers/me
+
+Список подписчиков текущего пользователя. Требует авторизации (Bearer token).
+
+**Query params:** `limit` (default 20, max 100), `offset` (default 0)
+
+**Response `200`:**
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "follower_id": "uuid",
+      "following_id": "uuid",
+      "created_at": "2026-03-04T12:00:00Z"
+    }
+  ],
+  "total": 42
+}
+```
+
+---
+
+### GET /following/me
+
+Список подписок текущего пользователя. Требует авторизации (Bearer token).
+
+**Query params:** `limit` (default 20, max 100), `offset` (default 0)
+
+**Response `200`:** (аналогично `/followers/me`)
+
+---
+
+### GET /users/{user_id}/followers/count
+
+Количество подписчиков и подписок пользователя. Публичный endpoint, авторизация не требуется.
+
+**Response `200`:**
+```json
+{
+  "followers_count": 42,
+  "following_count": 15
+}
+```
+
+---
+
 ## Course Service (`:8002`)
 
 ### GET /categories

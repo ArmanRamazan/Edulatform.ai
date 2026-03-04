@@ -19,13 +19,16 @@ from app.repositories.token_repo import TokenRepository
 from app.repositories.verification_repo import VerificationRepository
 from app.repositories.password_reset_repo import PasswordResetRepository
 from app.repositories.referral_repo import ReferralRepository
+from app.repositories.follow_repo import FollowRepository
 from app.services.auth_service import AuthService
 from app.services.referral_service import ReferralService
 from app.services.profile_service import ProfileService
+from app.services.follow_service import FollowService
 from app.routes.auth import router as auth_router
 from app.routes.admin import router as admin_router
 from app.routes.referrals import router as referral_router
 from app.routes.profiles import router as profile_router
+from app.routes.follows import router as follow_router
 
 app_settings = Settings()
 
@@ -34,6 +37,7 @@ _redis: Redis | None = None
 _auth_service: AuthService | None = None
 _referral_service: ReferralService | None = None
 _profile_service: ProfileService | None = None
+_follow_service: FollowService | None = None
 
 
 def get_auth_service() -> AuthService:
@@ -51,9 +55,14 @@ def get_profile_service() -> ProfileService:
     return _profile_service
 
 
+def get_follow_service() -> FollowService:
+    assert _follow_service is not None
+    return _follow_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _auth_service, _referral_service, _profile_service
+    global _pool, _redis, _auth_service, _referral_service, _profile_service, _follow_service
 
     configure_logging(service_name="identity")
     logger = structlog.get_logger()
@@ -81,6 +90,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/008_add_is_public.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/009_follows.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
@@ -104,6 +115,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         user_repo=repo,
     )
     _profile_service = ProfileService(repo=repo)
+    follow_repo = FollowRepository(_pool)
+    _follow_service = FollowService(follow_repo=follow_repo, user_repo=repo)
     logger.info("service_started", port=8001)
     yield
     await _redis.aclose()
@@ -129,6 +142,7 @@ app.include_router(auth_router)
 app.include_router(admin_router)
 app.include_router(referral_router)
 app.include_router(profile_router)
+app.include_router(follow_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
