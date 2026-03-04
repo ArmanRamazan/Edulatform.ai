@@ -73,6 +73,9 @@ export function Header() {
                     )}
                   </Link>
                 )}
+                <Link href="/referral" className="text-sm hover:underline">
+                  Пригласить друзей
+                </Link>
                 <Link href="/notifications" className="text-sm hover:underline">
                   Уведомления
                 </Link>
