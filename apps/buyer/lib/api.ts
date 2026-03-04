@@ -409,6 +409,21 @@ export const profiles = {
   },
 };
 
+export interface ReferralStats {
+  referral_code: string;
+  invited_count: number;
+  completed_count: number;
+  rewards_earned: number;
+}
+
+export interface Referral {
+  id: string;
+  referrer_id: string;
+  referee_id: string;
+  status: string;
+  created_at: string;
+}
+
 export const identity = {
   register(email: string, password: string, name: string, role: string = "student") {
     return request<TokenResponse>(`${IDENTITY_URL}/register`, {
@@ -427,6 +442,18 @@ export const identity = {
   me(token: string) {
     return request<User>(`${IDENTITY_URL}/me`, {
       headers: authHeaders(token),
+    });
+  },
+  getReferralInfo(token: string) {
+    return request<ReferralStats>(`${IDENTITY_URL}/referral/me`, {
+      headers: authHeaders(token),
+    });
+  },
+  applyReferralCode(token: string, data: { referral_code: string }) {
+    return request<Referral>(`${IDENTITY_URL}/referral/apply`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
     });
   },
   verifyEmail(token: string) {
@@ -657,8 +684,25 @@ export const enrollments = {
   },
 };
 
+export interface DiscountResult {
+  original_price: number;
+  discount_amount: number;
+  final_price: number;
+  coupon_code: string;
+}
+
+export const coupons = {
+  validate(token: string, data: { code: string; course_id: string; amount: number }) {
+    return request<DiscountResult>(`${PAYMENT_URL}/coupons/validate`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+};
+
 export const payments = {
-  create(token: string, data: { course_id: string; amount: number }) {
+  create(token: string, data: { course_id: string; amount: number; coupon_code?: string }) {
     return request<Payment>(`${PAYMENT_URL}/payments`, {
       method: "POST",
       headers: authHeaders(token),
