@@ -24,6 +24,7 @@ from app.repositories.xp_repo import XpRepository
 from app.repositories.badge_repo import BadgeRepository
 from app.repositories.pretest_repo import PretestRepository
 from app.repositories.velocity_repo import VelocityRepository
+from app.repositories.activity_repo import ActivityRepository
 from app.services.quiz_service import QuizService
 from app.services.flashcard_service import FlashcardService
 from app.services.concept_service import ConceptService
@@ -34,6 +35,7 @@ from app.services.xp_service import XpService
 from app.services.badge_service import BadgeService
 from app.services.pretest_service import PretestService
 from app.services.velocity_service import VelocityService
+from app.services.activity_service import ActivityService
 from app.routes.quizzes import router as quizzes_router
 from app.routes.flashcards import router as flashcards_router
 from app.routes.concepts import router as concepts_router
@@ -44,6 +46,7 @@ from app.routes.xp import router as xp_router
 from app.routes.badges import router as badges_router
 from app.routes.pretests import router as pretests_router
 from app.routes.velocity import router as velocity_router
+from app.routes.activity import router as activity_router
 
 app_settings = Settings()
 
@@ -59,6 +62,7 @@ _xp_service: XpService | None = None
 _badge_service: BadgeService | None = None
 _pretest_service: PretestService | None = None
 _velocity_service: VelocityService | None = None
+_activity_service: ActivityService | None = None
 
 
 def get_quiz_service() -> QuizService:
@@ -111,9 +115,14 @@ def get_velocity_service() -> VelocityService:
     return _velocity_service
 
 
+def get_activity_service() -> ActivityService:
+    assert _activity_service is not None
+    return _activity_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service
+    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service
 
     configure_logging(service_name="learning")
     logger = structlog.get_logger()
@@ -143,22 +152,28 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/009_pretests.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/010_activity_feed.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
+    activity_repo = ActivityRepository(_pool)
+    _activity_service = ActivityService(activity_repo)
+
     concept_repo = ConceptRepository(_pool)
-    _concept_service = ConceptService(concept_repo)
+    _concept_service = ConceptService(concept_repo, activity_service=_activity_service)
 
     quiz_repo = QuizRepository(_pool)
     flashcard_repo = FlashcardRepository(_pool)
     _quiz_service = QuizService(
         quiz_repo, concept_service=_concept_service, flashcard_repo=flashcard_repo,
+        activity_service=_activity_service,
     )
 
-    _flashcard_service = FlashcardService(flashcard_repo)
+    _flashcard_service = FlashcardService(flashcard_repo, activity_service=_activity_service)
 
     streak_repo = StreakRepository(_pool)
-    _streak_service = StreakService(streak_repo)
+    _streak_service = StreakService(streak_repo, activity_service=_activity_service)
 
     leaderboard_repo = LeaderboardRepository(_pool)
     _leaderboard_service = LeaderboardService(leaderboard_repo)
@@ -170,7 +185,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _xp_service = XpService(xp_repo)
 
     badge_repo = BadgeRepository(_pool)
-    _badge_service = BadgeService(badge_repo)
+    _badge_service = BadgeService(badge_repo, activity_service=_activity_service)
 
     pretest_repo = PretestRepository(_pool)
     _pretest_service = PretestService(pretest_repo, concept_repo)
@@ -208,6 +223,7 @@ app.include_router(xp_router)
 app.include_router(badges_router)
 app.include_router(pretests_router)
 app.include_router(velocity_router)
+app.include_router(activity_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 

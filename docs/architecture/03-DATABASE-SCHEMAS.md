@@ -68,10 +68,11 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: xp_ledger
        ├── table: badges
        ├── table: pretests
-       └── table: pretest_answers
+       ├── table: pretest_answers
+       └── table: activity_feed
 ```
 
-**Итого: 35 таблиц в 6 базах данных.**
+**Итого: 36 таблиц в 6 базах данных.**
 
 ---
 
@@ -1254,6 +1255,31 @@ CREATE TABLE IF NOT EXISTS pretest_answers (
 - `007_discussions.sql` — создание таблиц comments, comment_upvotes с индексами
 - `008_xp_badges.sql` — создание таблиц xp_ledger, badges с индексами
 - `009_pretests.sql` — создание таблиц pretests, pretest_answers с индексами
+- `010_activity_feed.sql` — создание таблицы activity_feed с индексами
+
+### Table: `activity_feed`
+
+```sql
+CREATE TABLE IF NOT EXISTS activity_feed (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID NOT NULL,
+    activity_type VARCHAR(50) NOT NULL,
+    payload       JSONB NOT NULL DEFAULT '{}',
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `user_id` | UUID | NOT NULL | Пользователь, совершивший действие |
+| `activity_type` | VARCHAR(50) | NOT NULL | Тип: quiz_completed, flashcard_reviewed, badge_earned, streak_milestone, concept_mastered |
+| `payload` | JSONB | NOT NULL, DEFAULT '{}' | Расширяемые данные по типу активности |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время события |
+
+**Индексы:** PK (id) + idx_activity_feed_user (user_id, created_at DESC) + idx_activity_feed_created (created_at DESC).
+
+**Бизнес-логика:** Записи создаются автоматически при завершении квизов, review флешкарт, получении бейджей, streak milestones и mastery концептов. Используется для ленты активности пользователя и социального фида.
 
 ---
 

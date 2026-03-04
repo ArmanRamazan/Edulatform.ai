@@ -1,15 +1,28 @@
 from __future__ import annotations
 
 from datetime import date, timedelta
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+import structlog
 
 from app.domain.streak import Streak, StreakResponse
 from app.repositories.streak_repo import StreakRepository
 
+if TYPE_CHECKING:
+    from app.services.activity_service import ActivityService
+
+logger = structlog.get_logger()
+
+_STREAK_MILESTONES = frozenset({7, 14, 30, 60, 90, 180, 365})
+
 
 class StreakService:
-    def __init__(self, repo: StreakRepository) -> None:
+    def __init__(
+        self, repo: StreakRepository, activity_service: ActivityService | None = None,
+    ) -> None:
         self._repo = repo
+        self._activity_service = activity_service
 
     async def record_activity(self, user_id: UUID) -> Streak:
         existing = await self._repo.get_by_user(user_id)
@@ -31,11 +44,24 @@ class StreakService:
 
         new_longest = max(new_current, existing.longest_streak)
 
-        return await self._repo.upsert(
+        streak = await self._repo.upsert(
             user_id=user_id,
             current_streak=new_current,
             longest_streak=new_longest,
         )
+
+        if self._activity_service is not None and new_current in _STREAK_MILESTONES:
+            try:
+                from app.domain.activity import ActivityType
+                await self._activity_service.record(
+                    user_id=user_id,
+                    activity_type=ActivityType.streak_milestone,
+                    payload={"streak": new_current},
+                )
+            except Exception:
+                logger.warning("activity_record_failed", streak=new_current)
+
+        return streak
 
     async def get_at_risk_user_ids(self) -> list[UUID]:
         return await self._repo.get_at_risk_user_ids(date.today())
