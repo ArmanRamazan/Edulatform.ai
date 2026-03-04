@@ -29,3 +29,10 @@ tasks:
     scope: frontend:buyer
     completed: true
     evidence: "apps/buyer/app/bundles/page.tsx, apps/buyer/app/bundles/[id]/page.tsx, apps/buyer/hooks/use-bundles.ts"
+
+  # From sprint-11-social (public-profiles)
+  - id: public-profiles
+    title: "Public user profiles with stats"
+    scope: backend:identity
+    completed: true
+    evidence: "services/py/identity/app/routes/profiles.py, migrations/008_add_is_public.sql, tests/test_profiles.py"
