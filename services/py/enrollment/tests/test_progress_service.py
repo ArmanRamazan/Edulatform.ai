@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 from datetime import datetime, timezone
 
@@ -127,3 +127,101 @@ async def test_no_status_change_when_total_lessons_zero(mock_progress_repo: Asyn
     await service.complete_lesson(student_id, "student", lesson_id, course_id)
 
     mock_repo.update_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auto_complete_triggers_certificate_issuance(
+    mock_progress_repo: AsyncMock, mock_repo: AsyncMock,
+    student_id, lesson_id, course_id, enrollment_id,
+):
+    enrollment = Enrollment(
+        id=enrollment_id, student_id=student_id, course_id=course_id,
+        payment_id=None, status=EnrollmentStatus.IN_PROGRESS,
+        enrolled_at=datetime.now(timezone.utc), total_lessons=3,
+    )
+    progress = LessonProgress(
+        id=uuid4(), student_id=student_id, lesson_id=lesson_id,
+        course_id=course_id, completed_at=datetime.now(timezone.utc),
+    )
+    mock_progress_repo.complete_lesson.return_value = progress
+    mock_repo.get_by_student_and_course.return_value = enrollment
+    mock_progress_repo.count_completed.return_value = 3
+
+    mock_http_client = AsyncMock()
+    mock_response = AsyncMock()
+    mock_response.status_code = 201
+    mock_http_client.post.return_value = mock_response
+
+    service = ProgressService(
+        repo=mock_progress_repo,
+        enrollment_repo=mock_repo,
+        certificate_client=mock_http_client,
+    )
+    await service.complete_lesson(student_id, "student", lesson_id, course_id)
+
+    mock_repo.update_status.assert_called_once_with(enrollment_id, EnrollmentStatus.COMPLETED)
+    mock_http_client.post.assert_called_once()
+    call_kwargs = mock_http_client.post.call_args
+    assert "/internal/certificates/auto-issue" in call_kwargs.args[0]
+
+
+@pytest.mark.asyncio
+async def test_certificate_failure_does_not_break_completion(
+    mock_progress_repo: AsyncMock, mock_repo: AsyncMock,
+    student_id, lesson_id, course_id, enrollment_id,
+):
+    enrollment = Enrollment(
+        id=enrollment_id, student_id=student_id, course_id=course_id,
+        payment_id=None, status=EnrollmentStatus.IN_PROGRESS,
+        enrolled_at=datetime.now(timezone.utc), total_lessons=3,
+    )
+    progress = LessonProgress(
+        id=uuid4(), student_id=student_id, lesson_id=lesson_id,
+        course_id=course_id, completed_at=datetime.now(timezone.utc),
+    )
+    mock_progress_repo.complete_lesson.return_value = progress
+    mock_repo.get_by_student_and_course.return_value = enrollment
+    mock_progress_repo.count_completed.return_value = 3
+
+    mock_http_client = AsyncMock()
+    mock_http_client.post.side_effect = Exception("Connection refused")
+
+    service = ProgressService(
+        repo=mock_progress_repo,
+        enrollment_repo=mock_repo,
+        certificate_client=mock_http_client,
+    )
+    result = await service.complete_lesson(student_id, "student", lesson_id, course_id)
+
+    assert result.lesson_id == lesson_id
+    mock_repo.update_status.assert_called_once_with(enrollment_id, EnrollmentStatus.COMPLETED)
+
+
+@pytest.mark.asyncio
+async def test_no_certificate_call_when_not_completed(
+    mock_progress_repo: AsyncMock, mock_repo: AsyncMock,
+    student_id, lesson_id, course_id, enrollment_id,
+):
+    enrollment = Enrollment(
+        id=enrollment_id, student_id=student_id, course_id=course_id,
+        payment_id=None, status=EnrollmentStatus.IN_PROGRESS,
+        enrolled_at=datetime.now(timezone.utc), total_lessons=5,
+    )
+    progress = LessonProgress(
+        id=uuid4(), student_id=student_id, lesson_id=lesson_id,
+        course_id=course_id, completed_at=datetime.now(timezone.utc),
+    )
+    mock_progress_repo.complete_lesson.return_value = progress
+    mock_repo.get_by_student_and_course.return_value = enrollment
+    mock_progress_repo.count_completed.return_value = 2
+
+    mock_http_client = AsyncMock()
+
+    service = ProgressService(
+        repo=mock_progress_repo,
+        enrollment_repo=mock_repo,
+        certificate_client=mock_http_client,
+    )
+    await service.complete_lesson(student_id, "student", lesson_id, course_id)
+
+    mock_http_client.post.assert_not_called()

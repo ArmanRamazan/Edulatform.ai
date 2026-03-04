@@ -32,6 +32,29 @@ class CertificateService:
             certificate_number=certificate_number,
         )
 
+    async def auto_issue_certificate(
+        self,
+        user_id: UUID,
+        course_id: UUID,
+        student_name: str,
+        course_title: str,
+    ) -> tuple[Certificate, bool]:
+        existing = await self._repo.get_by_user_and_course(user_id, course_id)
+        if existing is not None:
+            return existing, False
+
+        certificate_number = self._generate_certificate_number()
+        cert = await self._repo.create(
+            user_id=user_id,
+            course_id=course_id,
+            certificate_number=certificate_number,
+            template_data={
+                "student_name": student_name,
+                "course_title": course_title,
+            },
+        )
+        return cert, True
+
     async def get_my_certificates(self, user_id: UUID) -> CertificateListResponse:
         certs = await self._repo.get_by_user(user_id)
         return CertificateListResponse(

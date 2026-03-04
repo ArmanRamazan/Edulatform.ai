@@ -21,6 +21,13 @@ class IssueCertificateRequest(BaseModel):
     course_id: UUID
 
 
+class AutoIssueCertificateRequest(BaseModel):
+    user_id: UUID
+    course_id: UUID
+    student_name: str
+    course_title: str
+
+
 class CertificateResponse(BaseModel):
     id: UUID
     user_id: UUID

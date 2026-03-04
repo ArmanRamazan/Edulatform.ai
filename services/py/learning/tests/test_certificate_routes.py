@@ -12,6 +12,7 @@ from common.errors import register_error_handlers, ConflictError, NotFoundError
 from common.security import create_access_token
 from app.domain.certificate import Certificate, CertificateListResponse, CertificateResponse
 from app.routes.certificates import router
+from app.routes.internal_certificates import router as internal_router
 from app.services.certificate_service import CertificateService
 
 
@@ -25,6 +26,7 @@ def test_app(mock_cert_service):
     app = FastAPI()
     register_error_handlers(app)
     app.include_router(router)
+    app.include_router(internal_router)
 
     import app.main as main_module
     main_module.app_settings = type("S", (), {
@@ -172,3 +174,55 @@ class TestGetCertificate:
         )
 
         assert resp.status_code == 404
+
+
+class TestAutoIssueCertificate:
+    async def test_auto_issue_new_certificate_returns_201(
+        self, client, mock_cert_service,
+    ):
+        user_id = uuid4()
+        course_id = uuid4()
+        cert = _make_certificate(user_id, course_id)
+        mock_cert_service.auto_issue_certificate.return_value = (cert, True)
+
+        resp = await client.post(
+            "/internal/certificates/auto-issue",
+            json={
+                "user_id": str(user_id),
+                "course_id": str(course_id),
+                "student_name": "John Doe",
+                "course_title": "Python 101",
+            },
+        )
+
+        assert resp.status_code == 201
+        body = resp.json()
+        assert body["certificate_number"] == cert.certificate_number
+        mock_cert_service.auto_issue_certificate.assert_called_once_with(
+            user_id=user_id,
+            course_id=course_id,
+            student_name="John Doe",
+            course_title="Python 101",
+        )
+
+    async def test_auto_issue_existing_certificate_returns_200(
+        self, client, mock_cert_service,
+    ):
+        user_id = uuid4()
+        course_id = uuid4()
+        cert = _make_certificate(user_id, course_id)
+        mock_cert_service.auto_issue_certificate.return_value = (cert, False)
+
+        resp = await client.post(
+            "/internal/certificates/auto-issue",
+            json={
+                "user_id": str(user_id),
+                "course_id": str(course_id),
+                "student_name": "John Doe",
+                "course_title": "Python 101",
+            },
+        )
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["certificate_number"] == cert.certificate_number
