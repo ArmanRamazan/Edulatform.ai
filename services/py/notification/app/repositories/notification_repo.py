@@ -17,17 +17,19 @@ class NotificationRepository:
         type: NotificationType,
         title: str,
         body: str,
+        email_sent: bool = False,
     ) -> Notification:
         row = await self._pool.fetchrow(
             """
-            INSERT INTO notifications (user_id, type, title, body)
-            VALUES ($1, $2, $3, $4)
-            RETURNING id, user_id, type, title, body, is_read, created_at
+            INSERT INTO notifications (user_id, type, title, body, email_sent)
+            VALUES ($1, $2, $3, $4, $5)
+            RETURNING id, user_id, type, title, body, is_read, created_at, email_sent
             """,
             user_id,
             type,
             title,
             body,
+            email_sent,
         )
         return self._to_entity(row)
 
@@ -37,7 +39,7 @@ class NotificationRepository:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT id, user_id, type, title, body, is_read, created_at
+                SELECT id, user_id, type, title, body, is_read, created_at, email_sent
                 FROM notifications WHERE user_id = $1
                 ORDER BY created_at DESC LIMIT $2 OFFSET $3
                 """,
@@ -54,7 +56,7 @@ class NotificationRepository:
     async def get_by_id(self, notification_id: UUID) -> Notification | None:
         row = await self._pool.fetchrow(
             """
-            SELECT id, user_id, type, title, body, is_read, created_at
+            SELECT id, user_id, type, title, body, is_read, created_at, email_sent
             FROM notifications WHERE id = $1
             """,
             notification_id,
@@ -84,7 +86,7 @@ class NotificationRepository:
         row = await self._pool.fetchrow(
             """
             UPDATE notifications SET is_read = true WHERE id = $1
-            RETURNING id, user_id, type, title, body, is_read, created_at
+            RETURNING id, user_id, type, title, body, is_read, created_at, email_sent
             """,
             notification_id,
         )
@@ -100,4 +102,5 @@ class NotificationRepository:
             body=row["body"],
             is_read=row["is_read"],
             created_at=row["created_at"],
+            email_sent=row.get("email_sent", False),
         )

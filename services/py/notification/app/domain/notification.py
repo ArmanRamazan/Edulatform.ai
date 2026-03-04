@@ -14,6 +14,25 @@ class NotificationType(StrEnum):
     PAYMENT = "payment"
     STREAK_REMINDER = "streak_reminder"
     FLASHCARD_REMINDER = "flashcard_reminder"
+    WELCOME = "welcome"
+    COURSE_COMPLETED = "course_completed"
+    REVIEW_RECEIVED = "review_received"
+    STREAK_AT_RISK = "streak_at_risk"
+
+
+EMAIL_TRIGGERING_TYPES: frozenset[str] = frozenset({
+    NotificationType.WELCOME,
+    NotificationType.COURSE_COMPLETED,
+    NotificationType.REVIEW_RECEIVED,
+    NotificationType.STREAK_AT_RISK,
+})
+
+EMAIL_SUBJECTS: dict[str, str] = {
+    NotificationType.WELCOME: "Добро пожаловать в EduPlatform!",
+    NotificationType.COURSE_COMPLETED: "Поздравляем с завершением курса!",
+    NotificationType.REVIEW_RECEIVED: "Новый отзыв на ваш курс",
+    NotificationType.STREAK_AT_RISK: "Ваша серия под угрозой!",
+}
 
 
 class StreakReminderRequest(BaseModel):
@@ -46,12 +65,14 @@ class Notification:
     body: str
     is_read: bool
     created_at: datetime
+    email_sent: bool = False
 
 
 class NotificationCreate(BaseModel):
     type: NotificationType
     title: str
     body: str = ""
+    email: str | None = None
 
 
 class NotificationResponse(BaseModel):
@@ -62,6 +83,7 @@ class NotificationResponse(BaseModel):
     body: str
     is_read: bool
     created_at: datetime
+    email_sent: bool = False
 
 
 class NotificationListResponse(BaseModel):

@@ -27,7 +27,7 @@ async def test_create_notification(
     assert result.title == "You enrolled in Python 101"
     mock_repo.create.assert_called_once_with(
         user_id, NotificationType.ENROLLMENT,
-        "You enrolled in Python 101", "Welcome to the course!",
+        "You enrolled in Python 101", "Welcome to the course!", False,
     )
 
 

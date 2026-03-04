@@ -18,6 +18,7 @@ from app.config import Settings
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.conversation_repo import ConversationRepository
 from app.repositories.message_repo import MessageRepository
+from app.adapters.email import EmailAdapter
 from app.services.notification_service import NotificationService
 from app.services.smart_reminder_service import SmartReminderService
 from app.services.messaging_service import MessagingService
@@ -75,11 +76,14 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/006_messages.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/007_email_sent.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
     repo = NotificationRepository(_pool)
-    _notification_service = NotificationService(repo)
+    email_adapter = EmailAdapter()
+    _notification_service = NotificationService(repo, email_adapter=email_adapter)
 
     conversation_repo = ConversationRepository(_pool)
     message_repo = MessageRepository(_pool)
