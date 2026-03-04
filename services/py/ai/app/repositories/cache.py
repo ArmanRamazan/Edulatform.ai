@@ -90,6 +90,14 @@ class AICache:
             logger.warning("credits_increment_failed", user_id=user_id)
             return 0
 
+    # --- Strategist learning path ---
+
+    async def get_path(self, key: str) -> str | None:
+        return await self._get(key)
+
+    async def set_path(self, key: str, data: str, ttl: int) -> None:
+        await self._set(key, data, ttl)
+
     # --- Tutor feedback ---
 
     async def save_feedback(
