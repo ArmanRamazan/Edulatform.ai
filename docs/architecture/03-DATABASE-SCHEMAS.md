@@ -16,7 +16,8 @@ identity-db (PostgreSQL 16 Alpine, :5433)
        ├── table: refresh_tokens
        ├── table: email_verification_tokens
        ├── table: password_reset_tokens
-       └── table: referrals
+       ├── table: referrals
+       └── table: follows
 
 course-db (PostgreSQL 16 Alpine, :5434)
   └── database: course
@@ -123,6 +124,7 @@ CREATE TABLE IF NOT EXISTS users (
 - `006_password_reset.sql` — password_reset_tokens table
 - `007_referrals.sql` — referral_code column в users + таблица referrals
 - `008_add_is_public.sql` — is_public column для управления видимостью профиля
+- `009_follows.sql` — таблица follows для системы подписок
 
 ### Table: `refresh_tokens`
 
@@ -213,6 +215,29 @@ CREATE TABLE IF NOT EXISTS referrals (
 | `completed_at` | TIMESTAMPTZ | — | Дата завершения реферала |
 
 **Индексы:** PK (id) + idx_referrals_referrer_id + idx_referrals_referee_id.
+
+### Table: `follows`
+
+```sql
+CREATE TABLE IF NOT EXISTS follows (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    follower_id UUID NOT NULL REFERENCES users(id),
+    following_id UUID NOT NULL REFERENCES users(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(follower_id, following_id)
+);
+```
+
+| Поле | Тип | Ограничения | Описание |
+|------|-----|-------------|----------|
+| `id` | UUID | PK, DEFAULT gen_random_uuid() | Идентификатор записи |
+| `follower_id` | UUID | NOT NULL, FK → users(id) | Кто подписался |
+| `following_id` | UUID | NOT NULL, FK → users(id) | На кого подписался |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата подписки |
+
+**Constraint:** UNIQUE(follower_id, following_id) — один пользователь не может подписаться дважды.
+
+**Индексы:** PK (id) + idx_follows_follower + idx_follows_following.
 
 ---
 
