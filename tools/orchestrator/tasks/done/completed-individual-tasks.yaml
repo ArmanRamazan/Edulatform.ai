@@ -36,3 +36,45 @@ tasks:
     scope: backend:identity
     completed: true
     evidence: "services/py/identity/app/routes/profiles.py, migrations/008_add_is_public.sql, tests/test_profiles.py"
+
+  # From sprint-11-social (follow-system)
+  - id: follow-system
+    title: "Follow system: follow teachers and students"
+    scope: backend:identity
+    completed: true
+    evidence: "services/py/identity/app/routes/follows.py, domain/follow.py, tests/test_follows.py"
+
+  # From sprint-11-social (activity-feed)
+  - id: activity-feed
+    title: "Activity feed: recent learning activity"
+    scope: backend:learning
+    completed: true
+    evidence: "services/py/learning/app/routes/activity.py, services/activity_service.py"
+
+  # From sprint-11-social (direct-messaging)
+  - id: direct-messaging
+    title: "Direct messaging between students and teachers"
+    scope: backend:notification
+    completed: true
+    evidence: "services/py/notification/app/routes/messaging.py, domain/messaging.py"
+
+  # From sprint-11-social (study-groups)
+  - id: study-groups
+    title: "Study groups for courses"
+    scope: backend:learning
+    completed: true
+    evidence: "services/py/learning/app/routes/study_groups.py, domain/study_group.py"
+
+  # From sprint-11-social (enhanced-discussions)
+  - id: enhanced-discussions
+    title: "Enhanced discussions: replies, pinning, teacher answers"
+    scope: backend:learning
+    completed: true
+    evidence: "services/py/learning/app/domain/discussion.py — is_pinned, is_teacher_answer fields"
+
+  # From sprint-11-social (profiles-frontend)
+  - id: profiles-frontend
+    title: "Public profile pages in buyer app"
+    scope: frontend:buyer
+    completed: true
+    evidence: "apps/buyer/app/users/[id]/page.tsx, hooks/use-profile.ts"
