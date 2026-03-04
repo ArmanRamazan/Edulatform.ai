@@ -1,0 +1,31 @@
+phase: "completed"
+description: "Individual tasks completed from various sprints (removed from active sprint files)"
+
+tasks:
+  # From sprint-8-devops (staging-env)
+  - id: staging-env
+    title: "Staging environment: Docker Compose staging configuration"
+    scope: infra
+    completed: true
+    evidence: "docker-compose.staging.yml exists at repo root"
+
+  # From sprint-8-devops (structured-logging)
+  - id: structured-logging
+    title: "Structured JSON logging with structlog"
+    scope: backend:identity
+    completed: true
+    evidence: "libs/py/common/common/logging.py with configure_logging(), structlog in dependencies"
+
+  # From sprint-9-engagement (auto-flashcards)
+  - id: auto-flashcards
+    title: "Auto-generate flashcards from quiz mistakes"
+    scope: backend:learning
+    completed: true
+    evidence: "services/py/learning/app/services/quiz_service.py — flashcard_repo integration on wrong answers"
+
+  # From sprint-12-marketplace (bundles-frontend)
+  - id: bundles-frontend
+    title: "Course bundles UI in buyer app"
+    scope: frontend:buyer
+    completed: true
+    evidence: "apps/buyer/app/bundles/page.tsx, apps/buyer/app/bundles/[id]/page.tsx, apps/buyer/hooks/use-bundles.ts"
