@@ -2,8 +2,10 @@
 
 import { useState, use } from "react";
 import Link from "next/link";
-import { payments, notifications, enrollments } from "@/lib/api";
+import { payments, notifications, enrollments, type DiscountResult } from "@/lib/api";
 import { Header } from "@/components/Header";
+import { CouponInput } from "@/components/CouponInput";
+import { PriceDisplay } from "@/components/PriceDisplay";
 import { useAuth } from "@/hooks/use-auth";
 import { useCourse, useCurriculum } from "@/hooks/use-courses";
 import { useMyEnrollments, useEnrollmentCount, useEnroll } from "@/hooks/use-enrollments";
@@ -61,6 +63,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
   const enroll = useEnroll(token);
   const [enrolling, setEnrolling] = useState(false);
   const [error, setError] = useState("");
+  const [discount, setDiscount] = useState<DiscountResult | null>(null);
 
   const [reviewRating, setReviewRating] = useState(5);
   const [reviewComment, setReviewComment] = useState("");
@@ -73,9 +76,11 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
     try {
       let paymentId: string | undefined;
       if (!course.is_free && course.price) {
+        const finalAmount = discount ? discount.final_price : course.price;
         const payment = await payments.create(token, {
           course_id: course.id,
-          amount: course.price,
+          amount: finalAmount,
+          coupon_code: discount?.coupon_code,
         });
         paymentId = payment.id;
       }
@@ -130,7 +135,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
                     Бесплатно
                   </span>
                 ) : (
-                  <span className="text-lg font-bold">${course.price}</span>
+                  <PriceDisplay originalPrice={course.price!} discount={discount} />
                 )}
                 {course.duration_minutes > 0 && (
                   <span className="text-sm text-gray-400">
@@ -163,6 +168,17 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
                       style={{ width: `${courseProgress.percentage}%` }}
                     />
                   </div>
+                </div>
+              )}
+
+              {user && !enrolled && !course.is_free && course.price && user.role === "student" && (
+                <div className="mb-4">
+                  <CouponInput
+                    courseId={id}
+                    coursePrice={course.price}
+                    token={token}
+                    onCouponApplied={setDiscount}
+                  />
                 </div>
               )}
 
@@ -206,7 +222,7 @@ export default function CoursePage({ params }: { params: Promise<{ id: string }>
                       ? "Записываемся..."
                       : course.is_free
                         ? "Записаться бесплатно"
-                        : `Купить за $${course.price}`}
+                        : `Купить за $${discount ? discount.final_price : course.price}`}
                   </button>
                 ) : null}
               </div>
