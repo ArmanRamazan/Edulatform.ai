@@ -2,4 +2,4 @@ from common.config import BaseAppSettings
 
 
 class Settings(BaseAppSettings):
-    pass
+    learning_service_url: str = "http://localhost:8007/api/learning"

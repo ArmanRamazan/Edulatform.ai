@@ -74,6 +74,12 @@ class NotificationRepository:
         )
         return count > 0
 
+    async def get_distinct_user_ids(self) -> list[UUID]:
+        rows = await self._pool.fetch(
+            "SELECT DISTINCT user_id FROM notifications"
+        )
+        return [row["user_id"] for row in rows]
+
     async def mark_as_read(self, notification_id: UUID) -> Notification | None:
         row = await self._pool.fetchrow(
             """

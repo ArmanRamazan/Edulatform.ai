@@ -1116,6 +1116,40 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### POST /notifications/flashcard-reminders/smart
+
+Умная отправка flashcard-reminder уведомлений на основе FSRS due dates. Для каждого пользователя:
+- Проверяет количество просроченных карточек через Learning Service
+- Если карточек <= 5 — пропускает
+- Если активный стрик > 3 дней и пользователь активен сегодня — пропускает (уже вовлечён)
+- Если уже есть непрочитанный flashcard_reminder — пропускает (дедупликация)
+- Иначе — отправляет напоминание
+
+Требует JWT с ролью `admin`.
+
+**Headers:** `Authorization: Bearer <admin-token>`
+
+**Request:** нет тела запроса
+
+**Response `200`:**
+```json
+{
+  "users_checked": 100,
+  "reminders_sent": 15,
+  "skipped_active_streak": 30,
+  "skipped_low_cards": 40,
+  "skipped_existing": 10,
+  "skipped_errors": 5
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 403 | Не админ |
+
+---
+
 ## AI Service (`:8006`)
 
 Все AI-эндпоинты (quiz, summary, tutor/chat, moderate) потребляют 1 кредит за вызов из общего дневного пула.

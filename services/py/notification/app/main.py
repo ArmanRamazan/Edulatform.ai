@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 import asyncpg
+import httpx
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -16,6 +17,7 @@ from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.notification_repo import NotificationRepository
 from app.services.notification_service import NotificationService
+from app.services.smart_reminder_service import SmartReminderService
 from app.routes.notifications import router as notifications_router
 
 app_settings = Settings()
@@ -23,6 +25,8 @@ app_settings = Settings()
 _pool: asyncpg.Pool | None = None
 _redis: Redis | None = None
 _notification_service: NotificationService | None = None
+_smart_reminder_service: SmartReminderService | None = None
+_http_client: httpx.AsyncClient | None = None
 
 
 def get_notification_service() -> NotificationService:
@@ -30,9 +34,14 @@ def get_notification_service() -> NotificationService:
     return _notification_service
 
 
+def get_smart_reminder_service() -> SmartReminderService:
+    assert _smart_reminder_service is not None
+    return _smart_reminder_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _notification_service
+    global _pool, _redis, _notification_service, _smart_reminder_service, _http_client
 
     configure_logging(service_name="notification")
     logger = structlog.get_logger()
@@ -57,8 +66,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     repo = NotificationRepository(_pool)
     _notification_service = NotificationService(repo)
+
+    _http_client = httpx.AsyncClient()
+    _smart_reminder_service = SmartReminderService(
+        repo=repo,
+        http_client=_http_client,
+        learning_service_url=app_settings.learning_service_url,
+        jwt_secret=app_settings.jwt_secret,
+    )
+
     logger.info("service_started", port=8005)
     yield
+    await _http_client.aclose()
     await _redis.aclose()
     await _pool.close()
 

@@ -67,3 +67,12 @@ class NotificationResponse(BaseModel):
 class NotificationListResponse(BaseModel):
     items: list[NotificationResponse]
     total: int
+
+
+class SmartReminderResponse(BaseModel):
+    users_checked: int
+    reminders_sent: int
+    skipped_active_streak: int
+    skipped_low_cards: int
+    skipped_existing: int
+    skipped_errors: int

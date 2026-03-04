@@ -13,8 +13,10 @@ from app.domain.notification import (
     StreakReminderResponse,
     FlashcardReminderRequest,
     BulkReminderResponse,
+    SmartReminderResponse,
 )
 from app.services.notification_service import NotificationService
+from app.services.smart_reminder_service import SmartReminderService
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -22,6 +24,11 @@ router = APIRouter(prefix="/notifications", tags=["notifications"])
 def _get_notification_service() -> NotificationService:
     from app.main import get_notification_service
     return get_notification_service()
+
+
+def _get_smart_reminder_service() -> SmartReminderService:
+    from app.main import get_smart_reminder_service
+    return get_smart_reminder_service()
 
 
 def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
@@ -119,3 +126,14 @@ async def send_flashcard_reminders(
         [{"user_id": item.user_id, "card_count": item.card_count} for item in body.items]
     )
     return BulkReminderResponse(sent_count=sent_count)
+
+
+@router.post("/flashcard-reminders/smart", response_model=SmartReminderResponse)
+async def send_smart_flashcard_reminders(
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[SmartReminderService, Depends(_get_smart_reminder_service)],
+) -> SmartReminderResponse:
+    if claims["role"] != "admin":
+        raise ForbiddenError("Only admins can send smart flashcard reminders")
+    result = await service.send_smart_reminders()
+    return SmartReminderResponse(**result)

@@ -21,7 +21,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 508 тестов | identity 63, course 71, enrollment 28, payment 61, notification 32, ai 116, learning 137 (incl. pre-test: 20, velocity: 11) |
+| Unit Tests | ✅ 514 тестов | identity 63, course 71, enrollment 28, payment 61, notification 38, ai 116, learning 137 (incl. pre-test: 20, velocity: 11) |
 
 ## Стек
 
