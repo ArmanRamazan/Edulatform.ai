@@ -60,6 +60,7 @@ def _to_response(n: "Notification") -> NotificationResponse:
         body=n.body,
         is_read=n.is_read,
         created_at=n.created_at,
+        email_sent=n.email_sent,
     )
 
 
@@ -74,6 +75,7 @@ async def create_notification(
         type=body.type,
         title=body.title,
         body=body.body,
+        email=body.email,
     )
     return _to_response(notification)
 

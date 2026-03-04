@@ -5,15 +5,26 @@ from uuid import UUID
 import structlog
 
 from common.errors import NotFoundError
-from app.domain.notification import Notification, NotificationType
+from app.adapters.email import EmailAdapter
+from app.domain.notification import (
+    EMAIL_SUBJECTS,
+    EMAIL_TRIGGERING_TYPES,
+    Notification,
+    NotificationType,
+)
 from app.repositories.notification_repo import NotificationRepository
 
 logger = structlog.get_logger()
 
 
 class NotificationService:
-    def __init__(self, repo: NotificationRepository) -> None:
+    def __init__(
+        self,
+        repo: NotificationRepository,
+        email_adapter: EmailAdapter | None = None,
+    ) -> None:
         self._repo = repo
+        self._email_adapter = email_adapter
 
     async def create(
         self,
@@ -21,9 +32,39 @@ class NotificationService:
         type: NotificationType,
         title: str,
         body: str,
+        email: str | None = None,
     ) -> Notification:
-        notification = await self._repo.create(user_id, type, title, body)
-        logger.info("notification_created", user_id=str(user_id), type=str(type), title=title)
+        email_sent = False
+
+        if (
+            email
+            and self._email_adapter
+            and type in EMAIL_TRIGGERING_TYPES
+        ):
+            subject = EMAIL_SUBJECTS[type]
+            try:
+                email_sent = await self._email_adapter.send(
+                    to_email=email,
+                    subject=subject,
+                    body=body,
+                )
+            except Exception:
+                logger.warning(
+                    "email_send_failed",
+                    user_id=str(user_id),
+                    type=str(type),
+                    email=email,
+                )
+                email_sent = False
+
+        notification = await self._repo.create(user_id, type, title, body, email_sent)
+        logger.info(
+            "notification_created",
+            user_id=str(user_id),
+            type=str(type),
+            title=title,
+            email_sent=email_sent,
+        )
         return notification
 
     async def list_my(

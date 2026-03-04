@@ -29,7 +29,7 @@ eduplatform/
 │   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization, bundles, wishlist
 │   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion, recommendations
 │   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts, coupons, invoice PDF, refunds
-│   │   ├── notification/          #   In-app уведомления, direct messaging
+│   │   ├── notification/          #   In-app уведомления, email (lifecycle events), direct messaging
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
 │   │   └── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed, certificates
 │   └── rs/                        # Rust сервисы (performance-critical)
