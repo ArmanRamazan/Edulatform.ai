@@ -10,6 +10,7 @@ from pydantic import BaseModel
 
 from app.domain.lesson import LessonResponse
 from app.domain.module import ModuleResponse
+from app.domain.promotion import ActivePromotionResponse
 
 
 class CourseLevel(StrEnum):
@@ -67,6 +68,7 @@ class CourseResponse(BaseModel):
     avg_rating: Decimal | None = None
     review_count: int = 0
     category_id: UUID | None = None
+    active_promotion: ActivePromotionResponse | None = None
 
 
 class CourseListResponse(BaseModel):

@@ -1,6 +1,6 @@
 # 03 — Database Schemas
 
-> Последнее обновление: 2026-03-03
+> Последнее обновление: 2026-03-04
 > Стадия: Phase 2.4 (Gamification — complete), Phase 2.5 (MVP Polish — in progress)
 
 ---
@@ -25,7 +25,8 @@ course-db (PostgreSQL 16 Alpine, :5434)
        ├── table: lessons
        ├── table: reviews
        ├── table: course_bundles
-       └── table: bundle_courses
+       ├── table: bundle_courses
+       └── table: course_promotions
 
 enrollment-db (PostgreSQL 16 Alpine, :5435)
   └── database: enrollment
@@ -64,7 +65,7 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        └── table: pretest_answers
 ```
 
-**Итого: 30 таблиц в 6 базах данных.**
+**Итого: 31 таблица в 6 базах данных.**
 
 ---
 
@@ -242,6 +243,7 @@ CREATE TABLE IF NOT EXISTS courses (
 - `005_pg_trgm.sql` — pg_trgm extension + GIN index на courses (title, description)
 - `006_categories.sql` — таблица categories + seed data + category_id FK на courses
 - `008_bundles.sql` — таблицы course_bundles и bundle_courses
+- `009_promotions.sql` — таблица course_promotions с индексами
 
 ### Table: `modules`
 
@@ -315,6 +317,35 @@ CREATE TABLE IF NOT EXISTS bundle_courses (
 ```
 
 **Индексы:** PK (id) + idx_bc_bundle (bundle_id) + UNIQUE(bundle_id, course_id).
+
+### Table: `course_promotions`
+
+```sql
+CREATE TABLE IF NOT EXISTS course_promotions (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    course_id        UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+    discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 99),
+    starts_at        TIMESTAMPTZ NOT NULL,
+    ends_at          TIMESTAMPTZ NOT NULL,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    CHECK (ends_at > starts_at)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `course_id` | UUID | FK → courses(id) CASCADE, NOT NULL | Курс, к которому применяется акция |
+| `discount_percent` | INTEGER | NOT NULL, CHECK 1–99 | Скидка в процентах |
+| `starts_at` | TIMESTAMPTZ | NOT NULL | Начало действия акции |
+| `ends_at` | TIMESTAMPTZ | NOT NULL | Конец действия акции |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + idx_promotions_course_id (course_id) + idx_promotions_active (course_id, starts_at, ends_at) для быстрого поиска активных акций.
+
+**Бизнес-логика:** Активная акция — запись где `starts_at <= now() <= ends_at`. `CourseResponse` включает `active_promotion` с полями `discount_percent`, `starts_at`, `ends_at` (null если нет активной акции). Просроченные акции деактивируются при запросе — `get_active` возвращает только текущие.
+
+**Миграция:** `009_promotions.sql`.
 
 ---
 

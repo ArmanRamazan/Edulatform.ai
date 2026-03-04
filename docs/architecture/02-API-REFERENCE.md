@@ -1,7 +1,7 @@
 # 02 — API Reference
 
-> Последнее обновление: 2026-03-03
-> Стадия: Phase 2.5 (MVP Polish — Analytics, Earnings, Flashcard Reminders)
+> Последнее обновление: 2026-03-04
+> Стадия: Phase 2.5 (MVP Polish — Analytics, Earnings, Flashcard Reminders, Promotions)
 
 ---
 
@@ -744,6 +744,86 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 | 401 | Отсутствует или невалидный токен |
 | 403 | Не владелец бандла |
 | 404 | Бандл не найден |
+
+---
+
+### POST /courses/{course_id}/promotions
+
+Создать акцию для курса. Только для **verified teacher** (owner check). Одновременно может быть только одна активная акция на курс.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "discount_percent": 20,
+  "starts_at": "2026-03-10T00:00:00+00:00",
+  "ends_at": "2026-03-20T23:59:59+00:00"
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "course_id": "...",
+  "discount_percent": 20,
+  "starts_at": "2026-03-10T00:00:00+00:00",
+  "ends_at": "2026-03-20T23:59:59+00:00",
+  "created_at": "2026-03-04T12:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Не owner курса или не verified teacher |
+| 404 | Курс не найден |
+| 409 | Уже существует активная акция на этот курс |
+| 422 | Невалидные данные (discount не 1–99%, ends_at <= starts_at) |
+
+---
+
+### GET /courses/{course_id}/promotions
+
+Список активных акций курса. Публичный endpoint. Возвращает только текущие активные акции (starts_at <= now <= ends_at).
+
+**Response `200`:**
+```json
+[
+  {
+    "id": "...",
+    "course_id": "...",
+    "discount_percent": 20,
+    "starts_at": "2026-03-10T00:00:00+00:00",
+    "ends_at": "2026-03-20T23:59:59+00:00",
+    "created_at": "..."
+  }
+]
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Курс не найден |
+
+> Объект `CourseResponse` (GET /courses, GET /courses/{course_id}) включает поле `active_promotion: ActivePromotionResponse | null` с полями `discount_percent`, `starts_at`, `ends_at`.
+
+---
+
+### DELETE /promotions/{promotion_id}
+
+Удалить акцию. Только для **verified teacher** (owner check через курс акции). **Response `204`.**
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Не owner курса акции или не verified teacher |
+| 404 | Акция не найдена |
 
 ---
 
