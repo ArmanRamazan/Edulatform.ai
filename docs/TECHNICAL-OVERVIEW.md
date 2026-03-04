@@ -11,7 +11,7 @@
 | Identity Service | ✅ Готов | Регистрация, логин, JWT refresh tokens, роли, admin, email verification, forgot password |
 | Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization, course bundles, promotional pricing |
 | Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
-| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, coupons/promo codes, GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
+| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, coupons/promo codes, invoice PDF generation, GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read, streak-at-risk reminders, flashcard-due reminders |
 | AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, course outline generation (teacher/admin), lesson content generation (teacher/admin), personalized study plan generation, content moderation (teacher/admin), Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), service-to-service calls to Learning Service, GET /ai/credits/me |
 | Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (comments + upvotes), XP system, badges, streaks, leaderboard, adaptive pre-test, learning velocity, 33 endpoints |
@@ -21,7 +21,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 586 тестов | identity 63, course 111, enrollment 28, payment 89, notification 38, ai 116, learning 137 (incl. pre-test: 20, velocity: 11), +4 coupon endpoints |
+| Unit Tests | ✅ 599 тестов | identity 63, course 111, enrollment 28, payment 102, notification 38, ai 116, learning 137 (incl. pre-test: 20, velocity: 11), +4 coupon endpoints |
 
 ## Стек
 
@@ -63,7 +63,7 @@ cd apps/seller && pnpm install && pnpm dev   # http://localhost:3002
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 7 сервисов (509 тестов)
+# Все 7 сервисов (599 тестов)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
@@ -116,7 +116,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ├── services/py/identity/    — Auth: register, login, JWT refresh tokens, roles, admin, email verification
 ├── services/py/course/      — Courses: CRUD, search, modules, lessons, reviews, categories, filtering, bundles
 ├── services/py/enrollment/  — Enrollment: запись на курс, прогресс, lesson completion, auto-completion
-├── services/py/payment/     — Payment: mock-оплата, teacher earnings, payouts
+├── services/py/payment/     — Payment: mock-оплата, teacher earnings, payouts, invoice PDF
 ├── services/py/notification/— Notifications: in-app, mark as read
 ├── services/py/ai/          — AI: quiz gen, summary, Socratic tutor, study plan, Gemini Flash, Redis cache, credit tracking
 ├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, knowledge graph, discussions

@@ -20,9 +20,12 @@ from app.repositories.coupon_repo import CouponRepository
 from app.services.payment_service import PaymentService
 from app.services.earnings_service import EarningsService
 from app.services.coupon_service import CouponService
+from app.services.invoice_service import InvoiceService
+from app.adapters.invoice import InvoicePDFGenerator
 from app.routes.payments import router as payments_router
 from app.routes.earnings import router as earnings_router
 from app.routes.coupons import router as coupons_router
+from app.routes.invoices import router as invoices_router
 
 app_settings = Settings()
 
@@ -31,6 +34,7 @@ _redis: Redis | None = None
 _payment_service: PaymentService | None = None
 _earnings_service: EarningsService | None = None
 _coupon_service: CouponService | None = None
+_invoice_service: InvoiceService | None = None
 
 
 def get_payment_service() -> PaymentService:
@@ -48,9 +52,14 @@ def get_coupon_service() -> CouponService:
     return _coupon_service
 
 
+def get_invoice_service() -> InvoiceService:
+    assert _invoice_service is not None
+    return _invoice_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _payment_service, _earnings_service, _coupon_service
+    global _pool, _redis, _payment_service, _earnings_service, _coupon_service, _invoice_service
 
     configure_logging(service_name="payment")
     logger = structlog.get_logger()
@@ -81,6 +90,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _payment_service = PaymentService(repo, earnings_repo)
     _earnings_service = EarningsService(earnings_repo)
     _coupon_service = CouponService(coupon_repo)
+    _invoice_service = InvoiceService(
+        payment_repo=repo,
+        pdf_generator=InvoicePDFGenerator(),
+    )
     logger.info("service_started", port=8004)
     yield
     await _redis.aclose()
@@ -105,6 +118,7 @@ app.add_middleware(
 app.include_router(payments_router)
 app.include_router(earnings_router)
 app.include_router(coupons_router)
+app.include_router(invoices_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 

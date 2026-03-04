@@ -1046,6 +1046,26 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 ---
 
+### GET /payments/{payment_id}/invoice
+
+Скачать PDF-инвойс для оплаты. Доступен владельцу оплаты или admin.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+- Content-Type: `application/pdf`
+- Content-Disposition: `attachment; filename="invoice_{payment_id}.pdf"`
+
+**Errors:**
+
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Оплата принадлежит другому пользователю |
+| 404 | Оплата не найдена |
+
+---
+
 ### POST /coupons
 
 Создание промокода. Только для `role=admin`.
