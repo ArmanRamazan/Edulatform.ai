@@ -1,179 +1,193 @@
-# 01 — Видение продукта: Learning Velocity Platform
+# 01 — Видение продукта: B2B Agentic Adaptive Learning
 
 > Владелец: CEO / CPO
-> Последнее обновление: 2026-03-03
+> Последнее обновление: 2026-03-05
+>
+> Этот документ — авторитетный источник продуктовой стратегии.
+> Детали пивота: [12-AGENTIC-PIVOT.md](./12-AGENTIC-PIVOT.md).
 
 ---
 
 ## Миссия
 
-**Не просто смотри видео — учись быстрее.**
+**Сократить онбординг инженера с 3 месяцев до 1 месяца.**
 
-Платформа, которая оптимизирует скорость обучения через AI-адаптацию, knowledge graphs, spaced repetition и активное обучение. Цель — 10M активных пользователей с completion rate 40%+ (vs 13% у индустрии).
-
----
-
-## Почему не "ещё один Udemy"
-
-87.4% онлайн-курсов никогда не завершаются. Причина — пассивное потребление видео без адаптации, обратной связи и активного обучения.
-
-Существующие платформы делают **одно из**:
-- Видео-курсы (Coursera/Udemy) — без AI-адаптации
-- AI-адаптация (Squirrel AI) — только K-12, не general-purpose
-- Knowledge management (Obsidian/NotebookLM) — инструменты, не платформы
-- Gamification (Duolingo) — только языки
-
-**Никто не объединяет все четыре** для взрослых. Мы это делаем.
+Персональный AI-ментор, обученный на кодовой базе и архитектуре компании, проводит 15-минутные ежедневные сессии. Senior'ы не отвлекаются. Новичок набирает контекст в 3 раза быстрее.
 
 ---
 
-## Core Learning Loop
+## Целевой клиент
 
-Продукт реализует 4-step evidence-based цикл обучения:
+**B2B:** Технологические компании, онбордящие Mid/Senior инженеров.
+
+**Боль:** Первые 2-3 месяца новичок отвлекает Senior'ов вопросами ("как поднять локальную базу?", "почему этот микросервис отваливается?"). Стоимость онбординга одного инженера: $10K-30K (потеря продуктивности команды).
+
+**Ценность:** AI-ментор, обученный на реальном коде и документации компании, проводит структурированные 15-минутные сессии. Senior'ы освобождаются от рутинных вопросов. Новичок получает контекст адаптивно, в своём темпе.
+
+---
+
+## Архитектура: Tri-Agent System
+
+Три AI-агента, каждый со своей зоной ответственности:
 
 ```
-  ┌──────────────┐     ┌──────────────┐
-  │  1. CONSUME   │────▶│  2. PRACTICE  │
-  │  Video/Text   │     │  Quiz/Code    │
-  │  AI Summary   │     │  Active Recall│
-  └──────────────┘     └──────┬───────┘
-         ▲                     │
-         │                     ▼
-  ┌──────┴───────┐     ┌──────────────┐
-  │  4. CONNECT   │◀────│  3. REFLECT   │
-  │  Knowledge    │     │  AI Tutor     │
-  │  Graph        │     │  Socratic Q   │
-  └──────────────┘     └──────────────┘
-
-  Spaced Repetition планирует повторения по всем 4 шагам
+┌─────────────────────────────────────────────────────┐
+│                   STRATEGIST                         │
+│  Строит/адаптирует макро-путь обучения              │
+│  Input: профиль, mastery graph, результаты сессий   │
+│  Output: ordered list of concepts to learn           │
+└──────────────┬──────────────────────────┬───────────┘
+               │                          │
+               ▼                          │
+┌──────────────────────────┐              │
+│      DESIGNER            │              │
+│  Собирает 15-мин миссию  │              │
+│  Input: concept + RAG    │              │
+│  Output: Mission{        │              │
+│    recap (2 вопроса)     │              │
+│    reading (2 мин)       │              │
+│    questions (3 шт)      │              │
+│    code_case (1 шт)      │              │
+│  }                       │              │
+└──────────┬───────────────┘              │
+           ▼                              │
+┌──────────────────────────┐              │
+│        COACH             │              │
+│  Проводит сессию         │              │
+│  Сократовский диалог     │              │
+│  Фидбек → Strategist     │──────────────┘
+│  Адаптивная сложность    │   (телеметрия)
+└──────────────────────────┘
 ```
 
----
+### Strategist Agent
+- Анализирует профиль инженера (стек, опыт, пробелы)
+- Строит граф зависимостей из knowledge base компании
+- Адаптирует путь: завалил Docker → вставляет микро-урок перед Kubernetes
+- Планирует spaced repetition для пройденных концептов
 
-## Текущее состояние продукта (Phase 0–2.4 ✅, 3.1–3.2 backend ✅)
+### Content Designer Agent
+- Обращается в RAG (код, доки, ADR компании)
+- Собирает миссию: выжимка + вопросы + code case из **реального кода**
+- Калибрует сложность под текущий mastery level
 
-### Что работает
-
-| Возможность | Статус |
-|-------------|--------|
-| Регистрация, авторизация (JWT, roles, refresh tokens) | ✅ |
-| Email verification, forgot password | ✅ |
-| Admin: верификация teachers | ✅ |
-| Rate limiting (per-IP, Redis sliding window) | ✅ |
-| CORS, XSS sanitization, health checks | ✅ |
-| Каталог курсов + ILIKE поиск (pg_trgm, p99 < 50ms) | ✅ |
-| Категории + фильтрация (level, is_free) + сортировка | ✅ |
-| Redis кэширование (cache-aside, TTL 5 min) | ✅ |
-| Cursor-based pagination | ✅ |
-| CRUD курсов, модулей, уроков (verified teachers) | ✅ |
-| Curriculum (модули + уроки) | ✅ |
-| Enrollment (запись на курс) | ✅ |
-| Progress tracking + auto-completion при 100% | ✅ |
-| Reviews & ratings (1-5 stars + text) | ✅ |
-| Payments (mock) | ✅ |
-| Notifications (in-app) | ✅ |
-| Buyer frontend (Next.js): все страницы | ✅ |
-| TanStack Query + error boundaries + skeletons | ✅ |
-| Prometheus + Grafana (22 panels) | ✅ |
-| 400 тестов по 7 сервисам | ✅ |
-| AI Service: quiz gen, summary, Socratic tutor, credits | ✅ |
-| Learning Engine: quizzes, FSRS flashcards, knowledge graph | ✅ |
-| Gamification: XP, streaks, badges, leaderboard, discussions | ✅ |
-| Stripe backend: subscriptions, earnings, payouts | ✅ |
-| Onboarding flow | ✅ |
-| Seller App scaffolded (auth + API client) | ✅ |
-
-### Замкнутый цикл обучения ✅
-
-Admin → teacher creates course → student finds → enrolls → completes lessons → takes quiz → reviews flashcards → asks AI tutor → earns XP/badges → joins leaderboard → discusses.
-
-### Чего НЕ хватает для полного Growth
-
-| Пробел | Почему критично |
-|--------|----------------|
-| Stripe frontend (checkout, pricing page) | Нельзя принимать реальные платежи |
-| Seller App pages | Teachers не видят аналитику и earnings |
-| SEO | Нет органического трафика |
-| CI/CD | Нет автоматического тестирования на PR |
-| Real email delivery | Verification/reset через stdout stub |
-| Certificates | Нет мотивации завершить курс до конца |
-| Video upload | Нет видео-контента от teachers |
+### Coach Agent
+- Проводит 15-минутную сессию в формате чата
+- Сократовский метод: не даёт ответ, задаёт наводящий вопрос
+- Настраиваемая личность (строгий/дружелюбный/с юмором)
+- Собирает телеметрию: время ответа, правильность, уверенность
 
 ---
 
-## Ключевые бизнес-метрики (North Star)
+## Ключевые сущности
 
-| Метрика | Foundation ✅ | Learning Intelligence | Growth | Scale |
-|---------|-------------|----------------------|--------|-------|
-| MAU | 1-100 (тест) | 10K → 100K | 1M | 10M |
-| Course completion rate | ~13% (industry) | **40%+** | 50%+ | 60%+ |
-| Retention 7d | unknown | **60%+** | 70%+ | 75%+ |
-| DAU/MAU | unknown | **25%+** | 30%+ | 35%+ |
-| Avg quiz score | N/A | **70%+** | 75%+ | 80%+ |
-| Time-to-competency | baseline | **-30%** | -40% | -50% |
-| Revenue / мес | $0 | $6K | $1.4M | $18M |
+### Mission (15-минутная сессия)
+
+Центральная единица обучения. Заменяет "урок" из B2C модели.
+
+- `concept_id` — какой концепт изучаем
+- `type` — daily (новый материал), review (spaced repetition), remedial (доработка пробелов)
+- `recap_questions[]` — 2 вопроса по вчерашнему
+- `reading_content` — 2-минутная выжимка из RAG
+- `check_questions[]` — 3 вопроса на понимание
+- `code_case` — реальный код с задачей
+- `score`, `mastery_delta` — результат сессии
+
+### Trust Level (0-5)
+
+Заменяет XP. Прогрессивный доступ к ресурсам компании:
+
+| Level | Название | Доступ |
+|-------|----------|--------|
+| 0 | Newcomer | Только чтение документации |
+| 1 | Explorer | Dev окружение |
+| 2 | Contributor | Staging repos |
+| 3 | Builder | Prod repos (read) |
+| 4 | Guardian | Code review capabilities |
+| 5 | Architect | Full access |
+
+### Company Knowledge Base
+
+- Sources: GitHub repos, Confluence spaces, markdown files
+- Concepts: извлечённые entities с relationships
+- Embeddings: pgvector index для semantic search
 
 ---
 
-## Revenue Streams (обновлённые)
+## Ключевые метрики (North Star)
 
-| Источник | Описание | Фаза |
-|----------|----------|------|
-| Subscription (Student) | $9.99/мес — unlimited courses, spaced repetition, knowledge graph | Growth |
-| Subscription (Pro) | $19.99/мес — AI tutor, velocity dashboard, Obsidian export | Growth |
-| Team/B2B | $14.99/seat — admin dashboard, team analytics | Growth |
-| Commission | % с платных курсов | Growth |
-| Certificates | Платные сертификаты при completion | Growth |
-| Free tier | 5 courses, 10 tutor chats, basic quizzes | Learning Intelligence |
+| Метрика | Baseline | Target (6 мес) |
+|---------|----------|-----------------|
+| Time-to-productivity | 90 дней | 30 дней |
+| Senior interruptions/day | 5-8 | 1-2 |
+| Knowledge retention (7d) | ~30% | 70%+ |
+| Daily session completion | N/A | 80%+ |
+| D30 Retention | N/A | 60%+ |
+
+### Операционные метрики
+
+| Метрика | Target |
+|---------|--------|
+| Mission generation latency | < 5 sec |
+| Coach response time | < 2 sec |
+| RAG search relevance (MRR@10) | > 0.7 |
+| Daily active engineers / org | > 70% |
+
+---
+
+## Бизнес-модель
+
+| Тир | Цена | Включено |
+|-----|------|----------|
+| **Pilot** | $1K-3K/мес | 1 repo + docs, до 20 инженеров, базовые агенты |
+| **Enterprise** | $10K+/мес | Все интеграции (GitHub/Jira/Slack), PR-анализ, custom agents |
+| **Outcome-based** | Per completion | Плата за успешно прошедших онбординг |
+
+### Unit Economics (Pilot, 20 seats)
+
+| Статья | Стоимость/мес |
+|--------|---------------|
+| LLM API (Gemini Flash) | ~$50-100 |
+| Infrastructure | ~$200 |
+| Embedding generation (one-time) | ~$10 |
+| **Total COGS** | **~$300** |
+| **Revenue** | **$1K-3K** |
+| **Gross margin** | **70-90%** |
+
+---
+
+## Что переиспользуем из B2C фазы
+
+| Компонент | Статус | Новая роль |
+|-----------|--------|------------|
+| Identity (auth, JWT, roles) | ✅ Active | + Organizations, Trust Levels |
+| AI service (Gemini, cache, credits) | ✅ Active | + Tri-Agent orchestration |
+| Learning (FSRS, concepts, mastery) | ✅ Active | + Missions, session tracking |
+| Notification (in-app, email, DMs) | ✅ Active | Без изменений |
+| Common lib, Docker, monitoring | ✅ Active | Без изменений |
+| Course (marketplace) | 💤 Dormant | B2C marketplace не нужен |
+| Enrollment | 💤 Dormant | Заменён org membership |
+| Payment (individual) | 💤 Dormant | Org subscriptions вместо |
 
 ---
 
 ## Конкурентные преимущества
 
-1. **Learning Velocity** — единственная платформа, которая измеряет и оптимизирует скорость обучения
-2. **Evidence-based** — каждая фича основана на исследованиях (spaced repetition, active recall, Socratic method)
-3. **AI дешёвый** — $0.03/user/мес через model routing (80% запросов на Gemini Flash Lite)
-4. **Полный цикл** — consume → practice → reflect → connect (не просто видео)
-5. **Knowledge graph** — визуальная карта знаний как метакогнитивный инструмент
+1. **Company-specific AI** — обучен на реальном коде и документации, не generic content
+2. **Structured 15-min sessions** — не свободный чат, а Mission с recap + reading + questions + code
+3. **Spaced repetition** — FSRS обеспечивает долгосрочное запоминание архитектурных решений
+4. **Trust Levels** — прогрессивный доступ мотивирует и структурирует онбординг
+5. **Measurable ROI** — time-to-productivity как объективная метрика для B2B sales
 
 ---
 
-## Ключевые продуктовые потоки
+## Целевой User Journey (Engineer)
 
-### Student Journey
-
-- [x] ✅ Каталог курсов с поиском и фильтрами
-- [x] ✅ Регистрация, email verification, login
-- [x] ✅ Запись на курс (бесплатный / платный)
-- [x] ✅ Прохождение уроков (markdown + video)
-- [x] ✅ Прогресс: % завершения, auto-completion
-- [x] ✅ Отзыв и оценка курса
-- [x] ✅ Quiz после каждого урока (AI-generated)
-- [x] ✅ AI Summary урока
-- [x] ✅ Flashcards (FSRS-scheduled)
-- [x] ✅ AI Socratic Tutor (chat per lesson)
-- [x] ✅ Knowledge graph visualization
-- [ ] 🔴 Learning Velocity Dashboard (sprint-10)
-- [x] ✅ XP, streaks, badges
-- [x] ✅ Course discussions
-- [ ] 🟡 Реальные платежи (Stripe) — backend ✅, frontend sprint-3
-- [ ] 🔴 Сертификат по завершении (PDF) — sprint-8
-- [ ] 🔴 Push/email уведомления — sprint-7
-
-### Teacher Journey
-
-- [x] ✅ Регистрация, верификация через admin
-- [x] ✅ CRUD курсов, модулей, уроков
-- [x] ✅ "Мои курсы" dashboard
-- [x] ✅ Тегирование concepts per lesson (knowledge graph)
-- [ ] 🟡 Seller App — scaffolded, pages sprint-2/6
-- [ ] 🟡 Аналитика — backend ✅ (GET /analytics/teacher), frontend sprint-6
-- [ ] 🔴 Загрузка видео — sprint-13
-- [ ] 🔴 Промо-инструменты — sprint-12
-
-### Platform Operations
-
-- [x] ✅ Admin panel (верификация teachers)
-- [ ] 🔴 Модерация контента
-- [ ] 🔴 Dispute resolution
-- [ ] 🔴 Финансовая отчётность
+1. Компания подключает GitHub repos и документацию
+2. Admin создаёт onboarding template (или использует готовый)
+3. Новый инженер получает приглашение, заполняет профиль (стек, опыт)
+4. Strategist строит персональный learning path
+5. Каждый день — 15-минутная Mission (recap → reading → questions → code case)
+6. Coach проводит сессию: наводящие вопросы, адаптивная сложность
+7. Trust Level растёт → разблокируются repos, envs, tools
+8. За 30 дней — полный контекст, уверенная навигация по кодовой базе

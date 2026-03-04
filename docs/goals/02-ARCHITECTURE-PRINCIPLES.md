@@ -1,7 +1,9 @@
 # 02 — Архитектурные принципы и ADR
 
 > Владелец: Architect
-> Последнее обновление: 2026-02-24
+> Последнее обновление: 2026-03-05
+>
+> Обновлено под B2B Agentic Adaptive Learning pivot.
 
 ---
 
@@ -9,40 +11,49 @@
 
 ### P1. Python для бизнес-логики, Rust для performance-critical paths
 
-- **Python** — API, бизнес-логика, AI orchestration, Learning Engine, admin, ML pipelines
-- **Rust** — поисковый движок, обработка видео, real-time messaging, CDN edge logic (Phase 4)
+- **Python** — API, бизнес-логика, AI agent orchestration, RAG pipeline, Learning Engine
+- **Rust** — поисковый движок, real-time messaging (Phase Scale)
 - **Решение о языке:** p99 < 50ms или > 10K RPS → Rust. Остальное → Python
 
 ### P2. Монорепа с четкими границами
 
-- Единый репозиторий, но строгие boundaries между доменами
-- Shared протоколы через protobuf/flatbuffers
+- Единый репозиторий, строгие boundaries между доменами
+- Shared протоколы через protobuf (Phase Scale)
 - Независимый деплой каждого сервиса
+- Каждый сервис — своя БД, никогда не читает чужую
 
-### P3. Event-Driven по умолчанию
+### P3. Multi-tenant by default
 
-- Синхронные вызовы только внутри bounded context
-- Между доменами — только события
-- Event Store как source of truth для критичных потоков
+- Каждый запрос к данным — с `org_id` в WHERE clause
+- Application-level isolation (не database-level): одна БД, org_id фильтрация
+- Все новые таблицы содержат `organization_id` (кроме общесистемных: users, auth)
+- API endpoints принимают org context из JWT или path parameter
 
 ### P4. Design for 10x, build for 1x
 
-- Архитектура должна выдержать 10x от текущей нагрузки без переписывания
-- Но реализуем только то, что нужно сейчас
-- Каждое решение должно быть заменяемо за 2 недели
-
-### P6. Two Contours — Content + Learning
-
-- **Content Contour** (существует): Identity, Course, Enrollment, Payment, Notification — CRUD, каталог, базовый UX
-- **Learning Contour** (Phase 2): AI Service, Learning Engine — квизы, spaced repetition, knowledge graph, AI-тьютор
-- Контуры связаны через events (course.completed → trigger flashcard generation)
-- Learning Contour потребляет данные Content Contour, но не наоборот
+- Архитектура выдерживает 10x от текущей нагрузки без переписывания
+- Реализуем только то, что нужно сейчас
+- Каждое решение заменяемо за 2 недели
 
 ### P5. Observable by default
 
 - Каждый сервис — метрики, логи, трейсы с первого дня
 - SLO определены до написания кода
 - Алерты на деградацию, а не на падение
+
+### P6. Two Contours — Content + Learning
+
+- **Content Contour:** Identity, RAG — кто пользователь, какие знания доступны
+- **Learning Contour:** AI Agents, Learning Engine — как обучаем, adaptive path, missions
+- Content Contour поставляет данные в Learning Contour (RAG → Designer Agent)
+- Learning Contour не модифицирует Content Contour напрямую
+
+### P7. Agent-first architecture
+
+- AI агенты — ядро продукта, не надстройка
+- Каждый агент имеет чёткую зону ответственности и контракт (input/output)
+- Агенты общаются через Orchestrator, не напрямую
+- Телеметрия из Coach → Strategist для адаптации learning path
 
 ---
 
@@ -51,77 +62,99 @@
 ### ADR-001: Монорепа вместо мультирепо
 
 - [X] ✅ **Решение:** Монорепа (Python + Rust + TypeScript в одном репозитории)
-
-- **Контекст:** На ранней стадии скорость итерации важнее изоляции. Монорепа позволяет атомарные изменения через границы сервисов
-- **Последствия:** Нужен хороший CI (selective builds), code ownership через CODEOWNERS
+- **Контекст:** Скорость итерации важнее изоляции. Атомарные изменения через границы сервисов
 - **Пересмотр:** При > 50 разработчиках оценить переход на мультирепо
 
-### ADR-002: Event bus — NATS JetStream
+### ADR-002: PostgreSQL + pgvector как основная БД
 
-- [ ] 🔴 **Решение:** NATS JetStream как основная шина событий
+- [X] ✅ **Решение:** PostgreSQL для всех сервисов, pgvector extension для embeddings
+- **Контекст:** Один движок БД упрощает operations. pgvector достаточен для < 10M embeddings
+- **Дополнительно:** Redis для кэша и agent memory
+- **Пересмотр:** При > 10M embeddings или > 100ms vector search — dedicated vector DB
 
-- **Контекст:** Легче Kafka для старта, поддерживает persistence, exactly-once semantics. Rust SDK зрелый
-- **Альтернативы:** Kafka (слишком тяжелый для < 1M), RabbitMQ (нет native persistence), Redis Streams (ненадежный)
-- **Пересмотр:** При > 500K events/sec оценить миграцию на Kafka
+### ADR-003: Application-level multi-tenancy
 
-### ADR-003: PostgreSQL как основная БД, с шардированием через Citus
+- [X] ✅ **Решение:** Shared database, org_id фильтрация на application level
+- **Контекст:** 1-50 компаний не оправдывают database-per-tenant. Проще в development и operations
+- **Защита:** org_id добавляется ко всем запросам через middleware/service layer
+- **Пересмотр:** При compliance requirements (SOC2 Type II) — оценить schema-per-tenant
 
-- [ ] 🔴 **Решение:** PostgreSQL + Citus для горизонтального масштабирования
+### ADR-004: RAG pipeline в отдельном сервисе
 
-- **Контекст:** PostgreSQL покрывает 90% потребностей. Citus позволяет шардировать без смены БД
-- **Дополнительно:** Redis для кэша, ClickHouse для аналитики, Meilisearch для поиска
+- [X] ✅ **Решение:** RAG как отдельный Python сервис (порт 8008)
+- **Контекст:** Ingestion pipeline (chunking, embedding, indexing) — отдельная зона ответственности от AI agents. Разные паттерны нагрузки: batch ingestion vs real-time search
+- **Альтернативы:** Встроить в AI service (нарушает SRP), использовать managed RAG (vendor lock-in)
 
-### ADR-004: gRPC между сервисами, REST для публичного API
+### ADR-005: Tri-Agent orchestration в AI service
 
-- [ ] 🔴 **Решение:** Внутри — gRPC (protobuf). Наружу — REST (OpenAPI)
+- [X] ✅ **Решение:** Strategist, Designer, Coach — модули внутри AI service (порт 8006)
+- **Контекст:** Все три агента используют один LLM client, одну Redis memory, один credit system. Разделение на 3 сервиса — преждевременная декомпозиция
+- **Паттерн:** Agent Orchestrator координирует вызовы, каждый агент — отдельный module с чётким interface
 
-- **Контекст:** gRPC дает типизацию, кодогенерацию, streaming. REST проще для внешних интеграций
+### ADR-006: FSRS для spaced repetition
 
-### ADR-005: Видео-процессинг — Rust сервис с FFmpeg bindings
+- [X] ✅ **Решение:** FSRS (Free Spaced Repetition Scheduler) для recap questions
+- **Контекст:** Academically validated, open source (py-fsrs). Переиспользуем из B2C фазы
+- **В B2B:** recap questions в начале каждой Mission — spaced repetition по архитектуре компании
 
-- [ ] 🔴 **Решение:** Собственный сервис на Rust для транскодирования и стриминга
+### ADR-007: Model routing для AI
 
-- **Контекст:** Видео — ключевой дифференциатор продукта. Зависимость от SaaS (Mux, Cloudflare Stream) — риск по стоимости при 10M users
-- **Пересмотр:** До 100K users можно использовать Cloudflare Stream, потом мигрировать
+- [X] ✅ **Решение:** Multi-tier LLM routing: основной — Gemini Flash, fallback — Claude
+- **Контекст:** AI-стоимость ~$2-5/user/month при daily sessions. Mission generation — дешёвая модель. Coach dialogue — средняя. Complex code analysis — дорогая
+- **Пересмотр:** При > 1000 daily users — оценить self-hosted SLM
 
-### ADR-006: Feature flags с первого дня
+### ADR-008: GitHub adapter для code ingestion
 
-- [ ] 🔴 **Решение:** Собственная система feature flags (простая) или Unleash
+- [X] ✅ **Решение:** GitHub OAuth App + REST API для клонирования и индексации repos
+- **Контекст:** GitHub — primary source of truth для большинства tech companies. REST API проще для MVP чем GitHub App
+- **Будущее:** GitHub App (webhooks для auto re-index), GitLab adapter, Bitbucket adapter
 
-- **Контекст:** Canary releases, A/B тесты, kill switches — обязательны при 10M users
+### ADR-009: Trust Levels вместо XP
 
-### ADR-007: FSRS для spaced repetition (Phase 2)
-
-- [ ] 🔵 **Решение:** FSRS (Free Spaced Repetition Scheduler) вместо SM-2
-
-- **Контекст:** FSRS — academically validated, open source (py-fsrs), ~4 параметра на ученика. Превосходит SM-2 по retention accuracy. Zero API cost — чистый алгоритм
-- **Альтернативы:** SM-2 (устаревший), Leitner (слишком простой), custom ML (overengineering)
-
-### ADR-008: Model routing для AI (Phase 2)
-
-- [ ] 🔵 **Решение:** Multi-tier LLM routing: 80% дешёвые (Gemini Flash), 15% средние (Claude Haiku), 5% дорогие (Claude Sonnet)
-
-- **Контекст:** AI-стоимость ~$0.03/user/month при таком routing. Quiz generation, flashcard extraction — дешёвая модель. Socratic tutor — средняя. Complex reasoning — дорогая
-- **Альтернативы:** Single model (дорого), self-hosted SLM (рано, Phase 4)
-
-### ADR-009: pgvector для embeddings (Phase 2)
-
-- [ ] 🔵 **Решение:** pgvector extension для PostgreSQL вместо отдельного vector DB
-
-- **Контекст:** Уже используем PostgreSQL. pgvector достаточен для < 10M embeddings. Нет нужды в Pinecone/Weaviate/Qdrant на текущем масштабе
-- **Пересмотр:** При > 10M embeddings или > 100ms vector search — оценить dedicated vector DB
+- [X] ✅ **Решение:** Trust Level (0-5) с прогрессивным доступом вместо числового XP
+- **Контекст:** B2B context: прогресс = доступ к ресурсам компании, не gamification score. Прогрессия привязана к mastery, не к количеству активности
+- **Механика:** Mission completion + concept mastery → автоматическое повышение level
 
 ---
 
-## Целевая архитектура (высокий уровень)
+## Целевая архитектура
 
-### TODO для Architect:
+```
+┌──────────────┐     ┌──────────────┐     ┌──────────────┐
+│   Frontend   │────▶│   Identity   │     │ Notification │
+│  (Next.js)   │     │   (:8001)    │     │   (:8005)    │
+│   (:3000)    │     │ + Orgs       │     │              │
+└──────┬───────┘     └──────────────┘     └──────────────┘
+       │
+       ├────────────▶┌──────────────┐     ┌──────────────┐
+       │             │  AI Agents   │────▶│     RAG      │
+       │             │  (:8006)     │     │   (:8008)    │
+       │             │ Strategist   │     │ pgvector     │
+       │             │ Designer     │     │ ingestion    │
+       │             │ Coach        │     │ search       │
+       │             └──────┬───────┘     └──────────────┘
+       │                    │
+       └────────────▶┌──────▼───────┐
+                     │   Learning   │
+                     │   (:8007)    │
+                     │ Missions     │
+                     │ Trust Levels │
+                     │ FSRS         │
+                     └──────────────┘
 
-- [ ] 🔴 Нарисовать C4 Level 1 (System Context) диаграмму
-- [ ] 🔴 Нарисовать C4 Level 2 (Container) диаграмму
-- [ ] 🔴 Определить communication patterns между каждой парой сервисов
-- [ ] 🔴 Определить data ownership — какой сервис владеет какими данными
-- [ ] 🔴 Определить стратегию версионирования API (URL vs header)
-- [ ] 🔴 Задокументировать failure modes и circuit breaker стратегию
-- [ ] 🔴 Определить стратегию миграции БД (zero-downtime)
-- [ ] 🔴 Описать contract testing стратегию между сервисами
+Dormant: Course (:8002), Enrollment (:8003), Payment (:8004)
+```
+
+### Data flow для daily Mission
+
+```
+1. User opens app
+2. Frontend → Learning (:8007): GET /missions/daily
+3. Learning → AI (:8006): request mission generation
+4. AI/Strategist: pick next concept from learning path
+5. AI/Designer → RAG (:8008): search company KB for concept content
+6. AI/Designer: assemble Mission (recap + reading + questions + code_case)
+7. Learning: persist Mission, return to frontend
+8. User completes mission with Coach (AI :8006)
+9. Coach → Learning: update mastery, check Trust Level progression
+```

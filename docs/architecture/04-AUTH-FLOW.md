@@ -1,18 +1,20 @@
 # 04 — Authentication Flow
 
-> Последнее обновление: 2026-03-03
-> Стадия: Phase 3.2 (Monetization backend — Stripe, subscriptions, earnings, payouts)
+> Последнее обновление: 2026-03-05
+> Стадия: B2B Agentic Adaptive Learning Pivot
 
 ---
 
 ## Обзор
 
-Аутентификация реализована через **JWT с shared secret**. Все 7 сервисов используют один и тот же `JWT_SECRET` для валидации токенов. Identity создаёт токены при register/login, остальные сервисы только валидируют.
+Аутентификация реализована через **JWT с shared secret**. Все активные сервисы (Identity, Payment, Notification, AI, Learning, RAG) используют один и тот же `JWT_SECRET` для валидации токенов. Identity создаёт токены при register/login, остальные сервисы только валидируют.
+
+B2B pivot добавляет `organization_id` в JWT extra_claims для контекста активной организации, а также org membership проверки и Trust Level авторизацию.
 
 ```
 ┌─────────┐        ┌──────────┐        ┌──────────┐
-│ Browser │        │ Identity │        │  Course  │
-│         │        │  :8001   │        │  :8002   │
+│ Browser │        │ Identity │        │ Learning │
+│         │        │  :8001   │        │  :8007   │
 └────┬────┘        └────┬─────┘        └────┬─────┘
      │                  │                   │
      │  POST /register  │                   │
@@ -24,12 +26,15 @@
      │                  │ INSERT user       │
      │                  │ JWT encode        │
      │                  │  (sub, role,      │
-     │                  │   is_verified)    │
+     │                  │   is_verified,    │
+     │                  │   organization_id)│
      │                  │                   │
-     │  {access_token}  │                   │
+     │  {access_token,  │                   │
+     │   refresh_token} │                   │
      │◀─────────────────│                   │
      │                  │                   │
-     │  POST /courses   │                   │
+     │  GET /missions/  │                   │
+     │  today?org=X     │                   │
      │  Authorization:  │                   │
      │  Bearer <token>  │                   │
      │──────────────────┼──────────────────▶│
@@ -39,13 +44,13 @@
      │                  │    Extract:       │
      │                  │    - user_id      │
      │                  │    - role         │
-     │                  │    - is_verified  │
+     │                  │    - org_id       │
      │                  │                   │
      │                  │    Check:         │
-     │                  │    role=teacher?  │
-     │                  │    is_verified?   │
+     │                  │    - org member?  │
+     │                  │    - trust level? │
      │                  │                   │
-     │  {course}        │                   │
+     │  {mission}       │                   │
      │◀─────────────────┼───────────────────│
 ```
 
@@ -57,8 +62,10 @@
 2. Identity Service:
    - Проверяет уникальность email (409 Conflict если занят)
    - Хэширует пароль через `bcrypt.hashpw()` с `bcrypt.gensalt()`
+   - Генерирует реферальный код (REF-XXXXXXXX)
    - Сохраняет пользователя в БД с `role` и `is_verified=false`
-   - Создаёт JWT с extra_claims: `{role, is_verified}`
+   - Создаёт JWT с extra_claims: `{role, is_verified, email_verified}`
+   - Создаёт refresh token (UUID, SHA-256 hash в БД)
 3. Возвращает `{access_token, refresh_token, token_type: "bearer"}`
 
 ---
@@ -69,7 +76,8 @@
 2. Identity Service:
    - Ищет пользователя по email (400 если не найден)
    - Проверяет пароль через `bcrypt.checkpw()`
-   - Создаёт JWT с **текущими** значениями role и is_verified из БД
+   - Создаёт JWT с **текущими** значениями из БД (role, is_verified, email_verified)
+   - Если пользователь состоит в организации — добавляет `organization_id` в claims (последняя активная организация)
    - Создаёт refresh token (UUID-based, SHA-256 хэш в БД)
 3. Возвращает `{access_token, refresh_token, token_type: "bearer"}`
 
@@ -113,110 +121,6 @@ Client                    Identity Service               Database
 
 `POST /logout` с `{refresh_token}` → отзывает всю token family.
 
-### Таблица refresh_tokens
-
-```sql
-CREATE TABLE refresh_tokens (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash VARCHAR(255) NOT NULL UNIQUE,
-    family_id UUID NOT NULL,
-    is_revoked BOOLEAN NOT NULL DEFAULT false,
-    expires_at TIMESTAMPTZ NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
----
-
-## Авторизация в сервисах
-
-Все 7 сервисов **не обращаются к Identity Service**. Вся авторизация происходит через JWT claims:
-
-1. Route layer извлекает `Authorization: Bearer <token>` из header
-2. Декодирует JWT тем же `JWT_SECRET` (env var)
-3. Извлекает claims: `user_id` (sub), `role`, `is_verified`
-4. Передаёт claims в service layer
-
-### Identity Service
-
-**Admin-only (role=admin):**
-- `GET /admin/teachers/pending` — список unverified teachers
-- `PATCH /admin/users/{id}/verify` — верификация teacher
-
-### Course Service
-
-**Teacher-only (role=teacher + is_verified + owner check):**
-- `POST /courses` — создание курса
-- `PUT /courses/{id}` — редактирование курса
-- `POST /courses/{id}/modules`, `PUT /modules/{id}`, `DELETE /modules/{id}` — управление модулями
-- `POST /modules/{id}/lessons`, `PUT /lessons/{id}`, `DELETE /lessons/{id}` — управление уроками
-
-**Student-only (role=student):**
-- `POST /reviews` — отзыв на курс
-
-**Публичные** (без авторизации):
-- `GET /courses`, `GET /courses/{id}`, `GET /courses/{id}/curriculum`
-- `GET /lessons/{id}`, `GET /reviews/course/{id}`
-
-### Enrollment Service
-
-**Student-only (role=student):**
-- `POST /enrollments` — запись на курс
-- `POST /progress/lessons/{id}/complete` — отметка прогресса
-
-**Authenticated (любая роль):**
-- `GET /enrollments/me`, `GET /progress/courses/{id}`, `GET /progress/courses/{id}/lessons`
-
-**Публичные:**
-- `GET /enrollments/course/{id}/count`
-
-### Payment Service
-
-**Student-only:** `POST /payments`
-**Authenticated:** `GET /payments/{id}`, `GET /payments/me`
-**Teacher-only:** `GET /earnings/me/summary`, `GET /earnings/me`, `POST /earnings/payouts`, `GET /earnings/payouts`
-
-### Notification Service
-
-**Authenticated:** `POST /notifications`, `GET /notifications/me`, `PATCH /notifications/{id}/read`
-**Admin-only:** `POST /streak-reminders/send`, `POST /flashcard-reminders/send`
-
-### AI Service
-
-**Authenticated (любая роль):**
-- `POST /ai/quiz/generate` — генерация квиза из содержания урока
-- `POST /ai/summary/generate` — генерация краткого содержания
-- `POST /ai/tutor/chat` — Socratic AI-тьютор (чат по уроку, лимит 10/день)
-- `POST /ai/tutor/feedback` — оценка ответа тьютора (thumbs up/down)
-- `GET /ai/credits/me` — баланс кредитов текущего пользователя
-
-### Learning Engine
-
-**Teacher-only (role=teacher + is_verified):**
-- `POST /quizzes` — создание квиза для урока
-
-**Student-only (role=student):**
-- `POST /quizzes/{id}/submit` — сдача квиза
-- `GET /quizzes/{id}/attempts/me` — мои попытки
-- `POST /flashcards` — создание карточки
-- `GET /flashcards/due` — карточки к повторению
-- `POST /flashcards/{id}/review` — повторение карточки
-- `DELETE /flashcards/{id}` — удаление карточки
-
-**Authenticated (любая роль):**
-- `GET /quizzes/lesson/{id}` — получение квиза для урока
-- `GET /concepts/course/{id}` — граф концептов курса
-- `GET /concepts/course/{id}/mastery` — мастерство по концептам
-- `GET /streaks/me` — текущий streak пользователя
-- `GET /leaderboard` — общий рейтинг
-- `GET /leaderboard/course/{id}` — рейтинг по курсу
-- `GET /discussions/lesson/{id}` — обсуждения урока
-- `POST /discussions` — создание комментария
-- `POST /discussions/{id}/upvote` — голосование
-- `GET /xp/me` — XP текущего пользователя
-- `GET /badges/me` — значки текущего пользователя
-
 ---
 
 ## JWT Claims
@@ -229,49 +133,205 @@ CREATE TABLE refresh_tokens (
 | `role` | `user.role` | `"student"`, `"teacher"` или `"admin"` |
 | `is_verified` | `user.is_verified` | Статус верификации преподавателя |
 | `email_verified` | `user.email_verified` | Подтверждён ли email |
+| `organization_id` | active org context | ID активной организации (NEW, nullable) |
+
+### Organization Context в JWT (NEW)
+
+Когда пользователь выбирает активную организацию (или логинится и у него есть организация), `organization_id` добавляется в JWT extra_claims. Это позволяет всем сервисам знать контекст организации без дополнительных запросов к Identity.
+
+```python
+extra_claims = {
+    "role": user.role,
+    "is_verified": user.is_verified,
+    "email_verified": user.email_verified,
+    "organization_id": str(active_org_id) if active_org_id else None,
+}
+```
+
+Если пользователь не состоит ни в одной организации — `organization_id` отсутствует в claims (None).
+
+---
+
+## Авторизация в сервисах
+
+Все сервисы **не обращаются к Identity Service**. Вся авторизация происходит через JWT claims:
+
+1. Route layer извлекает `Authorization: Bearer <token>` из header
+2. Декодирует JWT тем же `JWT_SECRET` (env var)
+3. Извлекает claims: `user_id` (sub), `role`, `is_verified`, `organization_id`
+4. Передаёт claims в service layer
+
+### Identity Service
+
+**Admin-only (role=admin):**
+- `PATCH /admin/users/{id}/verify` — верификация teacher
+
+**Org owner/admin:**
+- `POST /organizations/{id}/members` — добавление участника
+- `DELETE /organizations/{id}/members/{user_id}` — удаление участника
+
+**Org membership required:**
+- `GET /organizations/{id}` — информация об организации
+- `GET /organizations/{id}/members` — список участников
+
+---
+
+### AI Service
+
+**Authenticated (любая роль):**
+- `POST /ai/quiz/generate`, `POST /ai/summary/generate`
+- `POST /ai/tutor/chat`, `POST /ai/tutor/feedback`
+- `GET /ai/credits/me`
+
+**Teacher/admin only:**
+- `POST /ai/course/outline`, `POST /ai/lesson/generate`
+- `POST /ai/moderate`
+
+**Authenticated + org membership (NEW):**
+- `POST /ai/strategist/plan-path` — планирование пути
+- `POST /ai/strategist/next-concept` — следующий концепт
+- `POST /ai/strategist/adapt` — адаптация пути
+- `POST /ai/designer/mission` — генерация миссии
+- `POST /ai/designer/recap` — recap после миссии
+- `POST /ai/coach/start`, `POST /ai/coach/chat`, `POST /ai/coach/end` — guided session
+- `GET /ai/mission/daily` — ежедневная миссия
+- `GET /ai/memory/{user_id}` — agent memory (admin или owner)
+- `POST /ai/memory/{user_id}` — обновление memory (admin/internal)
+
+---
+
+### Learning Engine
+
+**Teacher-only (role=teacher + is_verified):**
+- `POST /quizzes`, concept management, `PATCH /discussions/{id}/pin`, `PATCH /discussions/{id}/mark-answer`
+
+**Student-only:**
+- `POST /quizzes/{id}/submit`, flashcard CRUD, pre-tests
+
+**Authenticated (любая роль):**
+- GET endpoints для quizzes, concepts, streaks, leaderboard, discussions, XP, badges, velocity, activity
+
+**Authenticated + org membership (NEW):**
+- `GET /missions/today` — сегодняшняя миссия
+- `POST /missions/{id}/start`, `POST /missions/{id}/complete` — управление миссией
+- `GET /missions/me`, `GET /missions/streak` — история и streak
+- `GET /trust-level/me` — свой trust level
+- `GET /trust-level/org/{org_id}` — trust levels организации (org admin)
+- `GET /daily/me` — ежедневная сводка
+
+---
+
+### RAG Service (NEW)
+
+**Authenticated + org membership:**
+- `GET /documents`, `POST /search`, `GET /concepts`
+- `GET /kb/{org_id}/stats`, `GET /kb/{org_id}/sources`, `GET /kb/{org_id}/concepts`
+- `POST /kb/{org_id}/search`
+- `GET /templates`, `GET /templates/{id}`
+
+**Authenticated + org admin:**
+- `POST /documents`, `DELETE /documents/{id}`
+- `POST /concepts/extract/{document_id}`
+- `POST /sources/github`
+- `POST /upload/markdown`, `POST /upload/bulk`
+- `POST /kb/{org_id}/refresh/{document_id}`
+- `POST /templates`, `POST /templates/{id}/stages`
+- `PUT /templates/{id}/stages/{stage_id}`, `DELETE /templates/{id}/stages/{stage_id}`
+
+---
+
+### Payment Service
+
+**Student-only:** `POST /payments`
+**Authenticated:** `GET /payments/{id}`, `GET /payments/me`
+**Teacher-only:** earnings, payouts
+**Admin-only:** refund management
+**Org owner/admin (NEW):** `POST /org-subscriptions`, `POST /org-subscriptions/{org_id}/cancel`
+**Org membership (NEW):** `GET /org-subscriptions/{org_id}`
+
+---
+
+### Notification Service
+
+**Authenticated:** `POST /notifications`, `GET /notifications/me`, `PATCH /{id}/read`, messages
+**Admin-only:** streak/flashcard reminders
+
+---
+
+## Organization Membership Check (NEW)
+
+Для endpoints с `org membership required`, middleware проверяет:
+
+```python
+# In route layer:
+async def require_org_membership(
+    user_id: UUID,
+    organization_id: UUID,
+    # Identity DB не читается — проверка через JWT claim или query param
+) -> None:
+    # Option 1: organization_id from JWT claims (fast, no DB call)
+    # Option 2: API call to Identity /organizations/{org_id}/members check
+    pass
+```
+
+В текущей реализации `organization_id` передаётся как query parameter или в request body, и сервис доверяет JWT claim `organization_id`. Для критических операций (admin actions) выполняется дополнительная проверка.
+
+---
+
+## Trust Level Authorization (NEW)
+
+Некоторые ресурсы и действия гейтятся Trust Level:
+
+| Trust Level | Доступные действия |
+|-------------|-------------------|
+| 0 (Observer) | Только чтение документации, просмотр KB |
+| 1 (Learner) | Миссии, квизы, flashcards |
+| 2 (Contributor) | Дискуссии, study groups |
+| 3 (Practitioner) | Реальные задачи из кодовой базы, code review миссии |
+| 4 (Specialist) | Менторинг, advanced topics |
+| 5 (Expert) | Создание контента, управление KB |
+
+Trust Level проверяется в service layer:
+
+```python
+# In service layer:
+async def check_trust_level(
+    user_id: UUID,
+    organization_id: UUID,
+    required_level: int,
+    trust_repo: TrustLevelRepository,
+) -> None:
+    trust = await trust_repo.get(user_id, organization_id)
+    if trust.level < required_level:
+        raise ForbiddenError(f"Trust level {required_level} required, current: {trust.level}")
+```
 
 ---
 
 ## Верификация преподавателей
 
-Верификация выполняется через Admin API:
-
 1. Преподаватель регистрируется с `role=teacher` → получает `is_verified=false`
-2. Администратор (`role=admin`) открывает панель `/admin/teachers` → видит список unverified teachers
-3. Администратор нажимает "Одобрить" → `PATCH /admin/users/{id}/verify`
-4. Identity Service обновляет `is_verified=true` в БД
-5. Преподаватель **перелогинивается** → получает новый JWT с `is_verified=true` → может создавать курсы
-
-**Admin endpoints (Identity Service):**
-- `GET /admin/teachers/pending` — список unverified teachers (admin only)
-- `PATCH /admin/users/{user_id}/verify` — верифицировать teacher (admin only)
-
-**Seed admin:** `admin@eduplatform.com` / `password123` (создаётся в seed скрипте)
+2. Администратор (`role=admin`) → `PATCH /admin/users/{id}/verify`
+3. Identity Service обновляет `is_verified=true` в БД
+4. Преподаватель перелогинивается → получает новый JWT с `is_verified=true`
 
 ---
 
 ## Email Verification Flow
 
 1. При регистрации Identity Service создаёт `email_verification_token` (raw token → SHA-256 hash в БД, TTL 24h)
-2. Raw token логируется `[EMAIL_VERIFY] url=.../verify-email?token=...` (stub, без реальной отправки)
-3. Пользователь переходит по ссылке → `POST /verify-email {token}`
-4. Identity Service: SHA-256(token) → найти в БД → проверить expiry/used → mark used → set `email_verified=true`
-5. Новый JWT включает `email_verified: true`
-
-**Resend:** `POST /resend-verification` (authenticated) → удаляет старые токены, создаёт новый.
-
-**Frontend:** баннер "Подтвердите email" в Header, если `email_verified === false`.
+2. Raw token логируется `[EMAIL_VERIFY] url=.../verify-email?token=...` (stub)
+3. `POST /verify-email {token}` → Identity Service: SHA-256(token) → найти → проверить → mark used → set `email_verified=true`
+4. Новый JWT включает `email_verified: true`
 
 ---
 
 ## Forgot Password Flow
 
-1. Пользователь отправляет `POST /forgot-password {email}`
-2. Identity Service **всегда** возвращает 204 (не раскрывает существование email)
-3. Если email существует: проверяет rate limit (3/hour per user), создаёт `password_reset_token` (TTL 1h), логирует `[PASSWORD_RESET]`
-4. Пользователь переходит по ссылке → `POST /reset-password {token, new_password}`
-5. Identity Service: validate token → update password (bcrypt) → revoke all refresh tokens
-6. Пользователь перелогинивается с новым паролем
+1. `POST /forgot-password {email}` → всегда 204 (не раскрывает существование email)
+2. Если email существует: rate limit (3/hour), создаёт `password_reset_token` (TTL 1h), логирует `[PASSWORD_RESET]`
+3. `POST /reset-password {token, new_password}` → validate token → update password (bcrypt) → revoke all refresh tokens
+4. Пользователь перелогинивается с новым паролем
 
 ---
 
@@ -280,8 +340,9 @@ CREATE TABLE refresh_tokens (
 Фронтенд хранит токен в `localStorage`:
 - `token` — JWT access token
 - `user` — JSON объект текущего пользователя (кэш)
+- `activeOrganization` — ID активной организации (NEW)
 
-При logout — оба ключа удаляются.
+При logout — все ключи удаляются.
 
 ---
 
@@ -289,9 +350,7 @@ CREATE TABLE refresh_tokens (
 
 | Ограничение | Причина | Когда появится |
 |-------------|---------|---------------|
-| ~~Нет refresh token~~ | ~~YAGNI для MVP~~ | ✅ Phase 1.2 — refresh token rotation |
-| ~~Нет blacklist токенов~~ | ~~Нет Redis кэша~~ | ✅ Phase 1.2 — revoke family via DB |
-| Shared secret (HS256) | Простота, 7 сервисов | Phase 3 (RSA/JWKS при gateway) |
-| ~~Manual verification~~ | ~~Нет admin panel~~ | ✅ Admin panel реализован |
+| Shared secret (HS256) | Простота, все сервисы | По необходимости (RSA/JWKS при gateway) |
 | localStorage | Простота | Cookie httpOnly при production |
-| Email stub (логирование) | Нет SMTP | Phase 2 (реальная отправка через email service) |
+| Email stub (логирование) | Нет SMTP | По необходимости |
+| Org membership check via JWT | Не real-time (если удалили из org, JWT ещё валиден до exp) | По необходимости (Redis blacklist) |

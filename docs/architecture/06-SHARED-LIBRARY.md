@@ -1,7 +1,7 @@
 # 06 — Shared Library (common)
 
-> Последнее обновление: 2026-03-03
-> Стадия: Phase 3.2 (Monetization backend — Stripe, subscriptions, earnings, payouts)
+> Последнее обновление: 2026-03-05
+> Стадия: B2B Agentic Adaptive Learning Pivot
 
 ---
 
@@ -28,6 +28,14 @@ libs/py/common/
 
 ---
 
+## Использование
+
+Все 6 активных сервисов (Identity, Payment, Notification, AI, Learning, RAG) используют common library. Dormant сервисы (Course, Enrollment) также зависят от common.
+
+B2B pivot **не требует изменений** в common library. Все новые функции (organizations, missions, trust levels, RAG) реализуются на уровне сервисов, используя существующие модули common.
+
+---
+
 ## Модули
 
 ### `common.config`
@@ -47,6 +55,30 @@ class BaseAppSettings(BaseSettings):
 
 Наследуется сервисами для добавления специфичных настроек. Все значения читаются из environment variables (pydantic-settings).
 
+**Примеры наследования:**
+
+```python
+# Identity Service
+class Settings(BaseAppSettings):
+    refresh_token_ttl_days: int = 30
+
+# AI Service (no DATABASE_URL)
+class Settings(BaseSettings):  # Note: not BaseAppSettings
+    redis_url: str = "redis://localhost:6379"
+    jwt_secret: str = "change-me-in-production"
+    gemini_api_key: str = ""
+    learning_service_url: str = "http://localhost:8007"
+    rag_service_url: str = "http://localhost:8008"
+
+# RAG Service
+class Settings(BaseAppSettings):
+    gemini_api_key: str = ""
+    github_token: str = ""
+    embedding_model: str = "text-embedding-004"
+    chunk_size: int = 500
+    chunk_overlap: int = 50
+```
+
 ---
 
 ### `common.database`
@@ -58,6 +90,8 @@ def update_pool_metrics(pool: asyncpg.Pool, service_name: str) -> None
 
 - `create_pool()` — создаёт asyncpg connection pool с настраиваемым размером
 - `update_pool_metrics()` — обновляет Prometheus gauges (pool size, free connections)
+
+Используется всеми сервисами с БД: Identity, Payment, Notification, Learning, RAG. AI Service не использует (stateless).
 
 ---
 
@@ -77,6 +111,11 @@ def register_error_handlers(app: FastAPI) -> None
 
 `register_error_handlers()` добавляет exception handler для `AppError`, который возвращает `{"detail": error.message}` с соответствующим HTTP status code.
 
+`ForbiddenError` активно используется для:
+- Role-based access control (`role != admin`)
+- Organization membership checks (NEW)
+- Trust Level authorization (NEW)
+
 ---
 
 ### `common.security`
@@ -93,8 +132,19 @@ def create_access_token(
 def decode_token(token: str, secret: str, algorithm: str = "HS256") -> dict
 ```
 
-- `create_access_token()` — создаёт JWT с `sub`, `iat`, `exp` + optional extra_claims (role, is_verified)
+- `create_access_token()` — создаёт JWT с `sub`, `iat`, `exp` + optional extra_claims
 - `decode_token()` — декодирует и валидирует JWT (проверяет expiration)
+
+Extra claims используемые в B2B pivot:
+
+```python
+extra_claims = {
+    "role": "student",
+    "is_verified": False,
+    "email_verified": True,
+    "organization_id": "uuid-string"  # NEW: active organization context
+}
+```
 
 ---
 
@@ -118,13 +168,9 @@ import structlog
 from common.logging import configure_logging
 
 # В lifespan:
-configure_logging(service_name="identity")
+configure_logging(service_name="rag")  # NEW service
 logger = structlog.get_logger()
-logger.info("service_started", port=8001)
-
-# В модулях:
-logger = structlog.get_logger()
-logger.info("event_name", key="value")
+logger.info("service_started", port=8008)
 ```
 
 ---
@@ -141,6 +187,8 @@ def create_health_router(
 Фабрика, возвращающая `APIRouter` с двумя endpoints:
 - `GET /health/live` — всегда `{"status": "ok"}`, 200 (liveness probe)
 - `GET /health/ready` — проверяет `pool.fetchval("SELECT 1")` и опционально `redis.ping()`. 200 если ок, 503 `{"status": "degraded"}` если нет (readiness probe)
+
+RAG Service использует эту же фабрику — pgvector pool проверяется через стандартный `SELECT 1`.
 
 ---
 
@@ -172,24 +220,8 @@ def rate_limit(
 
 - `RateLimitConfig` — frozen dataclass for per-route rate limit configuration
 - `RateLimiter` — sliding window counter через Redis INCR + EXPIRE
-- `RateLimitMiddleware` — ASGI middleware, извлекает IP из `request.client.host`, при превышении возвращает `429 Too Many Requests` с `Retry-After` header
-- `rate_limit()` — FastAPI dependency factory supporting per-IP, per-user, and combined keys. Supports dynamic limits (callable returning limit based on JWT claims), role exclusions (e.g. admin bypass), and graceful degradation when Redis is unavailable
-
-**Примеры использования:**
-```python
-# Global IP-based (100 req/min)
-Depends(rate_limit(RateLimitConfig(key_type="ip", max_requests=100, window_seconds=60)))
-
-# Per-user (10 req/min)
-Depends(rate_limit(RateLimitConfig(key_type="user", max_requests=10, window_seconds=60)))
-
-# Dynamic per-tier (free=10, student=100, pro=unlimited)
-def get_ai_limit(claims: dict) -> int:
-    tier = claims.get("tier", "free")
-    return {"free": 10, "student": 100}.get(tier, 0)  # 0 = unlimited
-
-Depends(rate_limit(RateLimitConfig(key_type="user", dynamic_limit=get_ai_limit)))
-```
+- `RateLimitMiddleware` — ASGI middleware, per-IP, 429 с `Retry-After` header
+- `rate_limit()` — FastAPI dependency factory with dynamic limits, role exclusions, graceful degradation
 
 ---
 
@@ -200,41 +232,15 @@ def setup_sentry(dsn: str | None, service_name: str, environment: str = "product
 ```
 
 - Optional Sentry error tracking integration via `sentry-sdk[fastapi]`
-- If `dsn` is `None` or empty string — logs "Sentry disabled" and returns (no-op, zero overhead)
+- If `dsn` is `None` or empty string — no-op, zero overhead
 - If `dsn` is set — calls `sentry_sdk.init()` with FastAPI integration
 - `send_default_pii=False` — never sends PII automatically
-- `_before_send` filter strips sensitive headers (`Authorization`, `Cookie`) and PII fields (`email`, `phone`) from user context
+- `_before_send` filter strips sensitive headers (`Authorization`, `Cookie`) and PII fields
 - Low sampling: `traces_sample_rate=0.1`, `profiles_sample_rate=0.1`
-- Вызывается один раз в `lifespan()` каждого сервиса (после `configure_logging()`)
-
-**Использование:**
-```python
-from common.sentry import setup_sentry
-
-# В lifespan:
-setup_sentry(dsn=settings.sentry_dsn, service_name="identity", environment=settings.environment)
-```
-
----
-
-## Использование в сервисах
-
-```python
-# services/py/identity/app/config.py
-from common.config import BaseAppSettings
-
-class Settings(BaseAppSettings):
-    jwt_ttl_seconds: int = 3600   # переопределение
-
-# services/py/course/app/config.py
-from common.config import BaseAppSettings
-
-class Settings(BaseAppSettings):
-    pass                           # всё из базового класса
-```
+- Вызывается один раз в `lifespan()` каждого сервиса
 
 ---
 
 ## Правило выноса в common
 
-Код выносится в `libs/py/common/` только когда используется в **2+ сервисах**. Все 7 модулей используются во всех 7 сервисах (Identity, Course, Enrollment, Payment, Notification, AI, Learning).
+Код выносится в `libs/py/common/` только когда используется в **2+ сервисах**. Все 7 модулей используются во всех активных сервисах. B2B pivot не добавляет новых модулей в common — новая функциональность (org checks, trust level checks) реализуется на уровне отдельных сервисов, а не в shared library (YAGNI — пока используется в 1 месте).

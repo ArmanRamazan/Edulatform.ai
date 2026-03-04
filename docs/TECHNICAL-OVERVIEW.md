@@ -1,89 +1,141 @@
 # EduPlatform — Technical Overview
 
-Архитектурный справочник проекта: текущий статус, стек, структура, порты, быстрый старт.
+B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist → Designer → Coach) генерирует персонализированные 15-минутные ежедневные миссии из реальной кодовой базы компании.
 
-## Текущий статус
+## Архитектура
 
-**Стадия:** Phase 2.4 ✅ (Gamification) — Phase 2.5 в процессе — Phase 3.1–3.2 backend ✅ — 157 RPS, p99 51ms
+Монорепа: Python (бизнес-логика, AI) + Next.js (frontend). Микросервисы с database-per-service. Пивот с B2C marketplace — Identity, AI, Learning, Notification сервисы переиспользуются, Course/Enrollment/Payment dormant.
 
-| Компонент | Статус | Описание |
-|-----------|--------|----------|
-| Identity Service | ✅ Готов | Регистрация, логин, JWT refresh tokens, роли, admin, email verification, forgot password, referral program, public profiles, follows |
-| Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization, course bundles, promotional pricing, wishlist |
-| Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion, course recommendations (co-enrollment collaborative filtering) |
-| Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, coupons/promo codes, invoice PDF generation, refunds (admin approval workflow), course gifting (POST /gifts, GET /gifts/me/sent, POST /gifts/redeem, GET /gifts/{gift_code}/info), GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
-| Notification Service | ✅ Готов | In-app уведомления, email delivery via Resend API (lifecycle events: welcome, course_completed, review_received, streak_at_risk; StubEmailClient fallback), mark as read, streak-at-risk reminders, flashcard-due reminders |
-| AI Service | ✅ Готов | Quiz generation, summary generation, Socratic AI tutor, course outline generation (teacher/admin), lesson content generation (teacher/admin), personalized study plan generation, content moderation (teacher/admin), Gemini Flash, Redis cache, plan-based credit system (free/student/pro tiers), service-to-service calls to Learning Service, GET /ai/credits/me |
-| Learning Engine | ✅ Готов | Quiz persistence, FSRS flashcards, spaced repetition, knowledge graph, course discussions (threaded replies, pinning, teacher answers), XP system, badges, streaks, leaderboard, adaptive pre-test, learning velocity, activity feed, study groups (collaborative learning), certificates, 47 endpoints |
-| Buyer Frontend | ✅ Готов | Next.js 15 — каталог, поиск, уроки, прогресс, admin, TanStack Query, error boundaries |
-| Seller Frontend | ✅ Готов | Next.js 15 — dashboard, course CRUD, module/lesson management, AI course outline generation, AI lesson content generation |
-| Shared Library | ✅ Готов | Config, errors, security, database, health checks, rate limiting, Sentry integration |
-| Docker Compose | ✅ Готов | Dev (hot reload) + Prod (monitoring, graceful shutdown) |
-| Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
-| Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
-| Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 820 тестов | identity 117 (incl. sentry: 12, rate limit: 16), course 129 (incl. wishlist: 18), enrollment 39 (incl. recommendations: 11), payment 151, notification 79 (incl. email: 14, email adapter: 8), ai 116, learning 189 (incl. pre-test: 20, velocity: 11, activity: 10, study groups: 14, certificates: 14) |
+```
+                      ┌─────────────┐
+                      │   Buyer     │
+                      │  Next.js    │
+                      │   :3001     │
+                      └──────┬──────┘
+                             │ /api proxy
+        ┌────────┬───────────┼───────────┬──────────┐
+        │        │           │           │          │
+   ┌────▼──┐ ┌──▼───┐ ┌────▼────┐ ┌───▼────┐ ┌───▼──┐
+   │Identit│ │  AI  │ │Learning │ │Notific.│ │ RAG  │
+   │ :8001 │ │:8006 │ │ :8007   │ │ :8005  │ │:8008 │
+   └───┬───┘ └──┬───┘ └───┬─────┘ └───┬────┘ └──┬───┘
+       │        │         │           │          │
+  ┌────▼──┐    Redis ┌───▼─────┐ ┌───▼────┐ ┌──▼────┐
+  │ident. │         │learning │ │notif.  │ │rag-db │
+  │  db   │         │  db     │ │  db    │ │pgvect.│
+  │:5433  │         │ :5438   │ │ :5437  │ │:5439  │
+  └───────┘         └─────────┘ └────────┘ └───────┘
+```
 
 ## Стек
 
-| Слой | Технология | Почему |
-|------|-----------|--------|
-| Бизнес-логика | Python 3.12 / FastAPI | Быстрая разработка, Clean Architecture |
-| Performance-critical | Rust (будет) | API gateway, поиск, видео — когда Python упрётся в потолок |
-| Frontend | Next.js 15 / Tailwind CSS 4 | SSR/SSG, App Router, TanStack Query |
-| БД | PostgreSQL 16 | Каждый сервис — своя БД |
-| Кэш / Rate limit | Redis 7 | Course cache (TTL 5min), rate limiting (sliding window), все сервисы |
-| AI / LLM | Gemini 2.0 Flash Lite (httpx) | Quiz gen, summary gen, Socratic tutor, credit tracking |
-| Логирование | structlog (JSON) | Structured logging, JSON в prod, console в dev |
-| Метрики | Prometheus + Grafana | Автоматические метрики через prometheus-fastapi-instrumentator |
-| Нагрузка | Locust | Сценарии, имитирующие реальный трафик |
-| Пакеты | uv (Python), pnpm (JS) | uv workspace для монорепы |
+| Слой | Технология | Назначение |
+|------|-----------|------------|
+| Бизнес-логика | Python 3.12 / FastAPI | Clean Architecture, async |
+| Frontend | Next.js 15 / Tailwind CSS 4 | App Router, TanStack Query |
+| БД | PostgreSQL 16 | Database-per-service |
+| Vector DB | PostgreSQL + pgvector | RAG embeddings, semantic search |
+| Кэш | Redis 7 | Cache, rate limiting, AI conversation memory |
+| AI / LLM | Gemini 2.0 Flash Lite | Tri-Agent System, quiz gen, tutor |
+| Embeddings | OpenAI / local model | Document + code embeddings для RAG |
+| Метрики | Prometheus + Grafana | RPS, latency, pool metrics |
+| Пакеты | uv (Python), pnpm (JS) | Монорепа workspace |
 
-## Быстрый старт
+## Сервисы
 
-### Бэкенд (Docker)
+| Сервис | Порт | БД порт | Роль | Статус |
+|--------|------|---------|------|--------|
+| Identity | 8001 | 5433 | Auth, JWT, roles, orgs | ✅ Active |
+| Course | 8002 | 5434 | CRUD курсов, search | ⏸ Dormant |
+| Enrollment | 8003 | 5435 | Запись, прогресс | ⏸ Dormant |
+| Payment | 8004 | 5436 | Платежи, subscriptions | ⏸ Dormant (реактивация в Sprint 22) |
+| Notification | 8005 | 5437 | In-app, email, DMs | ✅ Active |
+| AI | 8006 | — (Redis) | Tri-Agent System, LLM routing | ✅ Active |
+| Learning | 8007 | 5438 | Quizzes, FSRS, knowledge graph, missions | ✅ Active |
+| RAG | 8008 | 5439 | Document ingestion, semantic search | 🔴 Sprint 17 |
+
+## Tri-Agent System
+
+Три специализированных AI-агента, работающих последовательно:
+
+| Agent | Роль | Input | Output |
+|-------|------|-------|--------|
+| **Strategist** | Анализ кодовой базы, определение learning path | RAG chunks + engineer profile | Weekly plan, topic sequence |
+| **Designer** | Генерация mission-контента из реального кода | Plan + RAG chunks + trust level | Mission steps, code snippets, questions |
+| **Coach** | Socratic dialog, review ответов, подсказки | Mission context + engineer answers | Feedback, hints, trust level recommendation |
+
+Pipeline: `Strategist → Designer → Coach` (sequential, stateful).
+
+## RAG Pipeline
+
+```
+GitHub repo / Docs / Wiki
+    → Ingest (clone, parse, extract)
+    → Chunk (code: function-level, docs: section-level)
+    → Embed (OpenAI / local model → pgvector)
+    → Search (semantic similarity + entity filter)
+    → Extract (functions, classes, concepts, dependencies)
+```
+
+Хранение: PostgreSQL + pgvector (rag-db :5439). Scope: per-organization.
+
+## Mission Engine
+
+Ежедневные 15-минутные сессии, адаптированные под Trust Level инженера.
+
+**Типы миссий:**
+
+| Тип | Trust Level | Описание |
+|-----|-------------|----------|
+| code_reading | 0-1 | Чтение и понимание фрагмента кода |
+| architecture_quiz | 1-2 | Вопросы по архитектуре системы |
+| code_writing | 2-3 | Написание кода по спецификации |
+| PR_review | 3-5 | Ревью реального pull request |
+
+**Trust Levels (0-5):** Observer → Reader → Contributor → Developer → Reviewer → Expert. Прогрессия через completion rate, quiz scores, Coach оценки.
+
+## Базы данных
+
+| БД | Порт | Сервис | Таблицы |
+|----|------|--------|---------|
+| identity-db | 5433 | Identity | users, refresh_tokens, email_tokens, password_tokens, referrals, follows, organizations, org_members |
+| course-db | 5434 | Course (dormant) | courses, modules, lessons, reviews, categories, bundles, wishlist |
+| enrollment-db | 5435 | Enrollment (dormant) | enrollments, lesson_progress |
+| payment-db | 5436 | Payment (dormant) | payments, subscription_plans, user_subscriptions, teacher_earnings, payouts, coupons, refunds, gifts |
+| notification-db | 5437 | Notification | notifications, conversations, messages |
+| learning-db | 5438 | Learning | quizzes, questions, quiz_attempts, flashcards, review_logs, concepts, concept_edges, concept_mastery, streaks, leaderboard_entries, discussions, xp_events, badges, user_badges, pretests, pretest_answers, activity_events, study_groups, study_group_members |
+| rag-db | 5439 | RAG (Sprint 17) | documents, chunks, embeddings, entities |
+| Redis | 6379 | All | Cache, rate limiting, AI memory, session |
+
+## Тесты
 
 ```bash
-# Dev — hot reload, volume mounts
+cd services/py/identity    && uv run --package identity pytest tests/ -v     # 92 tests
+cd services/py/course      && uv run --package course pytest tests/ -v       # 111 tests
+cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 28 tests
+cd services/py/payment     && uv run --package payment pytest tests/ -v      # 151 tests
+cd services/py/notification && uv run --package notification pytest tests/ -v # 57 tests
+cd services/py/ai          && uv run --package ai pytest tests/ -v           # 116 tests
+cd services/py/learning    && uv run --package learning pytest tests/ -v     # 175 tests
+```
+
+**Итого:** 734 теста по 7 сервисам. RAG Service (Sprint 17) добавит ещё ~40-60 тестов.
+
+## Инфраструктура
+
+```bash
+# Dev — hot reload
 docker compose -f docker-compose.dev.yml up
 
-# Засеять данные (50K users + 100K courses)
+# Seed data
 docker compose -f docker-compose.dev.yml --profile seed up seed
-```
 
-### Фронтенд
-
-```bash
-cd apps/buyer && pnpm install && pnpm dev    # http://localhost:3001
-cd apps/seller && pnpm install && pnpm dev   # http://localhost:3002
-```
-
-### Тесты
-
-```bash
-# Установить зависимости (из корня)
-uv sync --all-packages
-
-# Все 7 сервисов (677 тестов)
-cd services/py/identity && uv run --package identity pytest tests/ -v
-cd services/py/course && uv run --package course pytest tests/ -v
-cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
-cd services/py/payment && uv run --package payment pytest tests/ -v
-cd services/py/notification && uv run --package notification pytest tests/ -v
-cd services/py/ai && uv run --package ai pytest tests/ -v
-cd services/py/learning && uv run --package learning pytest tests/ -v
-```
-
-### Нагрузочное тестирование
-
-```bash
-# Prod stack + monitoring
+# Prod — monitoring
 docker compose -f docker-compose.prod.yml up -d
 
-# Locust UI → http://localhost:8089
-docker compose -f docker-compose.prod.yml --profile loadtest up locust
-
 # Grafana → http://localhost:3000
+# Prometheus → http://localhost:9090
+# Locust → http://localhost:8089
 ```
 
 ## Порты
@@ -91,65 +143,56 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 | Сервис | Порт |
 |--------|------|
 | Identity API | 8001 |
-| Course API | 8002 |
-| Enrollment API | 8003 |
-| Payment API | 8004 |
+| Course API (dormant) | 8002 |
+| Enrollment API (dormant) | 8003 |
+| Payment API (dormant) | 8004 |
 | Notification API | 8005 |
 | AI API | 8006 |
 | Learning API | 8007 |
+| RAG API (Sprint 17) | 8008 |
 | Buyer Frontend | 3001 |
-| Seller Frontend | 3002 |
+| Seller Frontend (dormant) | 3002 |
 | Grafana | 3000 |
 | Prometheus | 9090 |
 | Locust | 8089 |
-| Identity DB (Postgres) | 5433 |
-| Course DB (Postgres) | 5434 |
-| Enrollment DB (Postgres) | 5435 |
-| Payment DB (Postgres) | 5436 |
-| Notification DB (Postgres) | 5437 |
-| Learning DB (Postgres) | 5438 |
-| Redis | 6379 |
 
-## Структура
+## Frontend (Buyer App)
 
-```
-├── libs/py/common/          — Shared: config, errors, security, database, health, rate limiting
-├── services/py/identity/    — Auth: register, login, JWT refresh tokens, roles, admin, email verification, referrals, public profiles, follows
-├── services/py/course/      — Courses: CRUD, search, modules, lessons, reviews, categories, filtering, bundles
-├── services/py/enrollment/  — Enrollment: запись на курс, прогресс, lesson completion, auto-completion
-├── services/py/payment/     — Payment: mock-оплата, teacher earnings, payouts, invoice PDF, refunds, course gifting
-├── services/py/notification/— Notifications: in-app, mark as read
-├── services/py/ai/          — AI: quiz gen, summary, Socratic tutor, study plan, Gemini Flash, Redis cache, credit tracking
-├── services/py/learning/   — Learning Engine: quizzes, FSRS flashcards, knowledge graph, discussions
-├── apps/buyer/              — Next.js student frontend
-├── apps/seller/             — Next.js teacher dashboard
-├── deploy/docker/           — Dockerfiles, Prometheus, Grafana
-├── tools/seed/              — Data generation (50K users, 100K courses, 200K enrollments, learning data)
-├── tools/locust/            — Load test scenarios
-├── tools/orchestrator/      — AI orchestrator: autonomous Claude Code executor for phase roadmap
-├── docs/goals/              — Architecture decisions, domain specs
-├── docs/architecture/       — Current system state (source of truth)
-└── docs/phases/             — Implementation roadmap
-```
+95+ endpoints на backend, растёт до 120+ с новыми сервисами.
 
-## Roadmap
+Ключевые маршруты (текущие + планируемые):
 
-Подробный roadmap: [docs/goals/00-ROADMAP.md](docs/goals/00-ROADMAP.md)
+| Route | Описание | Статус |
+|-------|----------|--------|
+| /courses | Каталог (dormant B2C) | ✅ |
+| /courses/[id] | Детали курса (dormant B2C) | ✅ |
+| /dashboard | Mission Dashboard (B2B) | 🔴 Sprint 21 |
+| /coach | Coach Chat UI | 🔴 Sprint 21 |
+| /knowledge | Knowledge Graph viz | 🔴 Sprint 21 |
+| /admin | Team Analytics | 🔴 Sprint 22 |
+| /settings/org | Org Switcher | 🔴 Sprint 21 |
 
-| Стадия | Пользователи | Ключевые изменения | Статус |
-|--------|-------------|-------------------|--------|
-| **Foundation** | до 10K | 7 Python сервисов, Next.js, Postgres, Locust | ✅ Готово |
-| **Learning Intelligence** | 10K → 100K | AI-тьютор, квизы, spaced repetition, knowledge graph, gamification | 🟡 2.0–2.4 ✅, 2.5 🔴 в процессе |
-| **Growth** | 100K → 1M | Реальные платежи, seller dashboard, SEO, mobile, CI/CD | 🟡 3.1–3.2 backend ✅, frontend 🔴 |
-| **Scale** | 1M → 10M | Rust gateway, event bus, video platform, multi-region | 🔴 Не начато |
+## Текущий статус
+
+| Sprint | Название | Задач | Статус |
+|--------|----------|-------|--------|
+| Pre-pivot | Foundation + Optimization + Learning Intelligence | — | ✅ Завершено |
+| **Sprint 17** | RAG Foundation | 5 | 🔴 Следующий |
+| **Sprint 18** | Tri-Agent System | 5 | 🔴 |
+| **Sprint 19** | Mission Engine + Trust Levels | 6 | 🔴 |
+| **Sprint 20** | Company Integration | 5 | 🔴 |
+| **Sprint 21** | Frontend Redesign | 5 | 🔴 |
+| **Sprint 22** | B2B Launch | 4 | 🔴 |
+
+**Итого:** 30 задач в 6 спринтах для B2B MVP.
 
 ## Документация
 
 | Документ | Описание |
 |----------|----------|
-| [Видение продукта](docs/goals/01-PRODUCT-VISION.md) | Learning Velocity Engine, core loop, метрики |
-| [Архитектура](docs/goals/02-ARCHITECTURE-PRINCIPLES.md) | ADR, принципы, выбор технологий |
-| [Домены](docs/goals/04-DOMAINS.md) | Bounded contexts, event matrix |
-| [Безопасность](docs/goals/06-SECURITY.md) | Threat model, mitigation |
-| [Observability](docs/goals/09-OBSERVABILITY.md) | SLO, метрики, алерты |
-| [Frontend](docs/goals/10-FRONTEND.md) | Next.js архитектура, performance budgets |
+| [Phase 0](docs/phases/PHASE-0-FOUNDATION.md) | Foundation (completed, pre-pivot) |
+| [Phase 1](docs/phases/PHASE-1-LAUNCH.md) | Optimization (completed, pre-pivot) |
+| [Phase 2](docs/phases/PHASE-2-LEARNING-INTELLIGENCE.md) | Learning Intelligence (completed, pre-pivot) |
+| [Phase 3](docs/phases/PHASE-3-GROWTH.md) | B2B Sprint Roadmap (active, Sprints 17-22) |
+| [Phase 4](docs/phases/PHASE-4-SCALE.md) | Scale & Enterprise (future) |
+| [Architecture](docs/architecture/) | System overview, API reference, DB schemas |

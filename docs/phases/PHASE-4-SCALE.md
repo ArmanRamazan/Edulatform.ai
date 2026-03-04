@@ -1,92 +1,78 @@
-# Phase 4 — Scale (1M → 10M MAU)
+# Phase 4 — Scale & Enterprise [NOT STARTED, FUTURE]
 
-> **Цель:** тяжёлая инфраструктура для глобального масштаба. Только когда Growth
-> упёрся в потолок производительности.
+> **Статус:** 🔴 НЕ НАЧАТО. Планируется после валидации B2B продукта (Phase 3).
 >
-> **Предусловие:** Phase 3 завершена — revenue > $100K/мес, 1M MAU.
+> **Предусловие:** Phase 3 завершена — pilot с реальной командой успешен, product-market fit подтверждён.
+>
+> **Цель:** масштабирование B2B платформы для enterprise-клиентов.
 
 ---
 
-## Бизнес-цели Phase 4
+## Направления масштабирования
+
+### 1. Performance Layer (Rust)
+
+- API Gateway на Rust/Axum: auth, routing, rate limiting, request aggregation
+- Решение принимается при p99 > 50ms или > 10K RPS на Python сервисах
+- Protobuf contracts для gRPC между сервисами
+
+### 2. Event-Driven Architecture
+
+- NATS JetStream event bus для inter-service communication
+- Async events: mission.completed, trust_level.changed, org.member.added
+- Event sourcing для learning events и audit trail
+
+### 3. Multi-Region Deployment
+
+- Kubernetes auto-scaling per organization load
+- Multi-region active-active для enterprise-клиентов
+- Data residency compliance (EU, US, APAC)
+- Global CDN для static assets
+
+### 4. Custom LLM per Organization
+
+- Fine-tuning модели на кодовой базе конкретной компании
+- Self-hosted SLM для enterprise (data privacy requirements)
+- Model routing: organization → custom model → fallback to general
+
+### 5. Enterprise Integrations
+
+- **Slack** — mission notifications, Coach chat in Slack threads
+- **Jira** — sync onboarding tasks, track real ticket progress
+- **Confluence** — auto-ingest wiki pages into RAG
+- **GitHub/GitLab** — PR review agent, commit analysis, real contribution tracking
+- **SSO** — SAML 2.0, OIDC for enterprise identity providers
+- **SCIM** — automated user provisioning/deprovisioning
+
+### 6. PR Review Agent
+
+- Анализ pull requests новых инженеров
+- Автоматическая оценка quality и alignment с codebase conventions
+- Feedback loop: PR quality → Trust Level adjustment
+- Integration с GitHub Actions / GitLab CI
+
+### 7. Advanced Analytics
+
+- ClickHouse для аналитики (onboarding velocity, bottleneck detection)
+- Predictive models: time-to-productivity forecast per engineer
+- Benchmarking: сравнение onboarding velocity между командами
+- Executive dashboards для CTO/VP Engineering
+
+---
+
+## Бизнес-цели
 
 | Метрика | Целевое значение |
 |---------|-----------------|
-| MAU | 10 000 000 |
-| Revenue / мес | $18M |
-| Latency p99 | < 200ms globally |
+| Organizations | 100+ |
+| Active engineers | 10 000+ |
+| Time-to-productivity reduction | 50%+ |
+| Revenue / MRR | $500K+ |
 | Uptime | 99.99% |
+| Latency p99 | < 200ms globally |
 
 ---
 
-## Milestone 4.1 — Rust Performance Layer (sprint-16)
+## Примечание
 
-| # | Задача | Статус |
-|---|--------|--------|
-| 4.1.1 | API Gateway (Rust/Axum): auth, routing, rate limiting | 🔴 |
-| 4.1.2 | Search Service (Rust) + Meilisearch | 🔴 |
-| 4.1.3 | Protobuf contracts (gRPC) | 🔴 |
-
----
-
-## Milestone 4.2 — Event-Driven Architecture (sprint-16)
-
-| # | Задача | Статус |
-|---|--------|--------|
-| 4.2.1 | NATS JetStream event bus | 🔴 |
-| 4.2.2 | Async events between all services | 🔴 |
-| 4.2.3 | Event sourcing for learning events | 🔴 |
-
----
-
-## Milestone 4.3 — Video Platform (sprint-13)
-
-| # | Задача | Статус |
-|---|--------|--------|
-| 4.3.1 | Video upload + transcode pipeline (Rust) | 🔴 |
-| 4.3.2 | Adaptive HLS streaming | 🔴 |
-| 4.3.3 | Multi-CDN strategy | 🔴 |
-| 4.3.4 | Auto-transcription + subtitles | 🔴 |
-
----
-
-## Milestone 4.4 — Database Scale (sprint-16)
-
-| # | Задача | Статус |
-|---|--------|--------|
-| 4.4.1 | PostgreSQL read replicas | 🔴 |
-| 4.4.2 | Citus sharding (courses, enrollments) | 🔴 |
-| 4.4.3 | ClickHouse for analytics | 🔴 |
-
----
-
-## Milestone 4.5 — AI Scale
-
-| # | Задача | Статус |
-|---|--------|--------|
-| 4.5.1 | Self-hosted SLM (replace 80% of API calls) | 🔴 |
-| 4.5.2 | Fine-tuned tutor model on our interaction data | 🔴 |
-| 4.5.3 | Multi-language AI (auto-translate, localized tutor) | 🔴 |
-
----
-
-## Milestone 4.6 — Global Infrastructure (sprint-16)
-
-| # | Задача | Статус |
-|---|--------|--------|
-| 4.6.1 | Kubernetes auto-scaling | 🔴 |
-| 4.6.2 | Multi-region active-active | 🔴 |
-| 4.6.3 | Global load balancing (GeoDNS) | 🔴 |
-| 4.6.4 | Mobile app (PWA → native) | 🔴 |
-
----
-
-## Новые домены (из sprint execution plan)
-
-| Sprint | Домен | Описание |
-|--------|-------|----------|
-| sprint-11 | Social & Community | Study groups, peer review, mentorship program |
-| sprint-12 | Marketplace & Discovery | Course recommendations, coupons, instructor marketplace |
-| sprint-13 | Video Platform | Upload, transcode, HLS, subtitles, video analytics |
-| sprint-14 | Integrations & SSO | Google/GitHub SSO, Slack, LTI, API marketplace, webhooks |
-| sprint-15 | Enterprise & Teams | Team accounts, SCIM, SSO SAML, admin dashboard, reporting |
-| sprint-16 | Scale Infrastructure | Rust gateway, NATS, read replicas, K8s, multi-region |
+Все решения Phase 4 принимаются на основе реальных данных из Phase 3 pilot. Преждевременная оптимизация запрещена (YAGNI). Каждый пункт реализуется только когда есть доказанный bottleneck или подтверждённый enterprise-запрос.

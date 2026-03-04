@@ -1,120 +1,249 @@
 # 08 — Монорепа и Developer Experience
 
 > Владелец: Principal Developer / Platform Team
-> Последнее обновление: 2026-02-24
+> Последнее обновление: 2026-03-05
 
 ---
 
-## Целевая структура монорепы
+## Контекст
+
+B2B Agentic Adaptive Learning платформа. Миссия: сократить онбординг инженеров с 3 месяцев до 1 через AI-ментора. Tri-Agent система (Strategist → Designer → Coach), RAG по кодобазе компании, Trust Levels 0-5.
+
+---
+
+## Структура монорепы
 
 ```
 eduplatform/
 ├── CLAUDE.md                    # AI-assistant instructions
 ├── README.md
-├── Cargo.toml                   # Rust workspace root
+├── STRUCTURE.md
 ├── pyproject.toml               # Python workspace root (uv)
-├── justfile                     # Task runner (just)
 │
-├── proto/                       # Shared protobuf definitions
-│   ├── course/v1/
-│   ├── enrollment/v1/
-│   ├── payments/v1/
+├── proto/                       # Protobuf контракты
+│   ├── identity/v1/
+│   ├── learning/v1/
+│   ├── ai/v1/
+│   ├── rag/v1/
 │   └── events/v1/
 │
-├── libs/                        # Shared libraries
-│   ├── py/
-│   │   ├── common/              # Python shared: logging, errors, config
-│   │   ├── db/                  # Database utilities, migrations
-│   │   └── testing/             # Test fixtures, factories
-│   └── rs/
-│       ├── common/              # Rust shared: error types, config
-│       ├── proto-gen/           # Generated protobuf code
-│       └── testing/             # Rust test utilities
+├── libs/
+│   └── py/
+│       └── common/              # Shared Python: logging, errors, config, db utils
 │
-├── services/                    # Deployable services
-│   ├── py/
-│   │   ├── identity/            # Auth, users, roles (student/teacher)
-│   │   ├── course/              # Courses, lessons, materials
-│   │   ├── enrollment/          # Enrollment, progress, certificates
-│   │   ├── notifications/       # Email, push, SMS
-│   │   ├── moderation/          # Content moderation
-│   │   ├── teacher-tools/       # Teacher dashboard backend
-│   │   └── analytics-api/       # Analytics API
-│   └── rs/
-│       ├── search/              # Search engine proxy + ranking
-│       ├── video-processor/     # Transcoding, streaming
-│       ├── messaging/           # WebSocket real-time Q&A
-│       ├── payment-engine/      # Transaction processing
-│       ├── event-ingestion/     # High-throughput event collector
-│       └── api-gateway/         # Gateway, rate limiting, routing
+├── services/
+│   └── py/
+│       ├── identity/            # Auth, users, orgs, trust levels (port 8001)
+│       ├── ai/                  # Tri-Agent orchestration (port 8006)
+│       ├── learning/            # Missions, progress, assessments (port 8007)
+│       ├── rag/                 # Code/docs ingestion, vector search (port 8008)
+│       ├── notification/        # Email, push, reminders (port 8005)
+│       │
+│       │ # --- Dormant (B2C legacy, kept but not actively developed) ---
+│       ├── course/              # (port 8002) — frozen
+│       ├── enrollment/          # (port 8003) — frozen
+│       └── payment/             # (port 8004) — frozen
 │
-├── workers/                     # Background workers
-│   ├── py/
-│   │   ├── email-sender/
-│   │   ├── certificate-generator/
-│   │   └── analytics-aggregator/
-│   └── rs/
-│       ├── video-transcoder/
-│       └── feed-builder/
+├── apps/
+│   ├── buyer/                   # Next.js — engineer experience (B2B)
+│   └── seller/                  # Next.js — dormant (teacher marketplace)
 │
-├── migrations/                  # Database migrations (per service)
-│   ├── identity/
-│   ├── course/
-│   ├── enrollment/
-│   └── payments/
+├── packages/
+│   ├── ui/                      # Shared UI kit (Radix + Tailwind)
+│   ├── api-client/              # Typed API client
+│   └── shared/                  # Shared utilities
 │
-├── deploy/                      # Infrastructure as Code
-│   ├── k8s/                     # Kubernetes manifests
-│   ├── terraform/               # Cloud infrastructure
-│   └── docker/                  # Dockerfiles
+├── deploy/                      # Docker, K8s manifests
+│   ├── docker/
+│   └── k8s/
 │
-├── docs/                        # Documentation
-│   ├── goals/                   # ← Эти файлы
-│   ├── architecture/            # C4 diagrams, ADRs
-│   └── phases/                  # Phase plans
+├── tools/
+│   ├── orchestrator/            # Autonomous Claude Code sprint executor
+│   │   ├── orchestrator.py
+│   │   ├── run.sh
+│   │   ├── tasks/               # YAML sprint/phase task files
+│   │   ├── .state/              # Persisted execution state
+│   │   └── .logs/               # Execution logs
+│   ├── seed/                    # Database seeding scripts
+│   └── locust/                  # Load test scenarios
 │
-└── tools/                       # Developer tools
-    ├── cli/                     # Internal CLI (Rust)
-    ├── seed/                    # Database seeding scripts
-    └── locust/                  # Load test scenarios
+└── docs/
+    ├── goals/                   # Эти файлы
+    ├── architecture/            # System overview, API ref, DB schemas
+    └── phases/                  # Phase plans
 ```
 
 ---
 
-## TODO: Developer Experience
+## Сервисы и порты
+
+| Сервис | Порт | Статус | Описание |
+|--------|------|--------|----------|
+| identity | 8001 | Active | Auth, users, organizations, trust levels |
+| notification | 8005 | Active | Email, push, reminders |
+| ai | 8006 | Active | Tri-Agent: Strategist, Designer, Coach |
+| learning | 8007 | Active | Missions, progress, assessments, knowledge graph |
+| rag | 8008 | Active | Code/docs ingestion, pgvector search, embeddings |
+| course | 8002 | Dormant | B2C course CRUD (frozen) |
+| enrollment | 8003 | Dormant | B2C enrollment (frozen) |
+| payment | 8004 | Dormant | B2C payments (frozen) |
+
+### Базы данных (Docker dev)
+
+| БД | Порт | Сервис |
+|----|------|--------|
+| identity-db | 5433 | identity |
+| learning-db | 5438 | learning |
+| rag-db | 5439 | rag (PostgreSQL + pgvector) |
+| notification-db | 5437 | notification |
+| ai-db | 5440 | ai (session state, credits) |
+
+---
+
+## Local Development
+
+### Быстрый старт
+
+```bash
+# 1. Установить зависимости
+uv sync --all-packages
+
+# 2. Поднять dev-окружение
+docker compose -f docker-compose.dev.yml up
+
+# 3. Seed данные
+docker compose -f docker-compose.dev.yml --profile seed up seed
+
+# 4. Запустить один сервис локально (hot reload)
+cd services/py/identity && uv run uvicorn app.main:app --reload --port 8001
+```
+
+### Docker Compose
+
+- **Dev:** `docker compose -f docker-compose.dev.yml up` — hot reload, volume mounts
+- **Prod:** `docker compose -f docker-compose.prod.yml up -d` — monitoring, multi-worker
+- **Seed:** `docker compose -f docker-compose.dev.yml --profile seed up seed`
+- **Load test:** `docker compose -f docker-compose.prod.yml --profile loadtest up locust`
+
+### WSL2 Docker
+
+`COPY --from=ghcr.io/astral-sh/uv:latest` не работает из-за `credsStore: desktop.exe` в `~/.docker/config.json`. Используем `ADD` + `tar`:
+
+```dockerfile
+ADD https://github.com/astral-sh/uv/releases/latest/download/uv-x86_64-unknown-linux-gnu.tar.gz /tmp/uv.tar.gz
+RUN tar -xzf /tmp/uv.tar.gz -C /usr/local/bin/ --strip-components=1
+```
+
+---
+
+## Тестовые команды
+
+### Active сервисы
+
+```bash
+cd services/py/identity      && uv run --package identity pytest tests/ -v
+cd services/py/ai            && uv run --package ai pytest tests/ -v
+cd services/py/learning      && uv run --package learning pytest tests/ -v
+cd services/py/rag           && uv run --package rag pytest tests/ -v
+cd services/py/notification  && uv run --package notification pytest tests/ -v
+```
+
+### Dormant сервисы (тесты должны проходить, но не развиваются)
+
+```bash
+cd services/py/course        && uv run --package course pytest tests/ -v
+cd services/py/enrollment    && uv run --package enrollment pytest tests/ -v
+cd services/py/payment       && uv run --package payment pytest tests/ -v
+```
+
+### Frontend
+
+```bash
+cd apps/buyer && pnpm build
+```
+
+---
+
+## uv Workspace
+
+Python workspace в корне (`pyproject.toml`). Сервисы — virtual workspace members (no build-system). `common` lib — installable (hatchling), сервисы ссылаются через `workspace = true`.
+
+```toml
+# pyproject.toml (root)
+[tool.uv.workspace]
+members = ["services/py/*", "libs/py/*"]
+```
+
+Запуск из директории сервиса: `uv run --package <name>`.
+
+---
+
+## Orchestrator Tool
+
+Автономный исполнитель задач для Claude Code. Принимает YAML-файлы с описанием спринтов.
+
+```bash
+# Запуск спринта
+cd tools/orchestrator && ./run.sh tasks/sprint-1-launch-blockers.yaml
+
+# Статус
+cd tools/orchestrator && ./run.sh --status
+
+# Возобновление после прерывания
+cd tools/orchestrator && ./run.sh --resume
+
+# Остановка
+touch tools/orchestrator/.stop
+```
+
+**Формат задач (YAML):**
+```yaml
+phase: "sprint-N"
+description: "Описание спринта"
+tasks:
+  - id: task-1
+    title: "Название"
+    scope: backend|frontend|infra
+    prompt: "Подробный промпт для Claude Code"
+    test: "cd services/py/X && uv run --package X pytest tests/ -v"
+    depends_on: []
+```
+
+Состояние в `.state/state.json`, логи в `.logs/`.
+
+---
+
+## Code Quality
+
+### Python
+- Линтер + форматирование: `ruff`
+- Типы: `mypy` (strict)
+- Тесты: `pytest` + `pytest-asyncio` (asyncio_mode = "auto")
+- Type hints обязательны для публичных функций
+
+### TypeScript / Frontend
+- `strict: true` в tsconfig
+- ESLint + Prettier
+- Build: Turborepo
+- Package manager: pnpm
+
+### Pre-commit (TODO)
+- [ ] ruff check + format (Python)
+- [ ] mypy (Python)
+- [ ] ESLint + Prettier (TypeScript)
+- [ ] Architectural tests: domain не импортирует infrastructure
+
+---
+
+## TODO
 
 ### Build и CI
-- [ ] 🔴 Выбрать monorepo build tool: Pants / Bazel / Turborepo+Cargo — benchmark каждый
-- [ ] 🔴 Selective CI: запускать тесты только для измененных сервисов и их зависимостей
-- [ ] 🔴 Parallel builds: Python и Rust собираются параллельно
-- [ ] 🔴 Docker build optimization: multi-stage builds, layer caching, < 60 сек на сервис
-- [ ] 🔴 CI time budget: full pipeline < 10 минут, PR checks < 5 минут
+- [ ] Selective CI: тесты только для изменённых сервисов
+- [ ] Docker build optimization: multi-stage, layer caching, < 60 сек на сервис
+- [ ] CI time budget: full pipeline < 10 мин, PR checks < 5 мин
 
-### Local Development
-- [ ] 🔴 `just dev` — поднять все нужные сервисы локально за 1 команду
-- [x] ✅ Docker Compose dev (hot reload, volume mounts) + prod (monitoring, multi-worker)
-- [x] ✅ Hot reload для Python сервисов (docker-compose.dev.yml)
-- [ ] 🔴 Watch mode для Rust сервисов (cargo-watch)
-- [x] ✅ Database seeding: `docker compose --profile seed up seed` (50K users + 100K courses + 200K enrollments + 100K reviews)
-- [ ] 🔴 Документация: "Getting started" за < 15 минут для нового разработчика
-
-### Code Quality
-- [ ] 🔴 Python: ruff (lint + format), mypy (strict), pytest
-- [ ] 🔴 Rust: clippy (strict), rustfmt, cargo test
-- [ ] 🔴 Pre-commit hooks: format, lint, type-check (только changed files)
-- [ ] 🔴 CODEOWNERS: каждый сервис имеет явного владельца
-- [ ] 🔴 Architectural tests: проверка что domain не импортирует infrastructure
-
-### Протоколы и контракты
-- [ ] 🔴 Protobuf как single source of truth для межсервисных контрактов
-- [ ] 🔴 Автогенерация Python и Rust кода из .proto файлов
-- [ ] 🔴 Breaking change detection в CI (buf breaking)
-- [ ] 🔴 OpenAPI spec для публичного REST API (автогенерация из FastAPI)
-
-### Testing стратегия
-- [x] ✅ Unit tests: 157 тестов по 5 сервисам (identity 48, course 59, enrollment 25, payment 13, notification 12)
-- [ ] 🔴 Integration tests: сервис + его БД (testcontainers), < 2 мин
-- [ ] 🔴 Contract tests: проверка совместимости между сервисами (Pact)
-- [ ] 🔴 E2E tests: критические бизнес-потоки (регистрация → запись на курс → прохождение), < 5 мин
-- [x] ✅ Load tests: Locust сценарии (student, search, teacher), baseline снят, Phase 1.0 замер выполнен
-- [ ] 🔴 Chaos tests: ежемесячно в staging
+### Testing
+- [ ] Integration tests: testcontainers для repositories
+- [ ] Contract tests между сервисами (Pact)
+- [ ] E2E: регистрация → mission → coach session → completion
+- [ ] Load tests: Locust сценарии для coach sessions и RAG search

@@ -1,101 +1,171 @@
 # 03 — Инфраструктура и масштабирование
 
 > Владелец: Architect / SRE Lead
-> Последнее обновление: 2026-02-24
+> Последнее обновление: 2026-03-05
+>
+> Обновлено под B2B pivot. Фокус на org-scoped нагрузку и LLM costs.
 
 ---
 
 ## Стратегия масштабирования по фазам
 
-### Phase 1: 100K DAU — Vertical + Simple Horizontal
+### Phase 1: Pilot — 1-5 компаний, < 100 пользователей
+
+Минимальная инфраструктура. Один Docker Compose на одном сервере.
 
 | Компонент | Конфигурация | Оценка стоимости/мес |
 |-----------|-------------|---------------------|
-| API (Python) | 5 сервисов + AI Service + Learning Engine | $300 |
-| Hot-path (Rust) | 2 инстанса (Phase 4) | $0 (пока нет) |
-| PostgreSQL | 7 БД (по одной на сервис) | $400 |
-| Redis | 1 инстанс, 16GB (cache + rate limit) | $150 |
-| AI API (Gemini Flash) | ~$0.03/user/mo @ 10K MAU | $300 |
-| Object Storage (S3/R2) | ~5TB | $100 |
-| CDN | Cloudflare Free/Pro | $0-20 |
-| **Итого** | | **~$1,250/мес** |
+| API (Python) | 5 active сервисов + RAG | $150 |
+| PostgreSQL | 6 БД (identity, ai, learning, notification, rag, payment) | $100 |
+| Redis | 1 инстанс, 4GB (cache + agent memory) | $50 |
+| LLM API (Gemini Flash) | ~100 users × 1 mission/day × 30 days | $100-200 |
+| Embedding API | One-time per repo + incremental | $10-20 |
+| Object Storage | < 100GB (documents, chunks) | $5 |
+| **Итого** | | **~$400-500/мес** |
 
-### Phase 2: 1M DAU — Horizontal + Caching Layer
-
-| Компонент | Конфигурация | Оценка |
-|-----------|-------------|--------|
-| API (Python) | 10-30 инстансов за LB | $2,000 |
-| Hot-path (Rust) | 5-10 инстансов | $1,000 |
-| PostgreSQL + Citus | 3 shards + replicas | $3,000 |
-| Redis Cluster | 3 nodes, 64GB total | $800 |
-| ClickHouse | 2 nodes | $1,000 |
-| Meilisearch | 3 nodes | $600 |
-| NATS JetStream | 3 nodes cluster | $400 |
-| Video CDN | Cloudflare Stream или свой | $2,000 |
-| **Итого** | | **~$11,000/мес** |
-
-### Phase 3: 10M DAU — Full Distribution
-
-| Компонент | Конфигурация | Оценка |
-|-----------|-------------|--------|
-| API (Python) | 50-100+ pods, multi-region | $15,000 |
-| Hot-path (Rust) | 20-50 pods | $8,000 |
-| PostgreSQL + Citus | 10+ shards, multi-region | $20,000 |
-| Redis Cluster | Multi-region, 256GB+ | $5,000 |
-| ClickHouse Cluster | 5+ nodes | $8,000 |
-| Search Cluster | 10+ nodes | $5,000 |
-| NATS/Kafka | Multi-region cluster | $3,000 |
-| Video Infrastructure | Свой transcoding + CDN | $30,000 |
-| ML Inference | GPU instances | $10,000 |
-| **Итого** | | **~$100K+/мес** |
+**Revenue (5 Pilot clients):** $5K-15K/мес → **Margin: 90%+**
 
 ---
 
-## TODO: Architect / SRE
+### Phase 2: Growth — 5-50 компаний, < 5K пользователей
 
-### Kubernetes и оркестрация
-- [ ] 🔴 Определить стратегию: managed K8s (EKS/GKE) vs bare-metal
-- [ ] 🔴 Определить namespace стратегию (по доменам или по окружениям)
-- [ ] 🔴 Настроить HPA (Horizontal Pod Autoscaler) для каждого сервиса
-- [ ] 🔴 Определить resource limits и requests для Python и Rust сервисов
-- [ ] 🔴 Определить стратегию multi-region (active-active vs active-passive)
+Multi-worker deployment. Redis cluster для session state.
 
-### Database масштабирование
-- [x] ✅ Connection pool tuning: configurable min/max (default 5/20) через BaseAppSettings
-- [x] ✅ pg_trgm + GIN index для search (p99: 803ms → 84ms)
-- [ ] 🔴 Определить shard key для основных таблиц (users, courses, enrollments)
-- [ ] 🔴 Спроектировать стратегию read replicas (какие запросы куда)
-- [ ] 🔴 Определить политику connection pooling (PgBouncer конфиг)
-- [ ] 🔴 Спланировать backup стратегию (RPO < 1 мин, RTO < 15 мин)
-- [ ] 🔴 Определить стратегию data retention и архивации
+| Компонент | Конфигурация | Оценка |
+|-----------|-------------|--------|
+| API (Python) | 3-5 workers per service, Gunicorn/Uvicorn | $800 |
+| PostgreSQL | 6 БД + read replicas для RAG search | $500 |
+| Redis Cluster | 3 nodes, 16GB total (agent memory + cache) | $300 |
+| LLM API | ~5K users × daily sessions | $1,000-2,000 |
+| Embedding API | 50 companies × incremental re-index | $100 |
+| pgvector | Dedicated resources для vector search | incl. in PG |
+| **Итого** | | **~$3,000-4,000/мес** |
 
-### Кэширование
-- [x] ✅ Redis кэширование: course by id, curriculum (cache-aside, TTL 5min) — Phase 1.1
-- [x] ✅ Redis rate limiting: sliding window per-IP, 100/min — Phase 1.2
-- [ ] 🔴 Определить кэш-стратегию для остальных доменов:
-  - Поисковые результаты — Cache-Aside, TTL 1 мин
-  - AI-ответы (quiz, flashcards) — Cache-Aside, TTL 24h (одинаковые промпты)
-  - Видео-метаданные — Cache-Aside, TTL 30 мин
-  - Feed/рекомендации — Pre-computed, TTL 10 мин
-- [ ] 🔴 Определить стратегию cache invalidation
-- [ ] 🔴 Определить cache warming стратегию при старте сервиса
+**Revenue (50 clients):** $50K-150K/мес → **Margin: 95%+**
 
-> **Текущее состояние:** Redis используется для кэширования (course service) и rate limiting (все сервисы). Подключён ко всем сервисам через `redis_url` в `BaseAppSettings`.
+---
 
-### CDN и Edge
-- [ ] 🔴 Определить CDN стратегию для статики, изображений, видео
-- [ ] 🔴 Оценить edge computing для персонализации (Cloudflare Workers / Rust WASM)
-- [ ] 🔴 Определить cache headers стратегию для разных типов контента
-- [ ] 🔴 Спроектировать image optimization pipeline (WebP/AVIF, resize on-the-fly)
+### Phase 3: Scale — 50+ компаний, 10K+ пользователей
 
-### CI/CD
-- [ ] 🔴 Настроить selective builds в монорепе (только измененные сервисы)
-- [ ] 🔴 Определить стратегию деплоя (canary → 5% → 25% → 100%)
-- [ ] 🔴 Настроить auto-rollback по метрикам (error rate > 1% → rollback)
-- [ ] 🔴 Определить стратегию database migrations при zero-downtime deploys
+Kubernetes, horizontal scaling, dedicated vector search.
 
-### Disaster Recovery
-- [ ] 🔴 Определить RPO/RTO для каждого компонента
-- [ ] 🔴 Написать runbook для каждого failure сценария
-- [ ] 🔴 Запланировать chaos engineering тесты (ежемесячно)
-- [ ] 🔴 Определить стратегию graceful degradation (что отключаем первым при перегрузке)
+| Компонент | Конфигурация | Оценка |
+|-----------|-------------|--------|
+| K8s cluster (managed) | EKS/GKE, 10-20 nodes | $3,000 |
+| API pods | HPA, 3-10 pods per service | incl. |
+| PostgreSQL | Managed (RDS/CloudSQL), multi-AZ | $2,000 |
+| Redis Cluster | Managed, 64GB | $500 |
+| LLM API | 10K+ users, model routing optimization | $5,000-10,000 |
+| Vector DB | Dedicated pgvector instance или Qdrant | $500 |
+| Monitoring | Prometheus + Grafana (managed) | $300 |
+| **Итого** | | **~$12,000-16,000/мес** |
+
+---
+
+## RAG Service Sizing
+
+### pgvector capacity per company
+
+| Метрика | Типичная компания | Крупная компания |
+|---------|-------------------|------------------|
+| Repos | 5-20 | 50-200 |
+| Total code + docs | 50-200 MB | 1-5 GB |
+| Chunks (512 tokens) | 10K-50K | 100K-500K |
+| Embeddings (768 dims, float32) | 30-150 MB | 300 MB-1.5 GB |
+| ivfflat index | ~20% overhead | ~20% overhead |
+
+### Embedding throughput
+
+| Операция | Latency | Throughput |
+|----------|---------|------------|
+| Single embedding (Gemini) | ~100ms | 10/sec |
+| Batch embedding (100 chunks) | ~2 sec | 50/sec |
+| Full repo re-index (50K chunks) | ~17 min | batch job |
+| Semantic search (top-10) | < 50ms | — |
+
+### Total pgvector sizing (Phase 2, 50 companies)
+
+```
+50 companies × 50K chunks average = 2.5M vectors
+2.5M × 768 dims × 4 bytes = ~7.5 GB vectors
++ ivfflat index overhead (~20%) = ~9 GB total
+PostgreSQL с 32GB RAM справится без проблем.
+```
+
+---
+
+## LLM Cost Estimates
+
+### Per-user per-day cost (1 daily Mission)
+
+| Вызов | Tokens (in/out) | Cost (Gemini Flash) |
+|-------|-----------------|---------------------|
+| Strategist (path planning) | 2K/500 | $0.0003 |
+| Designer (mission assembly) | 3K/2K | $0.001 |
+| RAG search (3 queries) | — | $0 (local pgvector) |
+| Coach (5 exchanges avg) | 5K/2K | $0.002 |
+| Recap scoring | 1K/200 | $0.0002 |
+| **Total per user/day** | | **~$0.004** |
+| **Per user/month (22 work days)** | | **~$0.08** |
+
+### Per-company cost
+
+| Tier | Users | LLM cost/мес | Revenue | Margin |
+|------|-------|-------------|---------|--------|
+| Pilot (20 seats) | 20 | $1.60 | $1K-3K | 99%+ |
+| Enterprise (100 seats) | 100 | $8 | $10K+ | 99%+ |
+| Large (500 seats) | 500 | $40 | $50K+ | 99%+ |
+
+> LLM costs negligible. Основные расходы — infrastructure и engineering time.
+
+---
+
+## Текущая инфраструктура (Phase 1)
+
+### Docker Compose
+
+- `docker-compose.dev.yml` — hot reload, все сервисы
+- `docker-compose.prod.yml` — production mode, Prometheus + Grafana
+
+### Порты
+
+| Сервис | Порт | БД порт | Статус |
+|--------|------|---------|--------|
+| Identity | 8001 | 5433 | ✅ Active |
+| Course | 8002 | 5434 | 💤 Dormant |
+| Enrollment | 8003 | 5435 | 💤 Dormant |
+| Payment | 8004 | 5436 | 💤 Dormant (кроме org billing) |
+| Notification | 8005 | 5437 | ✅ Active |
+| AI | 8006 | — | ✅ Active |
+| Learning | 8007 | 5438 | ✅ Active |
+| RAG | 8008 | 5439 | 🔴 Sprint 17 |
+| Buyer frontend | 3000 | — | ✅ Active |
+
+### Мониторинг
+
+- Prometheus: scrape каждые 15s
+- Grafana: 22 панели (request rate, latency, error rate, DB connections)
+- Health checks: `/health` на каждом сервисе
+
+---
+
+## TODO: Infrastructure
+
+### Pilot (Sprint 17-22)
+- [ ] Добавить RAG service в Docker Compose
+- [ ] pgvector extension в PostgreSQL image
+- [ ] Redis memory для agent state (отдельный DB index)
+- [ ] Background job runner для embedding generation
+
+### Growth (Post-launch)
+- [ ] Multi-worker deployment (Gunicorn + Uvicorn)
+- [ ] PostgreSQL read replicas для RAG search
+- [ ] Redis Cluster для agent memory + cache
+- [ ] CI/CD: GitHub Actions (lint → test → build → deploy)
+- [ ] Backup strategy: daily PG dumps + WAL archiving
+
+### Scale (Future)
+- [ ] Managed K8s (EKS/GKE)
+- [ ] HPA per service
+- [ ] Dedicated vector search (если pgvector bottleneck)
+- [ ] Multi-region (если international clients)
