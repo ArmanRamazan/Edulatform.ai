@@ -19,8 +19,11 @@ from app.repositories.embedding_client import (
     StubEmbeddingClient,
 )
 from app.repositories.document_repository import DocumentRepository
+from app.repositories.search_repository import SearchRepository
 from app.routes.ingestion_routes import create_ingestion_router
+from app.routes.search_routes import create_search_router
 from app.services.ingestion_service import IngestionService
+from app.services.search_service import SearchService
 
 app_settings = Settings()
 
@@ -28,6 +31,7 @@ _pool: asyncpg.Pool | None = None
 _http_client: httpx.AsyncClient | None = None
 _embedding_client: EmbeddingClient | None = None
 _ingestion_service: IngestionService | None = None
+_search_service: SearchService | None = None
 
 
 def get_embedding_client() -> EmbeddingClient:
@@ -40,9 +44,14 @@ def get_ingestion_service() -> IngestionService:
     return _ingestion_service
 
 
+def get_search_service() -> SearchService:
+    assert _search_service is not None
+    return _search_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _http_client, _embedding_client, _ingestion_service
+    global _pool, _http_client, _embedding_client, _ingestion_service, _search_service
 
     configure_logging(service_name="rag")
     logger = structlog.get_logger()
@@ -70,8 +79,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.info("embedding_client", mode="stub")
 
     doc_repo = DocumentRepository(_pool)
+    search_repo = SearchRepository(_pool)
     _ingestion_service = IngestionService(
         document_repo=doc_repo,
+        embedding_client=_embedding_client,
+    )
+    _search_service = SearchService(
+        search_repo=search_repo,
         embedding_client=_embedding_client,
     )
 
@@ -95,6 +109,13 @@ app.include_router(create_health_router(lambda: _pool))
 app.include_router(
     create_ingestion_router(
         get_service=get_ingestion_service,
+        jwt_secret=app_settings.jwt_secret,
+        jwt_algorithm=app_settings.jwt_algorithm,
+    )
+)
+app.include_router(
+    create_search_router(
+        get_service=get_search_service,
         jwt_secret=app_settings.jwt_secret,
         jwt_algorithm=app_settings.jwt_algorithm,
     )
