@@ -206,7 +206,7 @@ Frontend (Buyer) orchestrates:
 ```
 
 - **Strategist** — планирует путь обучения (LLM + RAG org concepts + Learning mastery), выбирает следующий концепт, адаптирует темп (remedial insertion on failure, skip on high score), кэширует пути в Redis (ai:path:{user_id}, TTL 24h)
-- **Designer** — генерирует 15-минутную миссию из концепта + кода компании (RAG)
+- **Designer** — генерирует 15-минутную миссию (MissionBlueprint): RAG-grounded reading (~400w), 3 MCQ check questions, code case из реальных исходников, 2 recap-вопроса по предыдущим концептам
 - **Coach** — ведёт пользователя через миссию в чат-формате, даёт подсказки
 
 ---

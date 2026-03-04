@@ -61,7 +61,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | Agent | Роль | Input | Output |
 |-------|------|-------|--------|
 | **Strategist** | Анализ кодовой базы, определение learning path, адаптация пути | RAG org concepts + Learning mastery + LLM | Ordered concept path (cached in Redis 24h), next concept, adapted path (remedial/skip) |
-| **Designer** | Генерация mission-контента из реального кода | Plan + RAG chunks + trust level | Mission steps, code snippets, questions |
+| **Designer** | Генерация mission-контента из реального кода | Concept name + RAG search results + previous concepts | MissionBlueprint: reading content (~400w), 3 MCQ check questions, code case from real sources, 2 recap questions |
 | **Coach** | Socratic dialog, review ответов, подсказки | Mission context + engineer answers | Feedback, hints, trust level recommendation |
 
 Pipeline: `Strategist → Designer → Coach` (sequential, stateful).
