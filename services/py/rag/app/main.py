@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 from collections.abc import AsyncIterator
 
 import asyncpg
+import httpx
 import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,15 +13,27 @@ from common.errors import register_error_handlers
 from common.health import create_health_router
 from common.logging import configure_logging
 from app.config import Settings
+from app.repositories.embedding_client import (
+    EmbeddingClient,
+    GeminiEmbeddingClient,
+    StubEmbeddingClient,
+)
 
 app_settings = Settings()
 
 _pool: asyncpg.Pool | None = None
+_http_client: httpx.AsyncClient | None = None
+_embedding_client: EmbeddingClient | None = None
+
+
+def get_embedding_client() -> EmbeddingClient:
+    assert _embedding_client is not None
+    return _embedding_client
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool
+    global _pool, _http_client, _embedding_client
 
     configure_logging(service_name="rag")
     logger = structlog.get_logger()
@@ -35,9 +48,22 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         with open("migrations/001_init.sql") as f:
             await conn.execute(f.read())
 
+    _http_client = httpx.AsyncClient()
+    if app_settings.openai_api_key:
+        _embedding_client = GeminiEmbeddingClient(
+            http_client=_http_client,
+            api_key=app_settings.openai_api_key,
+            model=app_settings.embedding_model,
+        )
+        logger.info("embedding_client", mode="gemini", model=app_settings.embedding_model)
+    else:
+        _embedding_client = StubEmbeddingClient(dimensions=app_settings.embedding_dimensions)
+        logger.info("embedding_client", mode="stub")
+
     logger.info("service_started", port=8008)
     yield
 
+    await _http_client.aclose()
     await _pool.close()
 
 

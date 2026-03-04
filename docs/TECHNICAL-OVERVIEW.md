@@ -37,7 +37,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | Vector DB | PostgreSQL + pgvector | RAG embeddings, semantic search |
 | Кэш | Redis 7 | Cache, rate limiting, AI conversation memory |
 | AI / LLM | Gemini 2.0 Flash Lite | Tri-Agent System, quiz gen, tutor |
-| Embeddings | OpenAI / local model | Document + code embeddings для RAG |
+| Embeddings | Gemini text-embedding-004 | Document + code embeddings для RAG |
 | Метрики | Prometheus + Grafana | RPS, latency, pool metrics |
 | Пакеты | uv (Python), pnpm (JS) | Монорепа workspace |
 
@@ -117,7 +117,7 @@ cd services/py/payment     && uv run --package payment pytest tests/ -v      # 1
 cd services/py/notification && uv run --package notification pytest tests/ -v # 57 tests
 cd services/py/ai          && uv run --package ai pytest tests/ -v           # 116 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 175 tests
-cd services/py/rag         && uv run --package rag pytest tests/ -v          # 8 tests
+cd services/py/rag         && uv run --package rag pytest tests/ -v          # 20 tests
 ```
 
 **Итого:** 742 теста по 8 сервисам.
