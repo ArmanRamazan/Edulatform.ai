@@ -1390,28 +1390,31 @@ Readiness probe. Проверяет PostgreSQL (pgvector) pool.
 ### Search (1 endpoint)
 
 #### POST /search
-Семантический поиск по документам организации. Требует JWT + org membership.
+Семантический поиск по документам организации через pgvector cosine similarity. Требует JWT.
 
 **Request:**
 ```json
 {
-  "organization_id": "uuid",
   "query": "How does authentication work?",
-  "limit": 10,
-  "similarity_threshold": 0.7
+  "org_id": "uuid",
+  "limit": 5
 }
 ```
+
+`query` (required, min 1 char), `org_id` (required), `limit` (1–20, default 5).
 
 **Response `200`:**
 ```json
 {
+  "query": "How does authentication work?",
   "results": [
     {
       "chunk_id": "uuid",
-      "document_id": "uuid",
-      "document_title": "Auth Guide",
       "content": "...",
       "similarity": 0.92,
+      "document_title": "Auth Guide",
+      "source_type": "text",
+      "source_path": "/docs/auth.md",
       "metadata": {}
     }
   ]
