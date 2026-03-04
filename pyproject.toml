@@ -13,6 +13,7 @@ members = [
     "services/py/notification",
     "services/py/ai",
     "services/py/learning",
+    "services/py/rag",
     "tools/seed",
     "tools/orchestrator",
 ]

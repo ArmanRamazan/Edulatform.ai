@@ -97,6 +97,22 @@ services:
       timeout: 3s
       retries: 5
 
+  rag-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: rag
+      POSTGRES_USER: rag
+      POSTGRES_PASSWORD: rag
+    ports:
+      - "5439:5432"
+    volumes:
+      - rag-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rag"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   redis:
     image: redis:7-alpine
     ports:
@@ -241,6 +257,24 @@ services:
       learning-db:
         condition: service_healthy
 
+  rag:
+    build:
+      context: .
+      dockerfile: deploy/docker/rag.Dockerfile
+    ports:
+      - "8008:8008"
+    environment:
+      DATABASE_URL: postgresql://rag:rag@rag-db:5432/rag
+      JWT_SECRET: dev-secret-key
+    volumes:
+      - ./services/py/rag/app:/app/app
+      - ./services/py/rag/migrations:/app/migrations
+      - ./libs/py/common/common:/libs/common/common
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8008 --reload --timeout-graceful-shutdown 10
+    depends_on:
+      rag-db:
+        condition: service_healthy
+
   seed:
     build:
       context: .
@@ -275,3 +309,4 @@ volumes:
   payment-db-data:
   notification-db-data:
   learning-db-data:
+  rag-db-data:
