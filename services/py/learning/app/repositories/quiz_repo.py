@@ -5,6 +5,7 @@ from uuid import UUID
 
 import asyncpg
 
+from common.errors import ConflictError
 from app.domain.quiz import Quiz, Question, QuizAttempt
 
 _QUIZ_COLUMNS = "id, lesson_id, course_id, teacher_id, created_at"
@@ -17,14 +18,17 @@ class QuizRepository:
         self._pool = pool
 
     async def create_quiz(self, lesson_id: UUID, course_id: UUID, teacher_id: UUID) -> Quiz:
-        row = await self._pool.fetchrow(
-            f"""
-            INSERT INTO quizzes (lesson_id, course_id, teacher_id)
-            VALUES ($1, $2, $3)
-            RETURNING {_QUIZ_COLUMNS}
-            """,
-            lesson_id, course_id, teacher_id,
-        )
+        try:
+            row = await self._pool.fetchrow(
+                f"""
+                INSERT INTO quizzes (lesson_id, course_id, teacher_id)
+                VALUES ($1, $2, $3)
+                RETURNING {_QUIZ_COLUMNS}
+                """,
+                lesson_id, course_id, teacher_id,
+            )
+        except asyncpg.UniqueViolationError as exc:
+            raise ConflictError("Quiz already exists for this lesson") from exc
         return self._to_quiz(row)
 
     async def create_questions(

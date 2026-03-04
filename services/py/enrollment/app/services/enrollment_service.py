@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import asyncpg
-
-from common.errors import ConflictError, ForbiddenError
+from common.errors import ForbiddenError
 from app.domain.enrollment import Enrollment
 from app.repositories.enrollment_repo import EnrollmentRepository
 
@@ -24,10 +22,7 @@ class EnrollmentService:
         if role != "student":
             raise ForbiddenError("Only students can enroll in courses")
 
-        try:
-            return await self._repo.create(student_id, course_id, payment_id, total_lessons)
-        except asyncpg.UniqueViolationError as exc:
-            raise ConflictError("Already enrolled in this course") from exc
+        return await self._repo.create(student_id, course_id, payment_id, total_lessons)
 
     async def list_my(
         self, student_id: UUID, limit: int = 20, offset: int = 0

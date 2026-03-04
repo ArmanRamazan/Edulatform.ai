@@ -2,8 +2,6 @@ import pytest
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-import asyncpg
-
 from common.errors import ConflictError, ForbiddenError
 from app.domain.enrollment import Enrollment
 from app.services.enrollment_service import EnrollmentService
@@ -59,7 +57,7 @@ async def test_enroll_duplicate_raises_conflict(
     student_id,
     course_id,
 ):
-    mock_repo.create.side_effect = asyncpg.UniqueViolationError("")
+    mock_repo.create.side_effect = ConflictError("Already enrolled in this course")
 
     with pytest.raises(ConflictError, match="Already enrolled"):
         await enrollment_service.enroll(

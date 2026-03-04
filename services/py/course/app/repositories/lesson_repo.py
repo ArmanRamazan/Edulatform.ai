@@ -6,6 +6,10 @@ import asyncpg
 
 from app.domain.lesson import Lesson
 
+_ALLOWED_UPDATE_COLUMNS = frozenset({
+    "title", "content", "video_url", "duration_minutes", "order",
+})
+
 
 class LessonRepository:
     def __init__(self, pool: asyncpg.Pool) -> None:
@@ -56,6 +60,8 @@ class LessonRepository:
         values: list[object] = []
         idx = 1
         for key, val in fields.items():
+            if key not in _ALLOWED_UPDATE_COLUMNS:
+                raise ValueError(f"Cannot update column: {key}")
             col = f'"{key}"' if key == "order" else key
             sets.append(f"{col} = ${idx}")
             values.append(val)

@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import asyncpg
-
-from common.errors import ConflictError, ForbiddenError
+from common.errors import ForbiddenError
 from app.domain.enrollment import EnrollmentStatus
 from app.domain.progress import LessonProgress
 from app.repositories.enrollment_repo import EnrollmentRepository
@@ -25,10 +23,7 @@ class ProgressService:
     ) -> LessonProgress:
         if role != "student":
             raise ForbiddenError("Only students can complete lessons")
-        try:
-            progress = await self._repo.complete_lesson(student_id, lesson_id, course_id)
-        except asyncpg.UniqueViolationError as exc:
-            raise ConflictError("Lesson already completed") from exc
+        progress = await self._repo.complete_lesson(student_id, lesson_id, course_id)
 
         if self._enrollment_repo:
             await self._check_auto_completion(student_id, course_id)

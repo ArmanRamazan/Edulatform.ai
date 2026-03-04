@@ -19,6 +19,12 @@ class CourseLevel(StrEnum):
     ADVANCED = "advanced"
 
 
+class CourseSortField(StrEnum):
+    CREATED_AT = "created_at"
+    AVG_RATING = "avg_rating"
+    PRICE = "price"
+
+
 @dataclass(frozen=True)
 class Course:
     id: UUID

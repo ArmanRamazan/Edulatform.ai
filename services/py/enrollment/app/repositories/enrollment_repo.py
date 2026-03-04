@@ -4,6 +4,7 @@ from uuid import UUID
 
 import asyncpg
 
+from common.errors import ConflictError
 from app.domain.enrollment import Enrollment, EnrollmentStatus
 
 _COLUMNS = "id, student_id, course_id, payment_id, status, enrolled_at, total_lessons"
@@ -20,17 +21,20 @@ class EnrollmentRepository:
         payment_id: UUID | None,
         total_lessons: int = 0,
     ) -> Enrollment:
-        row = await self._pool.fetchrow(
-            f"""
-            INSERT INTO enrollments (student_id, course_id, payment_id, total_lessons)
-            VALUES ($1, $2, $3, $4)
-            RETURNING {_COLUMNS}
-            """,
-            student_id,
-            course_id,
-            payment_id,
-            total_lessons,
-        )
+        try:
+            row = await self._pool.fetchrow(
+                f"""
+                INSERT INTO enrollments (student_id, course_id, payment_id, total_lessons)
+                VALUES ($1, $2, $3, $4)
+                RETURNING {_COLUMNS}
+                """,
+                student_id,
+                course_id,
+                payment_id,
+                total_lessons,
+            )
+        except asyncpg.UniqueViolationError as exc:
+            raise ConflictError("Already enrolled in this course") from exc
         return self._to_entity(row)
 
     async def get_by_student_and_course(

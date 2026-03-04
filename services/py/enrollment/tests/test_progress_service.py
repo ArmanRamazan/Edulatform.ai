@@ -3,8 +3,6 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 from datetime import datetime, timezone
 
-import asyncpg
-
 from common.errors import ConflictError, ForbiddenError
 from app.domain.enrollment import Enrollment, EnrollmentStatus
 from app.domain.progress import LessonProgress
@@ -28,7 +26,7 @@ async def test_complete_lesson(progress_service: ProgressService, mock_progress_
 
 @pytest.mark.asyncio
 async def test_complete_lesson_duplicate(progress_service: ProgressService, mock_progress_repo: AsyncMock, student_id, lesson_id, course_id):
-    mock_progress_repo.complete_lesson.side_effect = asyncpg.UniqueViolationError("")
+    mock_progress_repo.complete_lesson.side_effect = ConflictError("Lesson already completed")
 
     with pytest.raises(ConflictError, match="already completed"):
         await progress_service.complete_lesson(

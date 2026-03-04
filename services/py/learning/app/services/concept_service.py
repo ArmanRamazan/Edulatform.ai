@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import asyncpg
 import structlog
 
 from common.errors import ConflictError, ForbiddenError, NotFoundError
@@ -39,17 +38,14 @@ class ConceptService:
         if role != "teacher" or not is_verified:
             raise ForbiddenError("Only verified teachers can create concepts")
 
-        try:
-            return await self._repo.create(
-                course_id=course_id,
-                name=name,
-                description=description,
-                lesson_id=lesson_id,
-                parent_id=parent_id,
-                order=order,
-            )
-        except asyncpg.UniqueViolationError as exc:
-            raise ConflictError(f"Concept '{name}' already exists in this course") from exc
+        return await self._repo.create(
+            course_id=course_id,
+            name=name,
+            description=description,
+            lesson_id=lesson_id,
+            parent_id=parent_id,
+            order=order,
+        )
 
     async def update_concept(
         self,
@@ -66,10 +62,7 @@ class ConceptService:
         if concept is None:
             raise NotFoundError("Concept not found")
 
-        try:
-            updated = await self._repo.update(concept_id, **kwargs)
-        except asyncpg.UniqueViolationError as exc:
-            raise ConflictError("Concept with this name already exists in the course") from exc
+        updated = await self._repo.update(concept_id, **kwargs)
 
         if updated is None:
             raise NotFoundError("Concept not found")
@@ -112,10 +105,8 @@ class ConceptService:
 
         try:
             await self._repo.add_prerequisite(concept_id, prerequisite_id)
-        except asyncpg.UniqueViolationError:
+        except ConflictError:
             pass  # already exists, idempotent
-        except asyncpg.CheckViolationError as exc:
-            raise ForbiddenError("A concept cannot be its own prerequisite") from exc
 
     async def remove_prerequisite(
         self,

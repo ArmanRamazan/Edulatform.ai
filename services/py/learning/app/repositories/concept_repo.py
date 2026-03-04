@@ -4,6 +4,7 @@ from uuid import UUID
 
 import asyncpg
 
+from common.errors import ConflictError, ForbiddenError
 from app.domain.concept import Concept, ConceptPrerequisite, ConceptMastery
 
 _CONCEPT_COLUMNS = 'id, course_id, lesson_id, name, description, parent_id, "order", created_at'
@@ -22,14 +23,17 @@ class ConceptRepository:
         parent_id: UUID | None = None,
         order: int = 0,
     ) -> Concept:
-        row = await self._pool.fetchrow(
-            f"""
-            INSERT INTO concepts (course_id, lesson_id, name, description, parent_id, "order")
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING {_CONCEPT_COLUMNS}
-            """,
-            course_id, lesson_id, name, description, parent_id, order,
-        )
+        try:
+            row = await self._pool.fetchrow(
+                f"""
+                INSERT INTO concepts (course_id, lesson_id, name, description, parent_id, "order")
+                VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING {_CONCEPT_COLUMNS}
+                """,
+                course_id, lesson_id, name, description, parent_id, order,
+            )
+        except asyncpg.UniqueViolationError as exc:
+            raise ConflictError(f"Concept '{name}' already exists in this course") from exc
         return self._to_concept(row)
 
     async def get_by_id(self, concept_id: UUID) -> Concept | None:
@@ -72,15 +76,18 @@ class ConceptRepository:
         new_parent = parent_id if parent_id is not ... else current.parent_id
         new_order = order if order is not None else current.order
 
-        row = await self._pool.fetchrow(
-            f"""
-            UPDATE concepts
-            SET name = $2, description = $3, lesson_id = $4, parent_id = $5, "order" = $6
-            WHERE id = $1
-            RETURNING {_CONCEPT_COLUMNS}
-            """,
-            concept_id, new_name, new_desc, new_lesson, new_parent, new_order,
-        )
+        try:
+            row = await self._pool.fetchrow(
+                f"""
+                UPDATE concepts
+                SET name = $2, description = $3, lesson_id = $4, parent_id = $5, "order" = $6
+                WHERE id = $1
+                RETURNING {_CONCEPT_COLUMNS}
+                """,
+                concept_id, new_name, new_desc, new_lesson, new_parent, new_order,
+            )
+        except asyncpg.UniqueViolationError as exc:
+            raise ConflictError("Concept with this name already exists in the course") from exc
         return self._to_concept(row) if row else None
 
     async def delete(self, concept_id: UUID) -> bool:
@@ -94,14 +101,19 @@ class ConceptRepository:
     async def add_prerequisite(
         self, concept_id: UUID, prerequisite_id: UUID
     ) -> ConceptPrerequisite:
-        row = await self._pool.fetchrow(
-            """
-            INSERT INTO concept_prerequisites (concept_id, prerequisite_id)
-            VALUES ($1, $2)
-            RETURNING id, concept_id, prerequisite_id
-            """,
-            concept_id, prerequisite_id,
-        )
+        try:
+            row = await self._pool.fetchrow(
+                """
+                INSERT INTO concept_prerequisites (concept_id, prerequisite_id)
+                VALUES ($1, $2)
+                RETURNING id, concept_id, prerequisite_id
+                """,
+                concept_id, prerequisite_id,
+            )
+        except asyncpg.UniqueViolationError:
+            raise ConflictError("Prerequisite already exists")
+        except asyncpg.CheckViolationError as exc:
+            raise ForbiddenError("A concept cannot be its own prerequisite") from exc
         return ConceptPrerequisite(
             id=row["id"],
             concept_id=row["concept_id"],

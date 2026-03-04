@@ -3,10 +3,9 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import asyncpg
 import structlog
 
-from common.errors import ConflictError, ForbiddenError, NotFoundError
+from common.errors import ForbiddenError, NotFoundError
 from app.domain.quiz import Quiz, Question, QuizAttempt, QuestionResult
 from app.repositories.quiz_repo import QuizRepository
 
@@ -41,10 +40,7 @@ class QuizService:
         if role != "teacher" or not is_verified:
             raise ForbiddenError("Only verified teachers can create quizzes")
 
-        try:
-            quiz = await self._repo.create_quiz(lesson_id, course_id, teacher_id)
-        except asyncpg.UniqueViolationError as exc:
-            raise ConflictError("Quiz already exists for this lesson") from exc
+        quiz = await self._repo.create_quiz(lesson_id, course_id, teacher_id)
 
         question_tuples = [
             (q["text"], q["options"], q["correct_index"], q.get("explanation"), i)

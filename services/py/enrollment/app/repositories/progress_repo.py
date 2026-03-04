@@ -4,6 +4,7 @@ from uuid import UUID
 
 import asyncpg
 
+from common.errors import ConflictError
 from app.domain.progress import LessonProgress
 
 
@@ -14,16 +15,19 @@ class ProgressRepository:
     async def complete_lesson(
         self, student_id: UUID, lesson_id: UUID, course_id: UUID
     ) -> LessonProgress:
-        row = await self._pool.fetchrow(
-            """
-            INSERT INTO lesson_progress (student_id, lesson_id, course_id)
-            VALUES ($1, $2, $3)
-            RETURNING id, student_id, lesson_id, course_id, completed_at
-            """,
-            student_id,
-            lesson_id,
-            course_id,
-        )
+        try:
+            row = await self._pool.fetchrow(
+                """
+                INSERT INTO lesson_progress (student_id, lesson_id, course_id)
+                VALUES ($1, $2, $3)
+                RETURNING id, student_id, lesson_id, course_id, completed_at
+                """,
+                student_id,
+                lesson_id,
+                course_id,
+            )
+        except asyncpg.UniqueViolationError as exc:
+            raise ConflictError("Lesson already completed") from exc
         return self._to_entity(row)
 
     async def count_completed(self, student_id: UUID, course_id: UUID) -> int:

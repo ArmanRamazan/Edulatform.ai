@@ -6,6 +6,10 @@ import asyncpg
 
 from app.domain.module import Module
 
+_ALLOWED_UPDATE_COLUMNS = frozenset({
+    "title", "order",
+})
+
 
 class ModuleRepository:
     def __init__(self, pool: asyncpg.Pool) -> None:
@@ -43,6 +47,8 @@ class ModuleRepository:
         values: list[object] = []
         idx = 1
         for key, val in fields.items():
+            if key not in _ALLOWED_UPDATE_COLUMNS:
+                raise ValueError(f"Cannot update column: {key}")
             col = f'"{key}"' if key == "order" else key
             sets.append(f"{col} = ${idx}")
             values.append(val)

@@ -5,7 +5,7 @@ import jwt
 from fastapi import APIRouter, Depends, Header, Query
 
 from common.errors import AppError
-from app.domain.course import CourseCreate, CourseUpdate, CourseResponse, CourseListResponse, CurriculumResponse
+from app.domain.course import CourseSortField, CourseCreate, CourseUpdate, CourseResponse, CourseListResponse, CurriculumResponse
 from app.services.course_service import CourseService
 
 router = APIRouter(prefix="/courses", tags=["courses"])
@@ -60,7 +60,7 @@ async def list_courses(
     category_id: Annotated[UUID | None, Query()] = None,
     level: Annotated[str | None, Query()] = None,
     is_free: Annotated[bool | None, Query()] = None,
-    sort_by: Annotated[str, Query()] = "created_at",
+    sort_by: Annotated[CourseSortField, Query()] = CourseSortField.CREATED_AT,
     limit: Annotated[int, Query(ge=1, le=100)] = 20,
     offset: Annotated[int, Query(ge=0)] = 0,
     cursor: Annotated[str | None, Query()] = None,

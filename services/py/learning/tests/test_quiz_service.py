@@ -3,7 +3,6 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
-import asyncpg
 import pytest
 
 from common.errors import ConflictError, ForbiddenError, NotFoundError
@@ -53,7 +52,7 @@ class TestCreateQuiz:
     async def test_create_quiz_duplicate_lesson_conflict(
         self, quiz_service, mock_repo, teacher_id, lesson_id, course_id,
     ):
-        mock_repo.create_quiz.side_effect = asyncpg.UniqueViolationError()
+        mock_repo.create_quiz.side_effect = ConflictError("Quiz already exists for this lesson")
 
         with pytest.raises(ConflictError):
             await quiz_service.create_quiz(

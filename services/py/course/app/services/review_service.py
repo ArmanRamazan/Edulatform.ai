@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-import asyncpg
-
-from common.errors import ConflictError, ForbiddenError, NotFoundError
+from common.errors import ForbiddenError, NotFoundError
 from app.cache import CourseCache
 from app.sanitize import sanitize_text
 from app.domain.review import Review
@@ -40,10 +38,7 @@ class ReviewService:
 
         comment = sanitize_text(comment)
 
-        try:
-            review = await self._repo.create(student_id, course_id, rating, comment)
-        except asyncpg.UniqueViolationError as exc:
-            raise ConflictError("You already reviewed this course") from exc
+        review = await self._repo.create(student_id, course_id, rating, comment)
 
         avg_rating, review_count = await self._repo.get_avg(course_id)
         await self._course_repo.update_rating(course_id, avg_rating, review_count)

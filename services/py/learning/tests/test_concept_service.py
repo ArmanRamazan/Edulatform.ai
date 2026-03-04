@@ -3,8 +3,6 @@ from uuid import uuid4
 import pytest
 from unittest.mock import AsyncMock
 
-import asyncpg
-
 from common.errors import ConflictError, ForbiddenError, NotFoundError
 from app.domain.concept import Concept, ConceptMastery, ConceptPrerequisite
 from datetime import datetime, timezone
@@ -45,7 +43,7 @@ class TestCreateConcept:
     async def test_duplicate_name_raises_conflict(
         self, concept_service, mock_concept_repo, teacher_id, course_id
     ):
-        mock_concept_repo.create.side_effect = asyncpg.UniqueViolationError()
+        mock_concept_repo.create.side_effect = ConflictError("Concept 'Variables' already exists in this course")
 
         with pytest.raises(ConflictError, match="already exists"):
             await concept_service.create_concept(

@@ -3,8 +3,6 @@ from decimal import Decimal
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-import asyncpg
-
 from common.errors import ConflictError, ForbiddenError
 from app.domain.course import Course
 from app.domain.review import Review
@@ -29,7 +27,7 @@ async def test_create_review(review_service: ReviewService, mock_review_repo: As
 @pytest.mark.asyncio
 async def test_create_review_duplicate(review_service: ReviewService, mock_review_repo: AsyncMock, mock_repo: AsyncMock, sample_course: Course, student_id, course_id):
     mock_repo.get_by_id.return_value = sample_course
-    mock_review_repo.create.side_effect = asyncpg.UniqueViolationError("")
+    mock_review_repo.create.side_effect = ConflictError("You already reviewed this course")
 
     with pytest.raises(ConflictError, match="already reviewed"):
         await review_service.create(

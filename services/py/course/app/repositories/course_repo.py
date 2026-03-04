@@ -11,6 +11,10 @@ from app.domain.course import Course, CourseLevel
 
 _COLUMNS = "id, teacher_id, title, description, is_free, price, duration_minutes, level, created_at, avg_rating, review_count, category_id"
 
+_ALLOWED_UPDATE_COLUMNS = frozenset({
+    "title", "description", "is_free", "price", "duration_minutes", "level", "category_id",
+})
+
 
 def _encode_cursor(created_at: datetime, id: UUID) -> str:
     return base64.urlsafe_b64encode(f"{created_at.isoformat()}|{id}".encode()).decode()
@@ -246,6 +250,8 @@ class CourseRepository:
         values: list[object] = []
         idx = 1
         for key, val in fields.items():
+            if key not in _ALLOWED_UPDATE_COLUMNS:
+                raise ValueError(f"Cannot update column: {key}")
             sets.append(f"{key} = ${idx}")
             values.append(val)
             idx += 1

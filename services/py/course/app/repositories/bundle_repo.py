@@ -10,6 +10,10 @@ from app.domain.course import Course, CourseLevel
 
 _BUNDLE_COLUMNS = "id, teacher_id, title, description, price, discount_percent, is_active, created_at"
 
+_ALLOWED_UPDATE_COLUMNS = frozenset({
+    "title", "description", "price", "discount_percent", "is_active",
+})
+
 
 class BundleRepository:
     def __init__(self, pool: asyncpg.Pool) -> None:
@@ -93,6 +97,8 @@ class BundleRepository:
         values: list[object] = []
         idx = 1
         for key, val in fields.items():
+            if key not in _ALLOWED_UPDATE_COLUMNS:
+                raise ValueError(f"Cannot update column: {key}")
             sets.append(f"{key} = ${idx}")
             values.append(val)
             idx += 1
