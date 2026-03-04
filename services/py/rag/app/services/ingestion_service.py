@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
 from uuid import UUID
+
+import structlog
 
 from app.domain.document import Document
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.embedding_client import EmbeddingClient
 from app.services.chunker import chunk_text, chunk_code
 
+if TYPE_CHECKING:
+    from app.services.extraction_service import ExtractionService
+
+logger = structlog.get_logger()
 
 _CODE_SOURCE_TYPES = frozenset({"github", "code"})
 
@@ -16,9 +23,11 @@ class IngestionService:
         self,
         document_repo: DocumentRepository,
         embedding_client: EmbeddingClient,
+        extraction_service: ExtractionService | None = None,
     ) -> None:
         self._repo = document_repo
         self._embedder = embedding_client
+        self._extraction = extraction_service
 
     async def ingest(
         self,
@@ -61,6 +70,13 @@ class IngestionService:
         ]
 
         await self._repo.create_chunks(doc.id, chunks_data)
+
+        if self._extraction is not None:
+            try:
+                await self._extraction.extract_and_store(org_id, doc.id, content)
+            except Exception:
+                logger.warning("extraction_after_ingestion_failed", document_id=str(doc.id))
+
         return doc
 
     async def get_documents_by_org(

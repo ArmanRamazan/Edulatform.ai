@@ -52,7 +52,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | Notification | 8005 | 5437 | In-app, email, DMs | ✅ Active |
 | AI | 8006 | — (Redis) | Tri-Agent System, LLM routing | ✅ Active |
 | Learning | 8007 | 5438 | Quizzes, FSRS, knowledge graph, missions | ✅ Active |
-| RAG | 8008 | 5439 | Document ingestion, semantic search | ✅ Active |
+| RAG | 8008 | 5439 | Document ingestion, semantic search, concept extraction | ✅ Active |
 
 ## Tri-Agent System
 
@@ -117,10 +117,10 @@ cd services/py/payment     && uv run --package payment pytest tests/ -v      # 1
 cd services/py/notification && uv run --package notification pytest tests/ -v # 57 tests
 cd services/py/ai          && uv run --package ai pytest tests/ -v           # 116 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 175 tests
-cd services/py/rag         && uv run --package rag pytest tests/ -v          # 62 tests
+cd services/py/rag         && uv run --package rag pytest tests/ -v          # 115 tests
 ```
 
-**Итого:** 742 теста по 8 сервисам.
+**Итого:** 795 тестов по 8 сервисам.
 
 ## Инфраструктура
 

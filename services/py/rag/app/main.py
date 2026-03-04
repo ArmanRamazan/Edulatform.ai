@@ -20,10 +20,13 @@ from app.repositories.embedding_client import (
 )
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.search_repository import SearchRepository
+from app.repositories.concept_store import ConceptStoreRepository
 from app.routes.ingestion_routes import create_ingestion_router
 from app.routes.search_routes import create_search_router
+from app.routes.concept_routes import create_concept_router
 from app.services.ingestion_service import IngestionService
 from app.services.search_service import SearchService
+from app.services.extraction_service import ExtractionService
 
 app_settings = Settings()
 
@@ -32,6 +35,8 @@ _http_client: httpx.AsyncClient | None = None
 _embedding_client: EmbeddingClient | None = None
 _ingestion_service: IngestionService | None = None
 _search_service: SearchService | None = None
+_extraction_service: ExtractionService | None = None
+_concept_store: ConceptStoreRepository | None = None
 
 
 def get_embedding_client() -> EmbeddingClient:
@@ -49,9 +54,19 @@ def get_search_service() -> SearchService:
     return _search_service
 
 
+def get_extraction_service() -> ExtractionService:
+    assert _extraction_service is not None
+    return _extraction_service
+
+
+def get_concept_store() -> ConceptStoreRepository:
+    assert _concept_store is not None
+    return _concept_store
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _http_client, _embedding_client, _ingestion_service, _search_service
+    global _pool, _http_client, _embedding_client, _ingestion_service, _search_service, _extraction_service, _concept_store
 
     configure_logging(service_name="rag")
     logger = structlog.get_logger()
@@ -64,6 +79,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     async with _pool.acquire() as conn:
         with open("migrations/001_init.sql") as f:
+            await conn.execute(f.read())
+        with open("migrations/002_concepts.sql") as f:
             await conn.execute(f.read())
 
     _http_client = httpx.AsyncClient()
@@ -80,9 +97,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     doc_repo = DocumentRepository(_pool)
     search_repo = SearchRepository(_pool)
+    _concept_store = ConceptStoreRepository(_pool)
+    _extraction_service = ExtractionService(
+        concept_store=_concept_store,
+        http_client=_http_client,
+        settings=app_settings,
+    )
     _ingestion_service = IngestionService(
         document_repo=doc_repo,
         embedding_client=_embedding_client,
+        extraction_service=_extraction_service,
     )
     _search_service = SearchService(
         search_repo=search_repo,
@@ -116,6 +140,14 @@ app.include_router(
 app.include_router(
     create_search_router(
         get_service=get_search_service,
+        jwt_secret=app_settings.jwt_secret,
+        jwt_algorithm=app_settings.jwt_algorithm,
+    )
+)
+app.include_router(
+    create_concept_router(
+        get_extraction_service=get_extraction_service,
+        get_concept_store=get_concept_store,
         jwt_secret=app_settings.jwt_secret,
         jwt_algorithm=app_settings.jwt_algorithm,
     )

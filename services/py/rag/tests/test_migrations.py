@@ -22,3 +22,24 @@ def test_init_migration_contains_required_tables() -> None:
     assert "idx_chunks_embedding" in content
     assert "idx_documents_org" in content
     assert "idx_chunks_document" in content
+
+
+def test_concepts_migration_exists() -> None:
+    migration_path = os.path.join(
+        os.path.dirname(__file__), "..", "migrations", "002_concepts.sql"
+    )
+    assert os.path.exists(migration_path), "migrations/002_concepts.sql must exist"
+
+
+def test_concepts_migration_contains_required_tables() -> None:
+    migration_path = os.path.join(
+        os.path.dirname(__file__), "..", "migrations", "002_concepts.sql"
+    )
+    with open(migration_path) as f:
+        content = f.read()
+
+    assert "CREATE TABLE IF NOT EXISTS org_concepts" in content
+    assert "CREATE TABLE IF NOT EXISTS concept_relationships" in content
+    assert "UNIQUE(organization_id, name)" in content
+    assert "UNIQUE(concept_id, related_concept_id)" in content
+    assert "REFERENCES documents(id)" in content

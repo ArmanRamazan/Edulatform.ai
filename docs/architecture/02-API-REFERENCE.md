@@ -1426,25 +1426,41 @@ Readiness probe. Проверяет PostgreSQL (pgvector) pool.
 ### Concepts (2 endpoints)
 
 #### GET /concepts
-Список концептов организации. Требует JWT + org membership.
+Список концептов организации. Требует JWT (любая роль).
 
-**Query params:** `organization_id` (required).
+**Query params:** `org_id` (UUID, required).
+
+**Response `200`:**
+```json
+[
+  {
+    "id": "uuid",
+    "organization_id": "uuid",
+    "name": "Dependency Injection",
+    "description": "A design pattern for decoupling components",
+    "source_document_id": "uuid",
+    "created_at": "2026-03-05T00:00:00Z"
+  }
+]
+```
 
 ---
 
 #### POST /concepts/extract/{document_id}
-Извлечение концептов из документа с помощью AI. Требует JWT + org admin.
+Ручной запуск извлечения концептов из документа через LLM (Gemini Flash). Требует JWT + admin/teacher. Также вызывается автоматически при ingestion pipeline.
 
-**Response `200`:**
+**Request body:**
 ```json
 {
-  "document_id": "uuid",
-  "concepts_extracted": [
-    {"name": "JWT Validation", "description": "...", "importance": 0.9}
-  ],
-  "relationships": [
-    {"from": "JWT Validation", "to": "Middleware Patterns", "type": "requires"}
-  ]
+  "org_id": "uuid"
+}
+```
+
+**Response `202`:**
+```json
+{
+  "status": "accepted",
+  "document_id": "uuid"
 }
 ```
 

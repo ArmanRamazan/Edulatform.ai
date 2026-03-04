@@ -118,9 +118,9 @@ EduPlatform — B2B AI-powered платформа адаптивного онб�
 | Notification | ~9 | 3 | 57 | POST (email stub), GET /me, PATCH read, streak/flashcard reminders, direct messaging (conversations + messages) |
 | AI Service | ~18 | — | 116 | quiz/summary generation, Socratic tutor, study-plan, content moderation, **Strategist** (path planning, next concept, adaptation), **Designer** (mission generation, recaps), **Coach** (guided sessions), **daily mission**, **agent memory** |
 | Learning Engine | ~52 | 21 | 175 | Quizzes, Flashcards+FSRS, Concepts/Knowledge Graph, Streaks, Leaderboard, Discussions, XP, Badges, Pre-tests, Velocity, Activity Feed, Study Groups, Certificates, **Missions** (daily, streak, completion), **Trust Levels**, **Daily summary** |
-| RAG Service | ~18 | 6 | — | Document ingestion (markdown, GitHub), pgvector semantic search, concept extraction, knowledge base management, onboarding templates with stages |
+| RAG Service | ~20 | 6 | 115 | Document ingestion (markdown, GitHub), pgvector semantic search, LLM concept extraction (auto-extraction in pipeline), knowledge base management, onboarding templates with stages |
 
-**Итого (активные):** ~149 endpoints, ~48 таблиц, ~591 тестов
+**Итого (активные):** ~151 endpoints, ~48 таблиц, ~706 тестов
 
 ### Спящие сервисы (dormant)
 
