@@ -26,7 +26,7 @@ eduplatform/
 ├── services/                      # Deployable сервисы
 │   ├── py/                        # Python сервисы (бизнес-логика)
 │   │   ├── identity/              #   Auth, JWT refresh tokens, roles, admin, email verification, forgot password
-│   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization
+│   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization, bundles
 │   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion
 │   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts
 │   │   ├── notification/          #   In-app уведомления

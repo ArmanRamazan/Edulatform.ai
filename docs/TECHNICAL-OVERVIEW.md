@@ -9,7 +9,7 @@
 | Компонент | Статус | Описание |
 |-----------|--------|----------|
 | Identity Service | ✅ Готов | Регистрация, логин, JWT refresh tokens, роли, admin, email verification, forgot password |
-| Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization |
+| Course Service | ✅ Готов | CRUD курсов, pg_trgm поиск, модули/уроки, отзывы, категории, фильтрация, XSS sanitization, course bundles |
 | Enrollment Service | ✅ Готов | Запись на курс, прогресс обучения, lesson completion, auto-completion |
 | Payment Service | ✅ Готов | Mock-оплата, Stripe SDK adapter, subscription_plans + user_subscriptions, teacher_earnings, payouts, GET /me, GET /:id, GET /earnings/me, POST /payouts/request |
 | Notification Service | ✅ Готов | In-app уведомления, mark as read, streak-at-risk reminders, flashcard-due reminders |
@@ -21,7 +21,7 @@
 | Prometheus + Grafana | ✅ Готов | RPS, latency p50/p95/p99, error rate, pool metrics |
 | Seed Script | ✅ Готов | 50K users + 100K courses + 200K enrollments + 100K reviews + learning data (quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments) |
 | Locust | ✅ Готов | 3 сценария: Student (70%), Search (20%), Teacher (10%) |
-| Unit Tests | ✅ 514 тестов | identity 63, course 71, enrollment 28, payment 61, notification 38, ai 116, learning 137 (incl. pre-test: 20, velocity: 11) |
+| Unit Tests | ✅ 536 тестов | identity 63, course 93, enrollment 28, payment 61, notification 38, ai 116, learning 137 (incl. pre-test: 20, velocity: 11) |
 
 ## Стек
 
@@ -63,7 +63,7 @@ cd apps/seller && pnpm install && pnpm dev   # http://localhost:3002
 # Установить зависимости (из корня)
 uv sync --all-packages
 
-# Все 7 сервисов (487 тестов)
+# Все 7 сервисов (509 тестов)
 cd services/py/identity && uv run --package identity pytest tests/ -v
 cd services/py/course && uv run --package course pytest tests/ -v
 cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
@@ -114,7 +114,7 @@ docker compose -f docker-compose.prod.yml --profile loadtest up locust
 ```
 ├── libs/py/common/          — Shared: config, errors, security, database, health, rate limiting
 ├── services/py/identity/    — Auth: register, login, JWT refresh tokens, roles, admin, email verification
-├── services/py/course/      — Courses: CRUD, search, modules, lessons, reviews, categories, filtering
+├── services/py/course/      — Courses: CRUD, search, modules, lessons, reviews, categories, filtering, bundles
 ├── services/py/enrollment/  — Enrollment: запись на курс, прогресс, lesson completion, auto-completion
 ├── services/py/payment/     — Payment: mock-оплата, teacher earnings, payouts
 ├── services/py/notification/— Notifications: in-app, mark as read

@@ -636,6 +636,117 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 
 ---
 
+### POST /bundles
+
+Создать бандл курсов (2–10 курсов, все принадлежат текущему teacher). Только `role=teacher`, `is_verified=true`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "title": "Python Full Stack Bundle",
+  "description": "All Python courses in one bundle",
+  "price": 49.99,
+  "discount_percent": 30,
+  "course_ids": ["uuid1", "uuid2", "uuid3"]
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "uuid",
+  "teacher_id": "uuid",
+  "title": "Python Full Stack Bundle",
+  "description": "All Python courses in one bundle",
+  "price": 49.99,
+  "discount_percent": 30,
+  "is_active": true,
+  "created_at": "2026-03-04T...",
+  "courses": [...]
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 400 | Price <= 0, discount не 1–99%, количество курсов не 2–10 |
+| 401 | Отсутствует или невалидный токен |
+| 403 | `role != teacher`, не verified, курс не принадлежит teacher |
+| 404 | Курс не найден |
+
+---
+
+### GET /bundles
+
+Список активных бандлов. Публичный endpoint.
+
+**Query:** `limit` (1–100, default 20), `offset` (>= 0), `teacher_id` (optional UUID filter).
+
+**Response `200`:**
+```json
+{
+  "items": [...],
+  "total": 5
+}
+```
+
+---
+
+### GET /bundles/{bundle_id}
+
+Получить бандл по ID с вложенными курсами. Публичный endpoint.
+
+**Response `200`:** Объект бандла с массивом `courses`.
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 404 | Бандл не найден |
+
+---
+
+### PUT /bundles/{bundle_id}
+
+Обновить бандл. Только владелец (teacher).
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "title": "Updated title",
+  "description": "Updated desc",
+  "price": 39.99,
+  "discount_percent": 25
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Не владелец бандла |
+| 404 | Бандл не найден |
+
+---
+
+### DELETE /bundles/{bundle_id}
+
+Удалить бандл. Только владелец (teacher). **Response `204`.**
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 403 | Не владелец бандла |
+| 404 | Бандл не найден |
+
+---
+
 ## Enrollment Service (`:8003`)
 
 ### POST /enrollments

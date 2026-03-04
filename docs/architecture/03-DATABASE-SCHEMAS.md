@@ -23,7 +23,9 @@ course-db (PostgreSQL 16 Alpine, :5434)
        ├── table: courses
        ├── table: modules
        ├── table: lessons
-       └── table: reviews
+       ├── table: reviews
+       ├── table: course_bundles
+       └── table: bundle_courses
 
 enrollment-db (PostgreSQL 16 Alpine, :5435)
   └── database: enrollment
@@ -62,7 +64,7 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        └── table: pretest_answers
 ```
 
-**Итого: 28 таблиц в 6 базах данных.**
+**Итого: 30 таблиц в 6 базах данных.**
 
 ---
 
@@ -239,6 +241,7 @@ CREATE TABLE IF NOT EXISTS courses (
 - `004_indexes.sql` — FK indexes (teacher_id, course_id, module_id, student_id)
 - `005_pg_trgm.sql` — pg_trgm extension + GIN index на courses (title, description)
 - `006_categories.sql` — таблица categories + seed data + category_id FK на courses
+- `008_bundles.sql` — таблицы course_bundles и bundle_courses
 
 ### Table: `modules`
 
@@ -282,6 +285,36 @@ CREATE TABLE IF NOT EXISTS reviews (
 ```
 
 **Денормализация:** `courses.avg_rating` (NUMERIC(3,2)) и `courses.review_count` (INTEGER) обновляются при создании review.
+
+### Table: `course_bundles`
+
+```sql
+CREATE TABLE IF NOT EXISTS course_bundles (
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id       UUID NOT NULL,
+    title            VARCHAR(200) NOT NULL,
+    description      TEXT NOT NULL DEFAULT '',
+    price            NUMERIC(10,2) NOT NULL,
+    discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 99),
+    is_active        BOOLEAN NOT NULL DEFAULT true,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+**Индексы:** PK (id) + idx_bundles_teacher (teacher_id).
+
+### Table: `bundle_courses`
+
+```sql
+CREATE TABLE IF NOT EXISTS bundle_courses (
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    bundle_id  UUID NOT NULL REFERENCES course_bundles(id) ON DELETE CASCADE,
+    course_id  UUID NOT NULL,
+    UNIQUE(bundle_id, course_id)
+);
+```
+
+**Индексы:** PK (id) + idx_bc_bundle (bundle_id) + UNIQUE(bundle_id, course_id).
 
 ---
 
