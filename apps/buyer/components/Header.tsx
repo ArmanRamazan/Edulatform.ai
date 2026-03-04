@@ -112,7 +112,9 @@ export function Header() {
                     <AICreditIndicator token={token} />
                   </div>
                 )}
-                <span className="text-sm text-gray-500">{user.name}</span>
+                <Link href={`/users/${user.id}`} className="text-sm text-gray-500 hover:underline">
+                  {user.name}
+                </Link>
                 <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
                   {ROLE_LABELS[user.role] || user.role}
                 </span>
