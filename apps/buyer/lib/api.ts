@@ -332,6 +332,83 @@ export const admin = {
   },
 };
 
+export interface PublicProfile {
+  id: string;
+  name: string;
+  bio: string | null;
+  avatar_url: string | null;
+  role: "student" | "teacher" | "admin";
+  is_verified: boolean;
+  created_at: string;
+  is_public: boolean;
+}
+
+export interface UserStats {
+  name: string;
+  role: string;
+  is_verified: boolean;
+  member_since: string;
+}
+
+export interface FollowCounts {
+  followers_count: number;
+  following_count: number;
+}
+
+export interface FollowItem {
+  id: string;
+  follower_id: string;
+  following_id: string;
+  created_at: string;
+}
+
+export interface FollowList {
+  items: FollowItem[];
+  total: number;
+}
+
+export const profiles = {
+  get(userId: string) {
+    return request<PublicProfile>(`${IDENTITY_URL}/users/${userId}/profile`);
+  },
+  stats(userId: string) {
+    return request<UserStats>(`${IDENTITY_URL}/users/${userId}/stats`);
+  },
+  followCounts(userId: string) {
+    return request<FollowCounts>(`${IDENTITY_URL}/users/${userId}/followers/count`);
+  },
+  follow(token: string, userId: string) {
+    return requestVoid(`${IDENTITY_URL}/follow/${userId}`, {
+      method: "POST",
+      headers: authHeaders(token),
+    });
+  },
+  unfollow(token: string, userId: string) {
+    return requestVoid(`${IDENTITY_URL}/follow/${userId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+  },
+  myFollowing(token: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<FollowList>(`${IDENTITY_URL}/following/me${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+  myFollowers(token: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<FollowList>(`${IDENTITY_URL}/followers/me${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
 export const identity = {
   register(email: string, password: string, name: string, role: string = "student") {
     return request<TokenResponse>(`${IDENTITY_URL}/register`, {
