@@ -1,263 +1,407 @@
-# 11 — AI Agent Standards & MCP Protocol
+# 11 — AI Agent Standards & Tri-Agent System
 
-> Владелец: Architect / Tech Lead
-> Последнее обновление: 2026-02-24
-> Источник: [Thoughtworks Technology Radar Vol. 33](https://www.thoughtworks.com/radar)
-
----
-
-## Зачем
-
-Thoughtworks Radar Vol. 33 фиксирует сдвиг: AI-агенты становятся полноценными потребителями API. MCP (Model Context Protocol) от Anthropic стал де-факто стандартом интеграции LLM с внешними системами. Проекты, которые не учитывают agent-first дизайн, получают "shadow AI" — неконтролируемое использование LLM в обход архитектуры.
-
-Для EduPlatform это означает:
-- API должны быть пригодны не только для UI, но и для AI-агентов (teacher assistants, content generators, student tutors)
-- Кодовая база должна быть понятна coding agents (Claude Code, Copilot, Cursor)
-- Безопасность должна учитывать AI-специфичные угрозы (prompt injection, PII leakage через LLM)
+> Владелец: Architect / AI Lead
+> Последнее обновление: 2026-03-05
 
 ---
 
-## 1. MCP Protocol Readiness
+## Контекст
 
-### Что такое MCP
-
-Model Context Protocol — открытый стандарт Anthropic для подключения LLM к внешним данным и инструментам. Вместо ad-hoc интеграций через промпты, MCP предоставляет:
-- **Resources** — структурированные данные (курсы, уроки, прогресс)
-- **Tools** — действия (создать курс, записать студента, отметить прогресс)
-- **Prompts** — предопределённые шаблоны взаимодействия
-
-### Текущее состояние EduPlatform
-
-| Аспект | Статус | Проблема |
-|--------|--------|----------|
-| REST API | ✅ 5 сервисов | Хорошая основа, но нет machine-readable описаний |
-| OpenAPI spec | 🔴 Нет | FastAPI генерирует автоматически, но не используется как контракт |
-| MCP Server | 🔴 Нет | Нет адаптера для AI-агентов |
-| Semantic описания | 🔴 Нет | Endpoints не описаны для machine consumption |
-
-### Требования
-
-| # | Требование | Приоритет | Фаза |
-|---|-----------|-----------|------|
-| MCP-1 | Экспортировать OpenAPI spec из каждого FastAPI сервиса как артефакт | High | 1.0 |
-| MCP-2 | Добавить semantic descriptions к endpoints (что делает, когда использовать) | High | 1.0 |
-| MCP-3 | Создать MCP Server адаптер поверх Course + Enrollment API | Medium | 2.0 |
-| MCP-4 | Определить MCP Resources: courses, lessons, enrollments, progress | Medium | 2.0 |
-| MCP-5 | Определить MCP Tools: search_courses, enroll, complete_lesson, submit_review | Medium | 2.0 |
-| MCP-6 | Rate limiting для AI-агентов (отдельный tier от UI) | Medium | 2.0 |
-
-### Антипаттерн: Naive API-to-MCP Wrapping
-
-Radar предупреждает: тупое оборачивание REST API в MCP без адаптации — антипаттерн. Нужно:
-- Группировать endpoints в логические tools (не 1:1 маппинг)
-- Добавлять контекстные подсказки (когда какой tool использовать)
-- Ограничивать scope (AI-агент teacher assistant не должен видеть admin endpoints)
+AI — ядро продукта, а не вспомогательная функция. Tri-Agent система обеспечивает адаптивный онбординг: Strategist строит learning path, Designer собирает mission, Coach ведёт Socratic сессию. RAG обеспечивает контекст из кодобазы и документации компании-клиента.
 
 ---
 
-## 2. Context Engineering
+## 1. Tri-Agent Orchestration
 
-### Определение
+### Архитектура
 
-Context Engineering (Radar: Adopt) заменяет "Prompt Engineering". Суть: не подбирать слова в промпте, а проектировать полную систему подачи контекста: какие данные, в каком порядке, с какими ограничениями LLM получает на вход.
+```
+                     ┌─────────────┐
+                     │  Strategist  │  Макро-планирование
+                     │  Agent       │  Learning path, concept ordering
+                     └──────┬──────┘
+                            │ learning_path
+                            ▼
+                     ┌─────────────┐
+                     │  Designer    │  Микро-планирование
+                     │  Agent       │  Mission blueprint assembly
+                     └──────┬──────┘
+                            │ mission_blueprint
+                            ▼
+                     ┌─────────────┐
+                     │  Coach       │  Исполнение
+                     │  Agent       │  Socratic session, real-time
+                     └─────────────┘
+                            ↕
+                     ┌─────────────┐
+                     │  RAG Service │  Контекст
+                     │  (pgvector)  │  Company code/docs search
+                     └─────────────┘
+```
 
-### Применение к EduPlatform
+### Strategist Agent
 
-| Сценарий | Контекст для AI | Что нужно |
-|----------|----------------|-----------|
-| Teacher Assistant | Текущий курс, модули, уроки, отзывы студентов | Structured course context via MCP Resource |
-| Student Tutor | Текущий урок, прогресс, предыдущие уроки | Progress-aware context window |
-| Content Generator | Curriculum structure, target level, existing content | Template + constraints |
-| Admin Assistant | Pending teachers, enrollment stats, error rates | Dashboard data as context |
+**Ответственность:** Макро-планирование обучения. Определяет порядок concept-ов, строит learning path, адаптивно перестраивает при отклонениях.
 
-### Требования
+**Входные данные:**
+- Профиль инженера (опыт, текущий trust level, пройденные concepts)
+- Concept graph организации (зависимости между concepts)
+- Результаты pre-test / последних assessments
 
-| # | Требование | Приоритет | Фаза |
-|---|-----------|-----------|------|
-| CE-1 | API endpoints возвращают достаточно контекста в одном запросе (no chatty APIs) | High | 1.0 |
-| CE-2 | Curriculum endpoint включает структуру + метаданные (не только titles) | Medium | 1.0 |
-| CE-3 | Progress endpoint включает lesson titles + completion status (не только counts) | Medium | 1.0 |
-| CE-4 | Определить "context bundles" для каждого AI-сценария | Low | 2.0 |
+**Выходные данные — Learning Path:**
+```json
+{
+  "user_id": "uuid",
+  "org_id": "uuid",
+  "concepts_ordered": [
+    {"concept_id": "uuid", "priority": 1, "estimated_missions": 3},
+    {"concept_id": "uuid", "priority": 2, "estimated_missions": 2}
+  ],
+  "estimated_days": 25,
+  "replanned_at": "2026-03-05T10:00:00Z",
+  "replan_reason": "mastery_threshold_exceeded"
+}
+```
+
+**Алгоритм:**
+1. Topological sort concept graph по зависимостям
+2. Приоритизация по: gap analysis (что не знает) → business impact (что важнее для роли) → dependency order
+3. Mastery thresholds: concept считается освоенным при mastery >= 0.7
+4. Adaptive replanning: если mastery растёт быстрее/медленнее ожидаемого → пересчёт path
+5. Триггеры replan: trust level change, 3+ failed missions подряд, явный запрос
+
+### Designer Agent
+
+**Ответственность:** Сборка конкретной mission (ежедневного задания) из learning path и RAG контекста.
+
+**Входные данные:**
+- Текущий concept из learning path (от Strategist)
+- RAG results: релевантные файлы и документация компании
+- User profile: trust level, preferred difficulty
+
+**Выходные данные — Mission Blueprint:**
+```json
+{
+  "mission_id": "uuid",
+  "concept_id": "uuid",
+  "title": "Understanding the Auth Middleware",
+  "phases": {
+    "recap": {
+      "summary": "Вчера мы разобрали HTTP middleware pattern...",
+      "key_points": ["middleware chain", "request/response cycle"]
+    },
+    "reading": {
+      "rag_references": [
+        {"file": "src/middleware/auth.ts", "lines": "15-45", "relevance": 0.92}
+      ],
+      "focus_questions": ["Почему здесь используется bearer token, а не cookie?"]
+    },
+    "questions": {
+      "conceptual": ["Объясни разницу между authentication и authorization"],
+      "applied": ["Как бы ты добавил rate limiting в этот middleware?"]
+    },
+    "code_case": {
+      "task": "Реализуй middleware для проверки API key",
+      "starter_code": "...",
+      "test_cases": ["..."],
+      "hints": ["..."]
+    },
+    "wrap_up": {
+      "summary_prompt": "Перечисли 3 главных вывода из сегодняшней миссии"
+    }
+  },
+  "estimated_duration_min": 45,
+  "difficulty": "intermediate"
+}
+```
+
+### Coach Agent
+
+**Ответственность:** Ведение Socratic сессии в реальном времени. Задаёт вопросы, не даёт ответы напрямую, направляет к самостоятельному решению.
+
+**Coach Session Protocol — фазы:**
+
+| Фаза | Описание | Переход |
+|------|----------|---------|
+| `recap` | Краткое повторение предыдущей сессии, проверка retention | Автоматически после 2-3 вопросов |
+| `reading` | Направление к изучению кода/документации из RAG | После подтверждения прочтения |
+| `questions` | Socratic вопросы по concept-у, углубление понимания | После 3+ правильных ответов |
+| `code_case` | Практическое задание: написать/исправить код | После submit или timeout |
+| `wrap_up` | Резюме, self-assessment, preview следующей миссии | Завершение сессии |
+
+**Правила Coach:**
+- Никогда не даёт прямой ответ на вопрос. Задаёт наводящие вопросы
+- Если инженер застрял 3+ раза — даёт подсказку (hint), не ответ
+- Адаптирует сложность в реальном времени на основе ответов
+- При каждом ответе обновляет concept mastery estimate
+- Максимальная длительность сессии: 60 минут (soft limit с предупреждением)
 
 ---
 
-## 3. Coding Agent Standards
+## 2. Agent Memory
 
-### CLAUDE.md и AGENTS.md
+### Redis-Based Persistent Profiles
 
-Radar рекомендует AGENTS.md (и аналоги) как стандартную практику для проектов, где coding agents участвуют в разработке. EduPlatform уже имеет `CLAUDE.md` — это правильный подход.
+Каждый agent хранит состояние в Redis для персистентности между сессиями.
+
+```
+# Ключи в Redis
+agent:strategist:{user_id}     → Learning path state (JSON)
+agent:coach:{user_id}          → Session history, conversation memory (JSON)
+agent:designer:{user_id}       → Last mission context, preferences (JSON)
+user:profile:{user_id}         → Aggregated profile for all agents (JSON)
+```
+
+**User Profile (shared между agents):**
+```json
+{
+  "user_id": "uuid",
+  "org_id": "uuid",
+  "trust_level": 2,
+  "concepts_mastered": ["uuid1", "uuid2"],
+  "concepts_in_progress": [{"id": "uuid3", "mastery": 0.45}],
+  "learning_style": "hands-on",
+  "avg_session_duration_min": 35,
+  "streak_days": 12,
+  "total_missions_completed": 28,
+  "last_session_at": "2026-03-04T18:00:00Z"
+}
+```
+
+**TTL:** Profile данные — без TTL (persistent). Session state — 24h TTL с refresh при активности.
+
+---
+
+## 3. RAG Integration
+
+### Pipeline
+
+```
+Company Code/Docs → Ingestion → Chunking → Embedding → pgvector Index
+                                                            ↓
+                                              Designer/Coach → Search Query
+                                                            ↓
+                                                     Relevant Chunks
+```
+
+### Ingestion
+- Источники: Git repositories, Confluence/Notion export, internal docs (Markdown, RST)
+- Chunking: по функциям/классам для кода, по секциям для документации
+- Embedding model: `text-embedding-004` (Google)
+- Storage: PostgreSQL + pgvector extension (rag-db, port 5439)
+- Org isolation: каждый document привязан к `org_id`, search фильтрует по org
+
+### Search
+- Semantic search: cosine similarity по pgvector
+- Hybrid: semantic + keyword (для точного поиска по именам функций/классов)
+- Top-K: 5-10 chunks per query, с relevance score threshold > 0.7
+- Context window management: chunks суммарно < 4K tokens для Coach, < 8K для Designer
+
+### RAG Service (port 8008)
+
+**Endpoints:**
+- `POST /rag/ingest` — загрузка документов/кода для индексации (org-admin only)
+- `POST /rag/search` — semantic search по indexed content
+- `GET /rag/status/{org_id}` — статус индекса организации
+- `DELETE /rag/documents/{id}` — удаление документа из индекса
+
+---
+
+## 4. Trust Levels (0-5)
+
+Trust Levels заменяют B2C XP систему. Прогрессивный доступ к возможностям платформы.
+
+| Level | Название | Требования | Разблокированные возможности |
+|-------|---------|------------|------------------------------|
+| 0 | Observer | Регистрация | Просмотр knowledge graph, чтение документации |
+| 1 | Learner | Pre-test пройден | Coach sessions, daily missions |
+| 2 | Practitioner | 10+ missions, mastery >= 0.5 по 5+ concepts | Code challenges, peer discussions |
+| 3 | Contributor | 30+ missions, mastery >= 0.7 по 15+ concepts | Доступ к production code review задачам |
+| 4 | Mentor | 60+ missions, mastery >= 0.8 по 30+ concepts | Менторство новых инженеров, content suggestions |
+| 5 | Expert | Верификация тимлидом | Полный доступ, участие в architecture decisions |
+
+**Автоматический расчёт:** Trust level пересчитывается после каждой завершённой mission. Level 5 требует ручной верификации.
+
+---
+
+## 5. LLM Usage
+
+### Model Selection
+
+| Задача | Модель | Обоснование |
+|--------|--------|-------------|
+| Coach session | Gemini Flash | Низкая latency (< 2s), достаточное качество для Socratic dialogue |
+| Strategist planning | Gemini Flash | Structured output, concept ordering |
+| Designer assembly | Gemini Flash | Mission blueprint generation |
+| Embeddings | text-embedding-004 | Высокое качество для code/docs, 768 dimensions |
+
+### Credit System
+
+| Plan | Лимит | Аудитория |
+|------|-------|-----------|
+| Trial | 10 sessions/day | Пробный период организации |
+| Standard | 100 sessions/day per org | Стандартная подписка |
+| Enterprise | Unlimited | Enterprise подписка |
+
+### Caching
+- Redis cache для повторяющихся RAG queries (TTL: 1 hour)
+- Conversation memory в Redis (per user, per session)
+- Embedding cache: не пересчитывать embeddings для неизменённых документов
+
+---
+
+## 6. Safety & Security
+
+### Фундаментальные правила
+
+```
+ЗАКОН: Код и документация компании-клиента — конфиденциальные данные.
+Никакой код клиента не отправляется внешним сервисам без явного consent организации.
+```
+
+### Data Flow Security
+
+| Данные | Где хранятся | Кто имеет доступ | Внешние сервисы |
+|--------|-------------|-----------------|-----------------|
+| Company code | rag-db (pgvector) | RAG service only | Embedding API (text-embedding-004) — только chunks |
+| User PII | identity-db | Identity service only | Никогда |
+| Session transcripts | Redis + ai-db | AI service only | LLM API — masked PII |
+| Mission blueprints | learning-db | Learning service | Никогда |
+
+### PII Masking
+
+Перед отправкой в LLM:
+- Имена пользователей → `[USER]`
+- Email → `[EMAIL]`
+- Внутренние URLs → `[INTERNAL_URL]`
+- API keys/tokens в коде → `[REDACTED]`
+
+### Audit Trail
+
+Каждое взаимодействие с LLM логируется:
+```json
+{
+  "timestamp": "2026-03-05T10:00:00Z",
+  "org_id": "uuid",
+  "user_id": "uuid",
+  "agent": "coach",
+  "action": "generate_response",
+  "model": "gemini-flash",
+  "tokens_in": 1200,
+  "tokens_out": 350,
+  "latency_ms": 1100,
+  "session_id": "uuid",
+  "phase": "questions"
+}
+```
+
+### Org Consent Model
+
+При onboarding организации:
+- Явное согласие на отправку code chunks в embedding API
+- Опция: self-hosted embedding model (Phase 2)
+- Data retention policy: org может запросить полное удаление всех данных
+- Geographic data residency: выбор региона хранения (Phase 2)
+
+### Prompt Injection Defence
+
+- UGC (имена, комментарии) sanitize перед подачей в LLM context
+- System prompt изолирован от user input (separate message roles)
+- Coach не выполняет произвольные инструкции из user messages
+- RAG chunks обрабатываются как data, не как instructions
+
+---
+
+## 7. Coding Agent Standards
+
+### CLAUDE.md как Source of Truth
+
+`CLAUDE.md` содержит все правила для coding agents, работающих с кодобазой. Обновляется при каждом архитектурном изменении.
+
+### Security-Critical Zones (повышенное внимание при AI-generated коде)
+
+- `migrations/` — проверка на data loss и locking
+- Auth-related код в identity service — authorization logic
+- JWT/token handling — проверка на leakage
+- RAG ingestion — проверка на injection через indexed content
+- Agent prompts — проверка на prompt injection vectors
+
+### Review Checklist для AI-Generated Code
+
+1. Направление зависимостей (Clean Architecture) соблюдено
+2. Type hints на всех публичных функциях
+3. Тесты покрывают поведение, а не реализацию
+4. SQL queries параметризованы ($1, $2, ...)
+5. PII не попадает в логи
+6. Org isolation: данные одной организации не видны другой
+
+---
+
+## 8. MCP Readiness
 
 ### Текущее состояние
 
-| Аспект | Статус | Оценка |
-|--------|--------|--------|
-| CLAUDE.md | ✅ | Подробный, покрывает архитектуру, правила и AI safety |
-| Структура проекта задокументирована | ✅ | STRUCTURE.md |
-| Архитектурные решения задокументированы | ✅ | docs/architecture/ (6 файлов) |
-| Тестовые команды | ✅ | В CLAUDE.md и MEMORY.md |
-| Security constraints для agent | ✅ | AI Safety раздел в CLAUDE.md |
-| Context boundaries | ✅ | "Не трогать" зоны описаны в CLAUDE.md |
+MCP Server не создан (YAGNI). Подготовка:
+- Endpoints сгруппированы логически (по agent / по domain)
+- API responses self-contained (related data, не только IDs)
+- `description` в Pydantic models и FastAPI decorators
+- OpenAPI spec автогенерируется из FastAPI
 
-### Требования
+### Будущие MCP Resources (когда появится реальный use case)
 
-| # | Требование | Приоритет | Фаза |
-|---|-----------|-----------|------|
-| CA-1 | Добавить AI-safety раздел в CLAUDE.md | High | 0.7 |
-| CA-2 | Определить "не трогать" зоны (миграции, proto, security-critical) | High | 0.7 |
-| CA-3 | Добавить spec-driven development правила | Medium | 1.0 |
-| CA-4 | Определить review checklist для AI-generated кода | Medium | 1.0 |
+| Resource | Описание |
+|----------|----------|
+| `missions` | Текущие и завершённые missions пользователя |
+| `concepts` | Knowledge graph: concepts, mastery, dependencies |
+| `progress` | Trust level, streak, completion timeline |
+| `rag_documents` | Indexed documents организации |
 
----
+### Будущие MCP Tools
 
-## 4. AI-Specific Security
-
-### Угрозы (из Radar)
-
-| Угроза | Описание | Релевантность |
-|--------|----------|---------------|
-| Prompt Injection | Вредоносный контент в данных (course title, lesson content) интерпретируется LLM как инструкция | Высокая — UGC в курсах |
-| PII Leakage | LLM выдаёт персональные данные из контекста | Высокая — emails, имена студентов |
-| Shadow AI | Разработчики используют LLM для генерации кода без review | Средняя — coding agents |
-| Toxic Flow | Цепочка вызовов, где один компрометированный шаг отравляет downstream | Средняя — multi-service flows |
-
-### Требования
-
-| # | Требование | Приоритет | Фаза |
-|---|-----------|-----------|------|
-| SEC-AI-1 | Sanitize UGC перед подачей в LLM контекст (strip instructions, escape) | High | 2.0 |
-| SEC-AI-2 | PII masking в данных, передаваемых AI-агентам (Presidio или аналог) | High | 2.0 |
-| SEC-AI-3 | Audit log для AI-agent actions (отдельно от user actions) | Medium | 2.0 |
-| SEC-AI-4 | Input validation на MCP Tools (AI не может обойти бизнес-правила) | High | 2.0 |
-| SEC-AI-5 | Rate limiting per AI-agent identity (не per user) | Medium | 2.0 |
-| SEC-AI-6 | Toxic flow analysis: review multi-step AI workflows на предмет privilege escalation | Medium | 3.0 |
-| SEC-AI-7 | NeMo Guardrails или аналог для AI-facing endpoints | Low | 3.0 |
+| Tool | Описание |
+|------|----------|
+| `start_mission` | Начать новую mission |
+| `search_knowledge` | Поиск по indexed кодобазе |
+| `get_concept_mastery` | Текущий уровень mastery по concept |
+| `get_team_progress` | Прогресс команды (admin) |
 
 ---
 
-## 5. Spec-Driven Development
+## 9. Implementation Phases
 
-### Подход (Radar: Trial)
+### Phase 1 — Agent Foundation (текущая)
 
-Вместо "code first, docs later" — сначала спецификация (OpenAPI, proto, MCP schema), потом реализация. AI-агенты особенно выигрывают от spec-first, т.к. спецификация служит контрактом и контекстом одновременно.
+- [ ] Strategist: learning path generation (concept ordering + adaptive replan)
+- [ ] Designer: mission blueprint assembly (RAG integration)
+- [ ] Coach: Socratic session protocol (5 phases)
+- [ ] RAG: ingestion pipeline + pgvector search
+- [ ] Agent memory: Redis persistent profiles
+- [ ] Trust Levels: auto-calculation + progression
 
-### Текущее состояние
+### Phase 2 — Hardening
 
-| Аспект | Статус |
-|--------|--------|
-| Proto контракты | 🔴 Запланированы (Phase 2), не реализованы |
-| OpenAPI specs | ⚠️ FastAPI автогенерирует, но не используется как source of truth |
-| Database schemas | ✅ SQL миграции как source of truth |
-| API docs | ✅ docs/architecture/02-API-REFERENCE.md (ручной) |
+- [ ] PII masking pipeline (Presidio или custom)
+- [ ] Org consent flow для data processing
+- [ ] Self-hosted embedding option
+- [ ] Advanced RAG: hybrid search, reranking
+- [ ] Coach: multi-language support
+- [ ] Analytics: per-org onboarding time tracking
 
-### Требования
+### Phase 3 — Scale
 
-| # | Требование | Приоритет | Фаза |
-|---|-----------|-----------|------|
-| SPEC-1 | Зафиксировать OpenAPI spec для каждого сервиса в репозитории | Medium | 1.0 |
-| SPEC-2 | CI проверка: код соответствует спецификации | Medium | 1.0 |
-| SPEC-3 | Proto контракты для межсервисного взаимодействия | High | 2.0 |
-| SPEC-4 | MCP schema для AI-facing интерфейсов | Medium | 2.0 |
-
----
-
-## 6. AI Antipatterns to Avoid
-
-Из Radar Vol. 33:
-
-### 6.1 AI-Generated Code Complacency
-
-**Проблема:** Разработчики принимают AI-generated код без review, накапливая технический долг и уязвимости.
-
-**Митигация для EduPlatform:**
-- Весь AI-generated код проходит тот же review process, что и ручной
-- Security-sensitive файлы (auth, payments, migrations) требуют дополнительного внимания
-- Тесты обязательны для любого нового кода — AI не исключение
-
-### 6.2 Shadow AI
-
-**Проблема:** Команды подключают LLM к продукту ad-hoc, без архитектурного oversight.
-
-**Митигация для EduPlatform:**
-- AI интеграции только через определённые интерфейсы (MCP Server, не прямые API вызовы)
-- Централизованный AI gateway (Phase 3) для контроля и мониторинга
-
-### 6.3 Naive RAG
-
-**Проблема:** Индексация всех данных без учёта access control и data quality.
-
-**Митигация для EduPlatform:**
-- RAG над курсами учитывает enrollment status (студент видит только свои курсы)
-- Teacher content не смешивается с admin data
-- PII не попадает в vector index
-
----
-
-## 7. Lightweight Architecture Choices (Radar Validated)
-
-Решения EduPlatform, подтверждённые Radar:
-
-| Решение | Radar статус | Наш контекст |
-|---------|-------------|---------------|
-| FastAPI (Python) | Adopt-adjacent | Правильный выбор для бизнес-логики |
-| asyncpg (direct SQL) | — | Лучше ORM для performance-critical paths |
-| pnpm | Adopt | Планируем для frontend (сейчас npm) |
-| Pydantic | Adopt | Уже используем для config и validation |
-| ClickHouse (аналитика) | Trial | Запланирован на Phase 3 |
-| Meilisearch | Trial | Запланирован на Phase 2 |
-
-### Новые рекомендации из Radar
-
-| Технология | Radar статус | Применение в EduPlatform | Фаза |
-|-----------|-------------|-------------------------|------|
-| uv (Python) | Adopt | ✅ Уже используем | — |
-| Pydantic AI | Assess | AI agent framework, если нужны Python AI agents | 3.0 |
-| LangGraph | Trial | Orchestration для multi-step AI workflows | 3.0 |
-| vLLM | Trial | Self-hosted inference, если будем хостить модели | 3.0+ |
-| Presidio | Trial | PII detection/masking для AI data pipelines | 2.0 |
-| NeMo Guardrails | Assess | Safety layer для AI-facing APIs | 3.0 |
-
----
-
-## 8. Implementation Roadmap
-
-### Phase 1 — Foundation ✅ DONE
-
-- [x] CLAUDE.md содержит правила для coding agents
-- [x] AI-safety раздел в CLAUDE.md (CA-1)
-- [x] "Не трогать" зоны определены в CLAUDE.md (CA-2)
-
-### Phase 2 — Learning Intelligence (текущая)
-
-> AI Service (:8006) и Learning Engine (:8007) — первое реальное внедрение AI в продукт.
-
-- [ ] 🔵 AI Service: model routing (Gemini Flash / Claude Haiku / Claude Sonnet)
-- [ ] 🔵 UGC sanitization перед подачей в LLM (SEC-AI-1)
-- [ ] 🔵 AI action audit log (SEC-AI-3)
-- [ ] 🔵 Semantic descriptions на endpoints (MCP-2)
-- [ ] 🔵 Enriched context в API responses (CE-1, CE-2, CE-3)
-
-### Phase 3 — Growth
-
-- [ ] Экспортировать OpenAPI specs как артефакт (MCP-1)
-- [ ] MCP Server для Course + Enrollment + AI (MCP-3, MCP-4, MCP-5)
-- [ ] PII masking с Presidio (SEC-AI-2)
-- [ ] AI rate limiting tier (MCP-6)
-- [ ] Spec-driven development workflow (SPEC-1, SPEC-2)
-
-### Phase 4 — Scale
-
-- [ ] AI Gateway (centralised LLM access control)
-- [ ] NeMo Guardrails (SEC-AI-7)
-- [ ] Self-hosted SLM (replace 80% API calls) → full PII containment
-- [ ] Proto контракты gRPC (SPEC-3)
+- [ ] MCP Server для внешних интеграций
+- [ ] AI Gateway: centralized LLM access control
+- [ ] Self-hosted SLM для PII-sensitive операций
+- [ ] A/B testing mission strategies
+- [ ] Multi-org federation
 
 ---
 
 ## Принцип
 
 ```
-AI — это ещё один consumer нашего API.
-Те же правила: аутентификация, авторизация, rate limiting, audit logging.
-Плюс специфичные: PII masking, prompt injection defence, context boundaries.
-Не оптимизировать для AI ДО того, как есть реальный AI use case.
+AI-агенты — ядро продукта, не дополнение.
+Tri-Agent система проектируется как первоклассный архитектурный компонент.
+Безопасность данных клиента — абсолютный приоритет.
+Каждое взаимодействие с LLM — аудируемо, ограничено, изолировано по org.
 ```

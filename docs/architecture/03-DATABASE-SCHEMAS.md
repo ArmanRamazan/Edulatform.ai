@@ -1,13 +1,13 @@
 # 03 — Database Schemas
 
-> Последнее обновление: 2026-03-04
-> Стадия: Phase 2.4 (Gamification — complete), Phase 2.5 (MVP Polish — in progress)
+> Последнее обновление: 2026-03-05
+> Стадия: B2B Agentic Adaptive Learning Pivot
 
 ---
 
 ## Принцип: Database-per-Service
 
-Каждый сервис владеет собственной PostgreSQL базой. Прямой доступ к БД другого сервиса запрещён.
+Каждый сервис владеет собственной PostgreSQL базой. Прямой доступ к БД другого сервиса запрещён. AI Service не имеет собственной БД (stateless, только Redis).
 
 ```
 identity-db (PostgreSQL 16 Alpine, :5433)
@@ -17,24 +17,9 @@ identity-db (PostgreSQL 16 Alpine, :5433)
        ├── table: email_verification_tokens
        ├── table: password_reset_tokens
        ├── table: referrals
-       └── table: follows
-
-course-db (PostgreSQL 16 Alpine, :5434)
-  └── database: course
-       ├── table: categories
-       ├── table: courses
-       ├── table: modules
-       ├── table: lessons
-       ├── table: reviews
-       ├── table: course_bundles
-       ├── table: bundle_courses
-       ├── table: course_promotions
-       └── table: wishlist
-
-enrollment-db (PostgreSQL 16 Alpine, :5435)
-  └── database: enrollment
-       ├── table: enrollments
-       └── table: lesson_progress
+       ├── table: follows
+       ├── table: organizations          (NEW)
+       └── table: org_members            (NEW)
 
 payment-db (PostgreSQL 16 Alpine, :5436)
   └── database: payment
@@ -46,11 +31,14 @@ payment-db (PostgreSQL 16 Alpine, :5436)
        ├── table: coupons
        ├── table: coupon_usages
        ├── table: refunds
-       └── table: gift_purchases
+       ├── table: gift_purchases
+       └── table: org_subscriptions      (NEW)
 
 notification-db (PostgreSQL 16 Alpine, :5437)
   └── database: notification
-       └── table: notifications
+       ├── table: notifications
+       ├── table: conversations
+       └── table: messages
 
 learning-db (PostgreSQL 16 Alpine, :5438)
   └── database: learning
@@ -73,10 +61,40 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        ├── table: activity_feed
        ├── table: study_groups
        ├── table: study_group_members
-       └── table: certificates
+       ├── table: certificates
+       ├── table: missions               (NEW)
+       └── table: trust_levels           (NEW)
+
+rag-db (PostgreSQL 16 Alpine + pgvector, :5439)     (NEW)
+  └── database: rag
+       ├── table: documents              (NEW)
+       ├── table: chunks                 (NEW, pgvector)
+       ├── table: org_concepts           (NEW)
+       ├── table: concept_relationships  (NEW)
+       ├── table: onboarding_templates   (NEW)
+       └── table: template_stages        (NEW)
+
+--- DORMANT ---
+
+course-db (PostgreSQL 16 Alpine, :5434) — dormant
+  └── database: course
+       ├── table: categories
+       ├── table: courses
+       ├── table: modules
+       ├── table: lessons
+       ├── table: reviews
+       ├── table: course_bundles
+       ├── table: bundle_courses
+       ├── table: course_promotions
+       └── table: wishlist
+
+enrollment-db (PostgreSQL 16 Alpine, :5435) — dormant
+  └── database: enrollment
+       ├── table: enrollments
+       └── table: lesson_progress
 ```
 
-**Итого: 38 таблиц в 6 базах данных.**
+**Итого (активные): 48 таблиц в 5 базах данных. Dormant: 11 таблиц в 2 базах.**
 
 ---
 
@@ -100,6 +118,8 @@ CREATE TABLE IF NOT EXISTS users (
     is_verified    BOOLEAN NOT NULL DEFAULT false,
     email_verified BOOLEAN NOT NULL DEFAULT false,
     referral_code  VARCHAR(12) UNIQUE,
+    bio            TEXT,
+    avatar_url     VARCHAR(2000),
     is_public      BOOLEAN NOT NULL DEFAULT true,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -115,21 +135,14 @@ CREATE TABLE IF NOT EXISTS users (
 | `is_verified` | BOOLEAN | NOT NULL, DEFAULT false | Верификация преподавателя (admin only) |
 | `email_verified` | BOOLEAN | NOT NULL, DEFAULT false | Подтверждение email |
 | `referral_code` | VARCHAR(12) | UNIQUE | Реферальный код (REF-XXXXXXXX), генерируется при регистрации |
+| `bio` | TEXT | nullable | Биография пользователя |
+| `avatar_url` | VARCHAR(2000) | nullable | URL аватара |
 | `is_public` | BOOLEAN | NOT NULL, DEFAULT true | Видимость публичного профиля |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
 
 **Индексы:** PK (id) + UNIQUE (email) + UNIQUE (referral_code).
 
-**Миграции:**
-- `001_users.sql` — создание таблицы users
-- `002_add_role.sql` — добавление role ENUM и is_verified
-- `003_add_admin_role.sql` — добавление значения `admin` в ENUM user_role
-- `004_refresh_tokens.sql` — таблица refresh_tokens + индексы
-- `005_email_verification.sql` — email_verified column + email_verification_tokens table
-- `006_password_reset.sql` — password_reset_tokens table
-- `007_referrals.sql` — referral_code column в users + таблица referrals
-- `008_add_is_public.sql` — is_public column для управления видимостью профиля
-- `009_follows.sql` — таблица follows для системы подписок
+---
 
 ### Table: `refresh_tokens`
 
@@ -157,7 +170,9 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 
 **Индексы:** PK (id) + UNIQUE (token_hash) + idx_refresh_tokens_user_id + idx_refresh_tokens_family_id.
 
-**Token rotation:** при каждом refresh все токены в family отзываются, создаётся новый с тем же family_id. При повторном использовании отозванного токена — вся family блокируется (reuse detection).
+**Token rotation:** при каждом refresh все токены в family отзываются, создаётся новый с тем же family_id. При повторном использовании отозванного токена — вся family блокируется.
+
+---
 
 ### Table: `email_verification_tokens`
 
@@ -174,7 +189,9 @@ CREATE TABLE IF NOT EXISTS email_verification_tokens (
 
 **Индексы:** PK (id) + UNIQUE (token_hash) + idx_email_verify_user_id.
 
-TTL: 24 часа. При регистрации создаётся токен; raw token логируется `[EMAIL_VERIFY]` (stub, без реальной отправки).
+TTL: 24 часа. При регистрации создаётся токен; raw token логируется `[EMAIL_VERIFY]` (stub).
+
+---
 
 ### Table: `password_reset_tokens`
 
@@ -191,7 +208,9 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 
 **Индексы:** PK (id) + UNIQUE (token_hash) + idx_password_reset_user_id.
 
-TTL: 1 час. Rate limit: 3 запроса в час на пользователя (silent ignore). После сброса пароля все refresh tokens отзываются.
+TTL: 1 час. Rate limit: 3 запроса в час на пользователя. После сброса пароля все refresh tokens отзываются.
+
+---
 
 ### Table: `referrals`
 
@@ -208,317 +227,95 @@ CREATE TABLE IF NOT EXISTS referrals (
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `referrer_id` | UUID | FK → users(id) CASCADE, NOT NULL | Пользователь, который пригласил |
-| `referee_id` | UUID | FK → users(id) CASCADE, NOT NULL | Приглашённый пользователь |
-| `referral_code` | VARCHAR(12) | NOT NULL | Реферальный код (REF-XXXXXXXX) |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Статус: pending, completed |
-| `reward_type` | VARCHAR(50) | — | Тип награды (если выдана) |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-| `completed_at` | TIMESTAMPTZ | — | Дата завершения реферала |
-
 **Индексы:** PK (id) + idx_referrals_referrer_id + idx_referrals_referee_id.
+
+---
 
 ### Table: `follows`
 
 ```sql
 CREATE TABLE IF NOT EXISTS follows (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    follower_id UUID NOT NULL REFERENCES users(id),
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    follower_id  UUID NOT NULL REFERENCES users(id),
     following_id UUID NOT NULL REFERENCES users(id),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(follower_id, following_id)
 );
 ```
 
-| Поле | Тип | Ограничения | Описание |
-|------|-----|-------------|----------|
-| `id` | UUID | PK, DEFAULT gen_random_uuid() | Идентификатор записи |
-| `follower_id` | UUID | NOT NULL, FK → users(id) | Кто подписался |
-| `following_id` | UUID | NOT NULL, FK → users(id) | На кого подписался |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата подписки |
-
-**Constraint:** UNIQUE(follower_id, following_id) — один пользователь не может подписаться дважды.
-
-**Индексы:** PK (id) + idx_follows_follower + idx_follows_following.
+**Индексы:** PK (id) + idx_follows_follower + idx_follows_following + UNIQUE(follower_id, following_id).
 
 ---
 
-## Course DB
-
-### Table: `categories`
+### Table: `organizations` (NEW)
 
 ```sql
-CREATE TABLE IF NOT EXISTS categories (
-    id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name VARCHAR(100) NOT NULL UNIQUE,
-    slug VARCHAR(100) NOT NULL UNIQUE
-);
-```
-
-Seed data: Programming, Design, Business, Marketing, Data Science, Languages, Music, Other.
-
-### ENUM: `course_level`
-
-```sql
-CREATE TYPE course_level AS ENUM ('beginner', 'intermediate', 'advanced');
-```
-
-### Table: `courses`
-
-```sql
-CREATE TABLE IF NOT EXISTS courses (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id       UUID NOT NULL,
-    title            VARCHAR(500) NOT NULL,
-    description      TEXT NOT NULL DEFAULT '',
-    is_free          BOOLEAN NOT NULL DEFAULT true,
-    price            NUMERIC(12,2),
-    duration_minutes INTEGER NOT NULL DEFAULT 0,
-    level            course_level NOT NULL DEFAULT 'beginner',
-    avg_rating       NUMERIC(3,2),
-    review_count     INTEGER NOT NULL DEFAULT 0,
-    category_id      UUID REFERENCES categories(id),
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `teacher_id` | UUID | NOT NULL | ID преподавателя (из Identity) |
-| `title` | VARCHAR(500) | NOT NULL | Название курса |
-| `description` | TEXT | NOT NULL, DEFAULT '' | Описание курса |
-| `is_free` | BOOLEAN | NOT NULL, DEFAULT true | Бесплатный курс |
-| `price` | NUMERIC(12,2) | nullable | Цена (если не бесплатный) |
-| `duration_minutes` | INTEGER | NOT NULL, DEFAULT 0 | Длительность в минутах |
-| `level` | course_level | NOT NULL, DEFAULT 'beginner' | Уровень сложности |
-| `avg_rating` | NUMERIC(3,2) | nullable | Средний рейтинг (денормализация) |
-| `review_count` | INTEGER | NOT NULL, DEFAULT 0 | Количество отзывов (денормализация) |
-| `category_id` | UUID | nullable, FK → categories(id) | Категория курса |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-
-**Индексы:** PK (id) + idx_courses_teacher_id + idx_courses_category_id + GIN (title, description) через pg_trgm. `teacher_id` не имеет FK constraint — eventual consistency.
-
-**Поиск:** `ILIKE '%query%'` по title и description. pg_trgm GIN index обеспечивает p99 < 50ms на 100K курсов.
-
-**Миграции:**
-- `001_courses.sql` — создание ENUM course_level и таблицы courses
-- `002_modules_lessons.sql` — таблицы modules и lessons
-- `003_reviews.sql` — таблица reviews + avg_rating/review_count в courses
-- `004_indexes.sql` — FK indexes (teacher_id, course_id, module_id, student_id)
-- `005_pg_trgm.sql` — pg_trgm extension + GIN index на courses (title, description)
-- `006_categories.sql` — таблица categories + seed data + category_id FK на courses
-- `008_bundles.sql` — таблицы course_bundles и bundle_courses
-- `009_promotions.sql` — таблица course_promotions с индексами
-- `010_wishlist.sql` — таблица wishlist (user_id + course_id UNIQUE)
-
-### Table: `modules`
-
-```sql
-CREATE TABLE IF NOT EXISTS modules (
+CREATE TABLE IF NOT EXISTS organizations (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    course_id  UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-    title      VARCHAR(500) NOT NULL,
-    "order"    INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-### Table: `lessons`
-
-```sql
-CREATE TABLE IF NOT EXISTS lessons (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    module_id        UUID NOT NULL REFERENCES modules(id) ON DELETE CASCADE,
-    title            VARCHAR(500) NOT NULL,
-    content          TEXT NOT NULL DEFAULT '',
-    video_url        VARCHAR(2000),
-    duration_minutes INTEGER NOT NULL DEFAULT 0,
-    "order"          INTEGER NOT NULL DEFAULT 0,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-### Table: `reviews`
-
-```sql
-CREATE TABLE IF NOT EXISTS reviews (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id UUID NOT NULL,
-    course_id  UUID NOT NULL,
-    rating     SMALLINT NOT NULL CHECK (rating >= 1 AND rating <= 5),
-    comment    TEXT NOT NULL DEFAULT '',
+    name       VARCHAR(255) NOT NULL,
+    slug       VARCHAR(100) NOT NULL UNIQUE,
+    domain     VARCHAR(255) UNIQUE,
+    owner_id   UUID NOT NULL REFERENCES users(id),
+    logo_url   VARCHAR(2000),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(student_id, course_id)
-);
-```
-
-**Денормализация:** `courses.avg_rating` (NUMERIC(3,2)) и `courses.review_count` (INTEGER) обновляются при создании review.
-
-### Table: `course_bundles`
-
-```sql
-CREATE TABLE IF NOT EXISTS course_bundles (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id       UUID NOT NULL,
-    title            VARCHAR(200) NOT NULL,
-    description      TEXT NOT NULL DEFAULT '',
-    price            NUMERIC(10,2) NOT NULL,
-    discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 99),
-    is_active        BOOLEAN NOT NULL DEFAULT true,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-```
-
-**Индексы:** PK (id) + idx_bundles_teacher (teacher_id).
-
-### Table: `bundle_courses`
-
-```sql
-CREATE TABLE IF NOT EXISTS bundle_courses (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    bundle_id  UUID NOT NULL REFERENCES course_bundles(id) ON DELETE CASCADE,
-    course_id  UUID NOT NULL,
-    UNIQUE(bundle_id, course_id)
-);
-```
-
-**Индексы:** PK (id) + idx_bc_bundle (bundle_id) + UNIQUE(bundle_id, course_id).
-
-### Table: `course_promotions`
-
-```sql
-CREATE TABLE IF NOT EXISTS course_promotions (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    course_id        UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-    discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 99),
-    starts_at        TIMESTAMPTZ NOT NULL,
-    ends_at          TIMESTAMPTZ NOT NULL,
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (ends_at > starts_at)
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
 | Column | Type | Constraints | Описание |
 |--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `course_id` | UUID | FK → courses(id) CASCADE, NOT NULL | Курс, к которому применяется акция |
-| `discount_percent` | INTEGER | NOT NULL, CHECK 1–99 | Скидка в процентах |
-| `starts_at` | TIMESTAMPTZ | NOT NULL | Начало действия акции |
-| `ends_at` | TIMESTAMPTZ | NOT NULL | Конец действия акции |
+| `id` | UUID | PK, auto | Уникальный идентификатор организации |
+| `name` | VARCHAR(255) | NOT NULL | Название организации |
+| `slug` | VARCHAR(100) | UNIQUE, NOT NULL | URL-friendly slug |
+| `domain` | VARCHAR(255) | UNIQUE, nullable | Корпоративный домен (для auto-join) |
+| `owner_id` | UUID | FK → users(id), NOT NULL | Создатель/владелец организации |
+| `logo_url` | VARCHAR(2000) | nullable | URL логотипа |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата обновления |
 
-**Индексы:** PK (id) + idx_promotions_course_id (course_id) + idx_promotions_active (course_id, starts_at, ends_at) для быстрого поиска активных акций.
-
-**Бизнес-логика:** Активная акция — запись где `starts_at <= now() <= ends_at`. `CourseResponse` включает `active_promotion` с полями `discount_percent`, `starts_at`, `ends_at` (null если нет активной акции). Просроченные акции деактивируются при запросе — `get_active` возвращает только текущие.
-
-**Миграция:** `009_promotions.sql`.
-
-### Table: `wishlist`
-
-```sql
-CREATE TABLE IF NOT EXISTS wishlist (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id    UUID NOT NULL,
-    course_id  UUID NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(user_id, course_id)
-);
-```
-
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `user_id` | UUID | NOT NULL | Пользователь, добавивший курс |
-| `course_id` | UUID | FK → courses(id) CASCADE, NOT NULL | Курс в вишлисте |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата добавления |
-
-**Индексы:** PK (id) + UNIQUE(user_id, course_id) + idx_wishlist_user_id (user_id).
-
-**Бизнес-логика:** Один пользователь может добавить один курс в вишлист один раз. При удалении курса запись автоматически удаляется (CASCADE).
-
-**Миграция:** `010_wishlist.sql`.
+**Индексы:** PK (id) + UNIQUE (slug) + UNIQUE (domain) + idx_org_owner_id.
 
 ---
 
-## Enrollment DB
-
-### ENUM: `enrollment_status`
+### Table: `org_members` (NEW)
 
 ```sql
-CREATE TYPE enrollment_status AS ENUM ('enrolled', 'in_progress', 'completed');
-```
-
-### Table: `enrollments`
-
-```sql
-CREATE TABLE IF NOT EXISTS enrollments (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id    UUID NOT NULL,
-    course_id     UUID NOT NULL,
-    payment_id    UUID,
-    status        enrollment_status NOT NULL DEFAULT 'enrolled',
-    enrolled_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    total_lessons INTEGER NOT NULL DEFAULT 0,
-    UNIQUE(student_id, course_id)
+CREATE TABLE IF NOT EXISTS org_members (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+    user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role            VARCHAR(20) NOT NULL DEFAULT 'member',
+    joined_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(organization_id, user_id)
 );
 ```
 
 | Column | Type | Constraints | Описание |
 |--------|------|-------------|----------|
 | `id` | UUID | PK, auto | Уникальный идентификатор |
-| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
-| `course_id` | UUID | NOT NULL | ID курса (из Course) |
-| `payment_id` | UUID | nullable | ID оплаты (из Payment, для платных курсов) |
-| `status` | enrollment_status | NOT NULL, DEFAULT 'enrolled' | Статус записи |
-| `enrolled_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата записи |
-| `total_lessons` | INTEGER | NOT NULL, DEFAULT 0 | Общее число уроков (для auto-completion) |
+| `organization_id` | UUID | FK → organizations(id) CASCADE, NOT NULL | Организация |
+| `user_id` | UUID | FK → users(id) CASCADE, NOT NULL | Пользователь |
+| `role` | VARCHAR(20) | NOT NULL, DEFAULT 'member' | Роль в организации: `owner`, `admin`, `member` |
+| `joined_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата вступления |
 
-**Индексы:** PK (id) + UNIQUE (student_id, course_id). Нет FK constraints — eventual consistency.
+**Индексы:** PK (id) + UNIQUE(organization_id, user_id) + idx_org_members_user_id + idx_org_members_org_id.
 
-**Миграции:**
-- `001_enrollments.sql` — создание ENUM enrollment_status и таблицы enrollments
-- `002_lesson_progress.sql` — таблица lesson_progress
-- `003_indexes.sql` — FK indexes (student_id, course_id)
-- `004_total_lessons.sql` — total_lessons column для auto-completion
-
-**Auto-completion:** При записи передаётся `total_lessons`. После завершения урока ProgressService проверяет: если все уроки пройдены → status = COMPLETED; если первый урок → status = IN_PROGRESS.
-
-### Table: `lesson_progress`
-
-```sql
-CREATE TABLE IF NOT EXISTS lesson_progress (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id   UUID NOT NULL,
-    lesson_id    UUID NOT NULL,
-    course_id    UUID NOT NULL,
-    completed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(student_id, lesson_id)
-);
-```
-
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `student_id` | UUID | NOT NULL | ID студента |
-| `lesson_id` | UUID | NOT NULL | ID урока (из Course Service) |
-| `course_id` | UUID | NOT NULL | ID курса (для быстрого подсчёта прогресса) |
-| `completed_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Когда урок завершён |
-
-**Индексы:** PK (id) + UNIQUE (student_id, lesson_id).
+**Миграции (Identity):**
+- `001_users.sql` — создание таблицы users
+- `002_add_role.sql` — добавление role ENUM и is_verified
+- `003_add_admin_role.sql` — добавление значения `admin` в ENUM user_role
+- `004_refresh_tokens.sql` — таблица refresh_tokens + индексы
+- `005_email_verification.sql` — email_verified column + email_verification_tokens table
+- `006_password_reset.sql` — password_reset_tokens table
+- `007_referrals.sql` — referral_code column в users + таблица referrals
+- `008_add_is_public.sql` — is_public column для управления видимостью профиля
+- `009_follows.sql` — таблица follows
+- `010_organizations.sql` — таблица organizations (NEW)
+- `011_org_members.sql` — таблица org_members (NEW)
 
 ---
 
 ## Payment DB
-
-### ENUM: `payment_status`
-
-```sql
-CREATE TYPE payment_status AS ENUM ('pending', 'completed', 'failed', 'refunded');
-```
 
 ### Table: `payments`
 
@@ -528,7 +325,8 @@ CREATE TABLE IF NOT EXISTS payments (
     student_id UUID NOT NULL,
     course_id  UUID NOT NULL,
     amount     NUMERIC(12,2) NOT NULL,
-    status     payment_status NOT NULL DEFAULT 'completed',
+    status     VARCHAR(20) NOT NULL DEFAULT 'pending',
+    coupon_code VARCHAR(50),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
@@ -536,172 +334,106 @@ CREATE TABLE IF NOT EXISTS payments (
 | Column | Type | Constraints | Описание |
 |--------|------|-------------|----------|
 | `id` | UUID | PK, auto | Уникальный идентификатор |
-| `student_id` | UUID | NOT NULL | ID студента |
-| `course_id` | UUID | NOT NULL | ID курса |
-| `amount` | NUMERIC(12,2) | NOT NULL | Сумма оплаты |
-| `status` | payment_status | NOT NULL, DEFAULT 'completed' | Статус (MVP: всегда completed) |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата оплаты |
+| `student_id` | UUID | NOT NULL | Плательщик |
+| `course_id` | UUID | NOT NULL | Оплачиваемый курс |
+| `amount` | NUMERIC(12,2) | NOT NULL | Сумма |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Статус: pending, completed, refunded |
+| `coupon_code` | VARCHAR(50) | nullable | Применённый купон |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
 
-**Миграции:**
-- `001_payments.sql` — создание ENUM payment_status и таблицы payments
-- `002_subscription_plans.sql` — таблицы subscription_plans и user_subscriptions
-- `004_earnings_payouts.sql` — таблицы teacher_earnings и payouts
-- `005_coupons.sql` — таблицы coupons и coupon_usages
-- `006_refunds.sql` — таблица refunds
-- `007_gifts.sql` — таблица gift_purchases
+**Индексы:** PK (id) + idx_payments_student_id + idx_payments_course_id.
+
+---
 
 ### Table: `subscription_plans`
 
 ```sql
 CREATE TABLE IF NOT EXISTS subscription_plans (
-    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name             VARCHAR(50) NOT NULL UNIQUE,
-    stripe_price_id  VARCHAR(255),
-    price_monthly    NUMERIC(10,2) NOT NULL DEFAULT 0,
-    price_yearly     NUMERIC(10,2) NOT NULL DEFAULT 0,
-    ai_credits_daily INTEGER NOT NULL DEFAULT 0,
-    features         JSONB NOT NULL DEFAULT '[]',
-    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name           VARCHAR(100) NOT NULL UNIQUE,
+    price_monthly  NUMERIC(10,2) NOT NULL,
+    price_yearly   NUMERIC(10,2) NOT NULL,
+    features       JSONB NOT NULL DEFAULT '{}',
+    stripe_price_id_monthly VARCHAR(255),
+    stripe_price_id_yearly  VARCHAR(255),
+    is_active      BOOLEAN NOT NULL DEFAULT true,
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `name` | VARCHAR(50) | UNIQUE, NOT NULL | Название плана: free, student, pro |
-| `stripe_price_id` | VARCHAR(255) | nullable | ID цены в Stripe |
-| `price_monthly` | NUMERIC(10,2) | NOT NULL, DEFAULT 0 | Цена в месяц |
-| `price_yearly` | NUMERIC(10,2) | NOT NULL, DEFAULT 0 | Цена в год |
-| `ai_credits_daily` | INTEGER | NOT NULL, DEFAULT 0 | Лимит AI-кредитов в день |
-| `features` | JSONB | NOT NULL, DEFAULT '[]' | Список функций плана |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+---
 
 ### Table: `user_subscriptions`
 
 ```sql
 CREATE TABLE IF NOT EXISTS user_subscriptions (
-    id                      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id                 UUID NOT NULL UNIQUE,
-    plan_id                 UUID NOT NULL REFERENCES subscription_plans(id),
-    stripe_subscription_id  VARCHAR(255),
-    stripe_customer_id      VARCHAR(255),
-    status                  VARCHAR(50) NOT NULL DEFAULT 'active',
-    current_period_start    TIMESTAMPTZ,
-    current_period_end      TIMESTAMPTZ,
-    cancel_at_period_end    BOOLEAN NOT NULL DEFAULT false,
-    created_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at              TIMESTAMPTZ NOT NULL DEFAULT now()
+    id                   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id              UUID NOT NULL,
+    plan_id              UUID NOT NULL REFERENCES subscription_plans(id),
+    stripe_subscription_id VARCHAR(255),
+    stripe_customer_id   VARCHAR(255),
+    status               VARCHAR(20) NOT NULL DEFAULT 'active',
+    billing_period       VARCHAR(10) NOT NULL DEFAULT 'monthly',
+    current_period_start TIMESTAMPTZ NOT NULL,
+    current_period_end   TIMESTAMPTZ NOT NULL,
+    cancelled_at         TIMESTAMPTZ,
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `user_id` | UUID | UNIQUE, NOT NULL | Одна подписка на пользователя |
-| `plan_id` | UUID | FK → subscription_plans(id), NOT NULL | Текущий план |
-| `stripe_subscription_id` | VARCHAR(255) | nullable | ID подписки в Stripe |
-| `stripe_customer_id` | VARCHAR(255) | nullable | ID клиента в Stripe |
-| `status` | VARCHAR(50) | NOT NULL, DEFAULT 'active' | Статус: active, canceled, past_due |
-| `current_period_start` | TIMESTAMPTZ | nullable | Начало текущего периода |
-| `current_period_end` | TIMESTAMPTZ | nullable | Конец текущего периода |
-| `cancel_at_period_end` | BOOLEAN | NOT NULL, DEFAULT false | Отмена в конце периода |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата последнего обновления |
-
-**Индексы:** PK (id) + UNIQUE (user_id) + idx_user_subscriptions_plan_id.
+---
 
 ### Table: `teacher_earnings`
 
 ```sql
 CREATE TABLE IF NOT EXISTS teacher_earnings (
-    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id      UUID NOT NULL,
-    course_id       UUID NOT NULL,
-    payment_id      UUID NOT NULL UNIQUE,
-    gross_amount    DECIMAL(10,2) NOT NULL,
-    commission_rate DECIMAL(5,4) NOT NULL DEFAULT 0.3000,
-    net_amount      DECIMAL(10,2) NOT NULL,
-    status          VARCHAR(20) NOT NULL DEFAULT 'pending',
-    created_at      TIMESTAMPTZ DEFAULT now()
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id  UUID NOT NULL,
+    payment_id  UUID NOT NULL REFERENCES payments(id),
+    course_id   UUID NOT NULL,
+    amount      NUMERIC(12,2) NOT NULL,
+    commission  NUMERIC(12,2) NOT NULL,
+    net_amount  NUMERIC(12,2) NOT NULL,
+    status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `teacher_id` | UUID | NOT NULL | ID преподавателя (из Identity) |
-| `course_id` | UUID | NOT NULL | ID курса (из Course) |
-| `payment_id` | UUID | UNIQUE, NOT NULL | ID оплаты (из payments); один earning на оплату |
-| `gross_amount` | DECIMAL(10,2) | NOT NULL | Полная сумма оплаты |
-| `commission_rate` | DECIMAL(5,4) | NOT NULL, DEFAULT 0.3000 | Комиссия платформы (30%) |
-| `net_amount` | DECIMAL(10,2) | NOT NULL | Сумма после вычета комиссии |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Статус: pending, paid |
-| `created_at` | TIMESTAMPTZ | DEFAULT now() | Дата создания |
-
-**Индексы:** PK (id) + UNIQUE (payment_id) + idx_teacher_earnings_teacher_id.
+---
 
 ### Table: `payouts`
 
 ```sql
 CREATE TABLE IF NOT EXISTS payouts (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    teacher_id         UUID NOT NULL,
-    amount             DECIMAL(10,2) NOT NULL,
-    stripe_transfer_id VARCHAR(255),
-    status             VARCHAR(20) NOT NULL DEFAULT 'pending',
-    requested_at       TIMESTAMPTZ DEFAULT now(),
-    completed_at       TIMESTAMPTZ
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    teacher_id  UUID NOT NULL,
+    amount      NUMERIC(12,2) NOT NULL,
+    status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+    method      VARCHAR(50) NOT NULL DEFAULT 'bank_transfer',
+    processed_at TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `teacher_id` | UUID | NOT NULL | ID преподавателя (из Identity) |
-| `amount` | DECIMAL(10,2) | NOT NULL | Сумма выплаты |
-| `stripe_transfer_id` | VARCHAR(255) | nullable | ID трансфера в Stripe |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Статус: pending, completed, failed |
-| `requested_at` | TIMESTAMPTZ | DEFAULT now() | Дата запроса |
-| `completed_at` | TIMESTAMPTZ | nullable | Дата завершения |
-
-**Индексы:** PK (id) + idx_payouts_teacher_id.
+---
 
 ### Table: `coupons`
 
 ```sql
 CREATE TABLE IF NOT EXISTS coupons (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code           VARCHAR(50) NOT NULL UNIQUE,
-    discount_type  VARCHAR(20) NOT NULL CHECK (discount_type IN ('percentage', 'fixed')),
-    discount_value DECIMAL(10,2) NOT NULL CHECK (discount_value > 0),
-    max_uses       INT,
-    current_uses   INT NOT NULL DEFAULT 0,
-    valid_from     TIMESTAMPTZ NOT NULL,
-    valid_until    TIMESTAMPTZ NOT NULL,
-    course_id      UUID,
-    created_by     UUID NOT NULL,
-    is_active      BOOLEAN NOT NULL DEFAULT true,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (valid_until > valid_from)
+    id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    code             VARCHAR(50) NOT NULL UNIQUE,
+    discount_percent INTEGER NOT NULL CHECK (discount_percent BETWEEN 1 AND 100),
+    max_uses         INTEGER,
+    current_uses     INTEGER NOT NULL DEFAULT 0,
+    created_by       UUID NOT NULL,
+    is_active        BOOLEAN NOT NULL DEFAULT true,
+    expires_at       TIMESTAMPTZ,
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `code` | VARCHAR(50) | UNIQUE, NOT NULL | Промокод (uppercase alphanumeric + hyphens) |
-| `discount_type` | VARCHAR(20) | NOT NULL, CHECK | Тип скидки: percentage или fixed |
-| `discount_value` | DECIMAL(10,2) | NOT NULL, > 0 | Значение скидки (% или фикс. сумма) |
-| `max_uses` | INT | nullable | Лимит использований (null = безлимит) |
-| `current_uses` | INT | NOT NULL, DEFAULT 0 | Текущее кол-во использований |
-| `valid_from` | TIMESTAMPTZ | NOT NULL | Начало действия |
-| `valid_until` | TIMESTAMPTZ | NOT NULL | Окончание действия |
-| `course_id` | UUID | nullable | Привязка к курсу (null = все курсы) |
-| `created_by` | UUID | NOT NULL | ID администратора-создателя |
-| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Активен ли купон |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-
-**Индексы:** PK (id) + UNIQUE (code).
+---
 
 ### Table: `coupon_usages`
 
@@ -710,59 +442,31 @@ CREATE TABLE IF NOT EXISTS coupon_usages (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     coupon_id  UUID NOT NULL REFERENCES coupons(id),
     user_id    UUID NOT NULL,
-    payment_id UUID,
-    used_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    payment_id UUID NOT NULL REFERENCES payments(id),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(coupon_id, user_id)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `coupon_id` | UUID | FK → coupons(id), NOT NULL | ID купона |
-| `user_id` | UUID | NOT NULL | ID пользователя |
-| `payment_id` | UUID | nullable | ID оплаты |
-| `used_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата использования |
-
-**Индексы:** PK (id) + UNIQUE (coupon_id, user_id).
+---
 
 ### Table: `refunds`
 
 ```sql
 CREATE TABLE IF NOT EXISTS refunds (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    payment_id UUID NOT NULL UNIQUE REFERENCES payments(id),
-    user_id UUID NOT NULL,
-    reason TEXT NOT NULL,
-    status VARCHAR(20) NOT NULL DEFAULT 'requested'
-        CHECK (status IN ('requested', 'approved', 'rejected', 'processed')),
-    amount DECIMAL(10,2) NOT NULL,
-    admin_note TEXT,
-    requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    processed_at TIMESTAMPTZ
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    payment_id  UUID NOT NULL REFERENCES payments(id),
+    user_id     UUID NOT NULL,
+    reason      TEXT NOT NULL DEFAULT '',
+    status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+    reviewed_by UUID,
+    reviewed_at TIMESTAMPTZ,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(payment_id)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `payment_id` | UUID | FK → payments(id), NOT NULL, UNIQUE | ID оплаты (одна заявка на оплату) |
-| `user_id` | UUID | NOT NULL | ID пользователя-заявителя |
-| `reason` | TEXT | NOT NULL | Причина возврата |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'requested' | Статус: requested, approved, rejected, processed |
-| `amount` | DECIMAL(10,2) | NOT NULL | Сумма возврата |
-| `admin_note` | TEXT | nullable | Комментарий администратора |
-| `requested_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата подачи заявки |
-| `processed_at` | TIMESTAMPTZ | nullable | Дата обработки заявки |
-
-**Индексы:** PK (id) + UNIQUE (payment_id) + idx_refunds_user (user_id) + idx_refunds_status (status).
-
-**Бизнес-правила:**
-- Одна заявка на возврат на одну оплату (UNIQUE payment_id)
-- Только владелец оплаты может подать заявку
-- Возврат доступен в течение 14 дней после оплаты
-- Только admin может одобрить/отклонить заявку
-- При одобрении статус оплаты меняется на 'refunded'
+14-дневное окно для запроса возврата. Один возврат на платёж. При approve → payment.status = 'refunded'.
 
 ---
 
@@ -770,57 +474,76 @@ CREATE TABLE IF NOT EXISTS refunds (
 
 ```sql
 CREATE TABLE IF NOT EXISTS gift_purchases (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    buyer_id UUID NOT NULL,
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    buyer_id        UUID NOT NULL,
+    course_id       UUID NOT NULL,
     recipient_email VARCHAR(255) NOT NULL,
-    course_id UUID NOT NULL,
-    payment_id UUID REFERENCES payments(id),
-    gift_code VARCHAR(50) NOT NULL UNIQUE,
-    status VARCHAR(20) NOT NULL DEFAULT 'purchased'
-        CHECK (status IN ('purchased', 'redeemed', 'expired')),
-    message TEXT,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    redeemed_at TIMESTAMPTZ,
-    redeemed_by UUID,
-    expires_at TIMESTAMPTZ NOT NULL
+    gift_code       VARCHAR(20) NOT NULL UNIQUE,
+    message         TEXT,
+    status          VARCHAR(20) NOT NULL DEFAULT 'purchased',
+    amount          NUMERIC(12,2) NOT NULL,
+    redeemed_by     UUID,
+    redeemed_at     TIMESTAMPTZ,
+    expires_at      TIMESTAMPTZ NOT NULL,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+Status: `purchased`, `redeemed`, `expired`. Expires 30 days after purchase.
+
+---
+
+### Table: `org_subscriptions` (NEW)
+
+```sql
+CREATE TABLE IF NOT EXISTS org_subscriptions (
+    id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id        UUID NOT NULL,
+    plan                   VARCHAR(50) NOT NULL,
+    seats                  INTEGER NOT NULL,
+    status                 VARCHAR(20) NOT NULL DEFAULT 'active',
+    billing_period         VARCHAR(10) NOT NULL DEFAULT 'monthly',
+    stripe_subscription_id VARCHAR(255),
+    stripe_customer_id     VARCHAR(255),
+    current_period_start   TIMESTAMPTZ NOT NULL,
+    current_period_end     TIMESTAMPTZ NOT NULL,
+    cancelled_at           TIMESTAMPTZ,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
 | Column | Type | Constraints | Описание |
 |--------|------|-------------|----------|
 | `id` | UUID | PK, auto | Уникальный идентификатор |
-| `buyer_id` | UUID | NOT NULL | ID покупателя-дарителя |
-| `recipient_email` | VARCHAR(255) | NOT NULL | Email получателя подарка |
-| `course_id` | UUID | NOT NULL | ID подаренного курса |
-| `payment_id` | UUID | FK → payments(id), nullable | ID связанной оплаты |
-| `gift_code` | VARCHAR(50) | NOT NULL, UNIQUE | Уникальный код активации |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'purchased' | Статус: purchased, redeemed, expired |
-| `message` | TEXT | nullable | Персональное сообщение от дарителя |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания подарка |
-| `redeemed_at` | TIMESTAMPTZ | nullable | Дата активации подарка |
-| `redeemed_by` | UUID | nullable | ID пользователя, активировавшего подарок |
-| `expires_at` | TIMESTAMPTZ | NOT NULL | Дата истечения срока действия кода |
+| `organization_id` | UUID | NOT NULL | ID организации (из Identity) |
+| `plan` | VARCHAR(50) | NOT NULL | План: `team`, `enterprise` |
+| `seats` | INTEGER | NOT NULL | Количество мест |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'active' | Статус: active, cancelled, past_due |
+| `billing_period` | VARCHAR(10) | NOT NULL, DEFAULT 'monthly' | monthly или yearly |
+| `stripe_subscription_id` | VARCHAR(255) | nullable | Stripe subscription ID |
+| `stripe_customer_id` | VARCHAR(255) | nullable | Stripe customer ID |
+| `current_period_start` | TIMESTAMPTZ | NOT NULL | Начало текущего периода |
+| `current_period_end` | TIMESTAMPTZ | NOT NULL | Конец текущего периода |
+| `cancelled_at` | TIMESTAMPTZ | nullable | Дата отмены |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата обновления |
 
-**Индексы:** PK (id) + UNIQUE (gift_code) + idx_gift_purchases_buyer (buyer_id) + idx_gift_purchases_recipient (recipient_email).
+**Индексы:** PK (id) + idx_org_sub_org_id (organization_id) + idx_org_sub_status.
 
-**Бизнес-правила:**
-- Каждый подарок имеет уникальный код формата `GIFT-XXXX-XXXX-XXXX`
-- Код может быть активирован только один раз (status: purchased → redeemed)
-- Срок действия кода — 30 дней с момента покупки
-- Активировать подарок может любой аутентифицированный пользователь
-- Истёкшие коды имеют status 'expired' и не могут быть активированы
-
-**Миграция:** `007_gifts.sql`
+**Миграции (Payment):**
+- `001_payments.sql` — таблица payments
+- `002_indexes.sql` — FK indexes
+- `003_subscription_plans.sql` — subscription_plans + user_subscriptions
+- `004_teacher_earnings.sql` — teacher_earnings + payouts
+- `005_coupons.sql` — coupons + coupon_usages
+- `006_refunds.sql` — таблица refunds
+- `007_gifts.sql` — таблица gift_purchases
+- `008_org_subscriptions.sql` — таблица org_subscriptions (NEW)
 
 ---
 
 ## Notification DB
-
-### ENUM: `notification_type`
-
-```sql
-CREATE TYPE notification_type AS ENUM ('registration', 'enrollment', 'payment', 'streak_reminder', 'flashcard_reminder', 'welcome', 'course_completed', 'review_received', 'streak_at_risk');
-```
 
 ### Table: `notifications`
 
@@ -828,27 +551,17 @@ CREATE TYPE notification_type AS ENUM ('registration', 'enrollment', 'payment', 
 CREATE TABLE IF NOT EXISTS notifications (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL,
-    type       notification_type NOT NULL,
+    type       VARCHAR(50) NOT NULL,
     title      VARCHAR(500) NOT NULL,
-    body       TEXT NOT NULL DEFAULT '',
+    message    TEXT NOT NULL DEFAULT '',
     is_read    BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    email_sent BOOLEAN DEFAULT false
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `user_id` | UUID | NOT NULL | ID пользователя |
-| `type` | notification_type | NOT NULL | Тип уведомления |
-| `title` | VARCHAR(500) | NOT NULL | Заголовок |
-| `body` | TEXT | NOT NULL, DEFAULT '' | Тело уведомления |
-| `is_read` | BOOLEAN | NOT NULL, DEFAULT false | Прочитано |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-| `email_sent` | BOOLEAN | DEFAULT false | Email-уведомление отправлено |
+**Индексы:** PK (id) + idx_notifications_user_id + idx_notifications_unread (user_id, is_read).
 
-**Email:** Для lifecycle-типов (welcome, course_completed, review_received, streak_at_risk) при наличии email отправляется уведомление через EmailAdapter (логирование в stdout). Результат сохраняется в `email_sent`.
+---
 
 ### Table: `conversations`
 
@@ -857,49 +570,38 @@ CREATE TABLE IF NOT EXISTS conversations (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     participant_1   UUID NOT NULL,
     participant_2   UUID NOT NULL,
+    last_message_at TIMESTAMPTZ,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    last_message_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(participant_1, participant_2)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `participant_1` | UUID | NOT NULL | ID первого участника (меньший UUID) |
-| `participant_2` | UUID | NOT NULL | ID второго участника (больший UUID) |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-| `last_message_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время последнего сообщения |
+Participant validation: participant_1 < participant_2 (canonical ordering).
+
+**Индексы:** PK (id) + UNIQUE(participant_1, participant_2) + idx_conv_p1 + idx_conv_p2.
+
+---
 
 ### Table: `messages`
 
 ```sql
 CREATE TABLE IF NOT EXISTS messages (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    conversation_id UUID NOT NULL REFERENCES conversations(id),
+    conversation_id UUID NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     sender_id       UUID NOT NULL,
-    content         TEXT NOT NULL,
+    content         VARCHAR(2000) NOT NULL,
     is_read         BOOLEAN NOT NULL DEFAULT false,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `conversation_id` | UUID | NOT NULL, FK → conversations | ID диалога |
-| `sender_id` | UUID | NOT NULL | ID отправителя |
-| `content` | TEXT | NOT NULL | Текст сообщения (1-2000 символов) |
-| `is_read` | BOOLEAN | NOT NULL, DEFAULT false | Прочитано получателем |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+Лимит: 1–2000 символов.
 
-**Миграции:**
-- `001_notifications.sql` — создание ENUM notification_type и таблицы notifications
-- `003_streak_reminder_type.sql` — добавление `streak_reminder` в ENUM notification_type
-- `004_flashcard_reminder_type.sql` — добавление `flashcard_reminder` в ENUM notification_type
-- `005_conversations.sql` — создание таблицы conversations с индексами по participant_1, participant_2
-- `006_messages.sql` — создание таблицы messages с индексом по conversation_id
-- `007_email_sent.sql` — добавление колонки `email_sent` и новых типов `welcome`, `course_completed`, `review_received`, `streak_at_risk` в ENUM
+**Индексы:** PK (id) + idx_messages_conversation_id + idx_messages_sender_id.
+
+**Миграции (Notification):**
+- `001_notifications.sql` — таблица notifications
+- `002_conversations.sql` — таблицы conversations + messages
 
 ---
 
@@ -910,136 +612,85 @@ CREATE TABLE IF NOT EXISTS messages (
 ```sql
 CREATE TABLE IF NOT EXISTS quizzes (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lesson_id  UUID NOT NULL UNIQUE,
-    course_id  UUID NOT NULL,
+    lesson_id  UUID NOT NULL,
     teacher_id UUID NOT NULL,
+    title      VARCHAR(500) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `lesson_id` | UUID | UNIQUE, NOT NULL | ID урока (из Course Service); один квиз на урок |
-| `course_id` | UUID | NOT NULL | ID курса (из Course Service) |
-| `teacher_id` | UUID | NOT NULL | ID преподавателя-создателя (из Identity) |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-
-**Индексы:** PK (id) + UNIQUE (lesson_id). Нет FK constraints — eventual consistency.
+---
 
 ### Table: `questions`
 
 ```sql
 CREATE TABLE IF NOT EXISTS questions (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    quiz_id       UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
-    text          TEXT NOT NULL,
-    options       JSONB NOT NULL,
-    correct_index INT NOT NULL,
-    explanation   TEXT,
-    "order"       INT NOT NULL DEFAULT 0
+    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id        UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    text           TEXT NOT NULL,
+    options        JSONB NOT NULL,
+    correct_option INTEGER NOT NULL,
+    "order"        INTEGER NOT NULL DEFAULT 0,
+    concept_id     UUID
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `quiz_id` | UUID | FK → quizzes(id) CASCADE, NOT NULL | Квиз, которому принадлежит вопрос |
-| `text` | TEXT | NOT NULL | Текст вопроса |
-| `options` | JSONB | NOT NULL | Массив вариантов ответа (строки) |
-| `correct_index` | INT | NOT NULL | Индекс правильного варианта в `options` |
-| `explanation` | TEXT | nullable | Объяснение правильного ответа |
-| `"order"` | INT | NOT NULL, DEFAULT 0 | Порядок вопроса в квизе |
-
-**Индексы:** PK (id) + idx_questions_quiz_id.
+---
 
 ### Table: `quiz_attempts`
 
 ```sql
 CREATE TABLE IF NOT EXISTS quiz_attempts (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    quiz_id      UUID NOT NULL REFERENCES quizzes(id),
-    student_id   UUID NOT NULL,
-    answers      JSONB NOT NULL,
-    score        FLOAT NOT NULL,
-    completed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    quiz_id     UUID NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+    student_id  UUID NOT NULL,
+    answers     JSONB NOT NULL,
+    score       NUMERIC(5,2) NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `quiz_id` | UUID | FK → quizzes(id), NOT NULL | Квиз, по которому сделана попытка |
-| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
-| `answers` | JSONB | NOT NULL | Массив выбранных индексов ответов (`int[]`) |
-| `score` | FLOAT | NOT NULL | Доля правильных ответов (0.0–1.0) |
-| `completed_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время завершения попытки |
-
-**Индексы:** PK (id) + idx_quiz_attempts_quiz_student (quiz_id, student_id). Нет ограничения на количество попыток — студент может проходить квиз многократно.
+---
 
 ### Table: `flashcards`
 
 ```sql
 CREATE TABLE IF NOT EXISTS flashcards (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id  UUID NOT NULL,
-    course_id   UUID NOT NULL,
-    concept     TEXT NOT NULL,
-    answer      TEXT NOT NULL,
-    source_type VARCHAR(20),
-    source_id   UUID,
-    stability   FLOAT DEFAULT 0,
-    difficulty  FLOAT DEFAULT 0,
-    due         TIMESTAMPTZ DEFAULT now(),
-    last_review TIMESTAMPTZ,
-    reps        INT DEFAULT 0,
-    lapses      INT DEFAULT 0,
-    state       INT DEFAULT 0,
-    created_at  TIMESTAMPTZ DEFAULT now()
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id       UUID NOT NULL,
+    front         TEXT NOT NULL,
+    back          TEXT NOT NULL,
+    course_id     UUID,
+    concept_id    UUID,
+    difficulty    REAL NOT NULL DEFAULT 0.3,
+    stability     REAL NOT NULL DEFAULT 1.0,
+    due_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    last_review   TIMESTAMPTZ,
+    review_count  INTEGER NOT NULL DEFAULT 0,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
-| `course_id` | UUID | NOT NULL | ID курса (из Course) |
-| `concept` | TEXT | NOT NULL | Вопрос (лицевая сторона карточки) |
-| `answer` | TEXT | NOT NULL | Ответ (обратная сторона карточки) |
-| `source_type` | VARCHAR(20) | nullable | Источник: manual, quiz_mistake, key_concept |
-| `source_id` | UUID | nullable | ID источника (quiz question, etc.) |
-| `stability` | FLOAT | DEFAULT 0 | FSRS stability parameter |
-| `difficulty` | FLOAT | DEFAULT 0 | FSRS difficulty parameter |
-| `due` | TIMESTAMPTZ | DEFAULT now() | Когда карточка должна быть повторена |
-| `last_review` | TIMESTAMPTZ | nullable | Время последнего повторения |
-| `reps` | INT | DEFAULT 0 | Количество повторений (FSRS step) |
-| `lapses` | INT | DEFAULT 0 | Количество "забываний" (переходов в Relearning) |
-| `state` | INT | DEFAULT 0 | FSRS состояние: 0=New, 1=Learning, 2=Review, 3=Relearning |
-| `created_at` | TIMESTAMPTZ | DEFAULT now() | Дата создания |
+FSRS parameters: `difficulty` (0–1), `stability` (retention decay), `due_at` (next review date).
 
-**Индексы:** PK (id) + idx_flashcards_student_due (student_id, due) + idx_flashcards_student_course (student_id, course_id).
+---
 
 ### Table: `review_logs`
 
 ```sql
 CREATE TABLE IF NOT EXISTS review_logs (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    card_id            UUID REFERENCES flashcards(id) ON DELETE CASCADE,
-    rating             INT NOT NULL,
-    review_duration_ms INT,
-    reviewed_at        TIMESTAMPTZ DEFAULT now()
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    flashcard_id UUID NOT NULL REFERENCES flashcards(id) ON DELETE CASCADE,
+    user_id      UUID NOT NULL,
+    rating       SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 4),
+    elapsed_days REAL NOT NULL DEFAULT 0,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `card_id` | UUID | FK → flashcards(id) CASCADE | Карточка |
-| `rating` | INT | NOT NULL | Оценка: 1=Again, 2=Hard, 3=Good, 4=Easy |
-| `review_duration_ms` | INT | nullable | Время ответа в миллисекундах |
-| `reviewed_at` | TIMESTAMPTZ | DEFAULT now() | Время повторения |
+Rating: 1=Again, 2=Hard, 3=Good, 4=Easy (FSRS scale).
 
-**Индексы:** PK (id) + idx_review_logs_card (card_id).
+---
 
 ### Table: `concepts`
 
@@ -1047,28 +698,14 @@ CREATE TABLE IF NOT EXISTS review_logs (
 CREATE TABLE IF NOT EXISTS concepts (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id   UUID NOT NULL,
-    lesson_id   UUID,
-    name        VARCHAR(200) NOT NULL,
-    description TEXT DEFAULT '',
-    parent_id   UUID REFERENCES concepts(id) ON DELETE SET NULL,
-    "order"     INT DEFAULT 0,
-    created_at  TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(course_id, name)
+    name        VARCHAR(255) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    "order"     INTEGER NOT NULL DEFAULT 0,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `course_id` | UUID | NOT NULL | ID курса (из Course Service) |
-| `lesson_id` | UUID | nullable | ID урока, к которому привязан concept |
-| `name` | VARCHAR(200) | NOT NULL | Название concept (уникально в рамках курса) |
-| `description` | TEXT | DEFAULT '' | Описание concept |
-| `parent_id` | UUID | nullable, FK → concepts(id) SET NULL | Родительский concept (иерархия) |
-| `"order"` | INT | DEFAULT 0 | Порядок отображения |
-| `created_at` | TIMESTAMPTZ | DEFAULT now() | Дата создания |
-
-**Индексы:** PK (id) + UNIQUE (course_id, name).
+---
 
 ### Table: `concept_prerequisites`
 
@@ -1077,130 +714,80 @@ CREATE TABLE IF NOT EXISTS concept_prerequisites (
     id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     concept_id      UUID NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
     prerequisite_id UUID NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
-    UNIQUE(concept_id, prerequisite_id),
-    CHECK(concept_id != prerequisite_id)
+    UNIQUE(concept_id, prerequisite_id)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `concept_id` | UUID | FK → concepts(id) CASCADE, NOT NULL | Concept, который требует prerequisite |
-| `prerequisite_id` | UUID | FK → concepts(id) CASCADE, NOT NULL | Prerequisite concept |
-
-**Индексы:** PK (id) + UNIQUE (concept_id, prerequisite_id). CHECK constraint запрещает self-reference.
+---
 
 ### Table: `concept_mastery`
 
 ```sql
 CREATE TABLE IF NOT EXISTS concept_mastery (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    student_id UUID NOT NULL,
+    user_id    UUID NOT NULL,
     concept_id UUID NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
-    mastery    FLOAT DEFAULT 0.0,
-    updated_at TIMESTAMPTZ DEFAULT now(),
-    UNIQUE(student_id, concept_id)
+    mastery    NUMERIC(5,4) NOT NULL DEFAULT 0.0,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, concept_id)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
-| `concept_id` | UUID | FK → concepts(id) CASCADE, NOT NULL | Concept |
-| `mastery` | FLOAT | DEFAULT 0.0 | Уровень владения (0.0–1.0) |
-| `updated_at` | TIMESTAMPTZ | DEFAULT now() | Последнее обновление |
+Mastery: 0.0 to 1.0. Updated by quiz submission (score × 0.3) and mission completion.
 
-**Индексы:** PK (id) + UNIQUE (student_id, concept_id).
-
-**Mastery algorithm:** при сдаче квиза (QuizService.submit_quiz) mastery обновляется автоматически: `mastery += score × 0.3`, capped at 1.0. Обновляются все concepts, привязанные к lesson_id квиза.
+---
 
 ### Table: `streaks`
 
 ```sql
 CREATE TABLE IF NOT EXISTS streaks (
-    user_id            UUID PRIMARY KEY,
-    current_streak     INT NOT NULL DEFAULT 1,
-    longest_streak     INT NOT NULL DEFAULT 1,
-    last_activity_date DATE NOT NULL DEFAULT CURRENT_DATE,
-    updated_at         TIMESTAMPTZ NOT NULL DEFAULT now()
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id         UUID NOT NULL UNIQUE,
+    current_streak  INTEGER NOT NULL DEFAULT 0,
+    longest_streak  INTEGER NOT NULL DEFAULT 0,
+    last_active_date DATE,
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `user_id` | UUID | PK | ID пользователя (из Identity) |
-| `current_streak` | INT | NOT NULL, DEFAULT 1 | Текущая серия дней подряд |
-| `longest_streak` | INT | NOT NULL, DEFAULT 1 | Максимальная серия за всё время |
-| `last_activity_date` | DATE | NOT NULL, DEFAULT CURRENT_DATE | Дата последней активности |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Последнее обновление |
-
-**Индексы:** PK (user_id). Одна запись на пользователя.
-
-**Бизнес-логика:** Первая активность — создаёт запись (current=1). Повторный вызов в тот же день — no-op. Consecutive day — инкремент current_streak. Gap >1 дня — сброс current_streak до 1. longest_streak обновляется при каждом инкременте. GET /streaks/me возвращает current_streak=0, если last_activity_date раньше вчерашнего дня.
+---
 
 ### Table: `leaderboard_scores`
 
-Opt-in leaderboard: рейтинг студентов внутри курса.
-
 ```sql
 CREATE TABLE IF NOT EXISTS leaderboard_scores (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    course_id   UUID NOT NULL,
-    student_id  UUID NOT NULL,
-    total_score INT NOT NULL DEFAULT 0,
-    opt_in      BOOLEAN NOT NULL DEFAULT true,
-    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(student_id, course_id)
+    id        UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id   UUID NOT NULL,
+    course_id UUID,
+    score     INTEGER NOT NULL DEFAULT 0,
+    period    VARCHAR(20) NOT NULL DEFAULT 'all_time',
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, course_id, period)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `course_id` | UUID | NOT NULL | ID курса |
-| `student_id` | UUID | NOT NULL | ID студента (из Identity) |
-| `total_score` | INT | NOT NULL, DEFAULT 0 | Накопленные баллы |
-| `opt_in` | BOOLEAN | NOT NULL, DEFAULT true | Участвует ли в рейтинге |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Последнее обновление |
-
-**Индексы:** UNIQUE (student_id, course_id) + partial index на (course_id, total_score DESC) WHERE opt_in = TRUE — для быстрого получения топ-N.
-
-**Бизнес-логика:** opt-in создаёт запись (total_score=0). Opt-out ставит opt_in=FALSE, total_score сохраняется. Leaderboard показывает только opt_in=TRUE записи, ранжированные по total_score DESC.
+---
 
 ### Table: `comments`
 
 ```sql
 CREATE TABLE IF NOT EXISTS comments (
-    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    lesson_id         UUID NOT NULL,
-    course_id         UUID NOT NULL,
-    user_id           UUID NOT NULL,
-    content           TEXT NOT NULL,
-    parent_id         UUID REFERENCES comments(id) ON DELETE CASCADE,
-    upvote_count      INT NOT NULL DEFAULT 0,
-    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
-    is_pinned         BOOLEAN NOT NULL DEFAULT false,
-    is_teacher_answer BOOLEAN NOT NULL DEFAULT false
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    lesson_id       UUID NOT NULL,
+    user_id         UUID NOT NULL,
+    parent_id       UUID REFERENCES comments(id) ON DELETE CASCADE,
+    content         TEXT NOT NULL,
+    is_pinned       BOOLEAN NOT NULL DEFAULT false,
+    is_teacher_answer BOOLEAN NOT NULL DEFAULT false,
+    upvote_count    INTEGER NOT NULL DEFAULT 0,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `lesson_id` | UUID | NOT NULL | Урок, к которому относится комментарий |
-| `course_id` | UUID | NOT NULL | Курс |
-| `user_id` | UUID | NOT NULL | Автор комментария |
-| `content` | TEXT | NOT NULL | Текст комментария (1–5000 символов) |
-| `parent_id` | UUID | nullable, FK → comments(id) CASCADE | Ответ на комментарий (макс. 2 уровня) |
-| `upvote_count` | INT | NOT NULL, DEFAULT 0 | Кэшированный счётчик upvotes |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата последнего изменения |
-| `is_pinned` | BOOLEAN | NOT NULL, DEFAULT false | Закреплённый комментарий (только teacher) |
-| `is_teacher_answer` | BOOLEAN | NOT NULL, DEFAULT false | Ответ учителя (только teacher) |
+Threaded replies: max 2 levels of nesting. Pinned and teacher_answer flags — teacher-only.
 
-**Индексы:** `idx_comments_lesson` (lesson_id, created_at DESC), `idx_comments_parent` (parent_id WHERE parent_id IS NOT NULL).
+---
 
 ### Table: `comment_upvotes`
 
@@ -1209,19 +796,12 @@ CREATE TABLE IF NOT EXISTS comment_upvotes (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     comment_id UUID NOT NULL REFERENCES comments(id) ON DELETE CASCADE,
     user_id    UUID NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(comment_id, user_id)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `comment_id` | UUID | FK → comments(id) CASCADE, NOT NULL | Комментарий |
-| `user_id` | UUID | NOT NULL | Кто поставил upvote |
-
-**Индексы:** UNIQUE (comment_id, user_id) — один upvote от пользователя на комментарий.
-
-**Бизнес-логика:** Upvote — toggle: повторный вызов снимает голос. upvote_count в comments обновляется при add/remove vote. Создание комментария любым авторизованным пользователем. Ответы через parent_id (макс. 2 уровня — ответ на ответ запрещён). Pin и mark-answer — только teacher. Threaded listing: pinned first, then teacher answers, then by date. Удаление каскадное (удаляет ответы и голоса).
+---
 
 ### Table: `xp_ledger`
 
@@ -1229,142 +809,79 @@ CREATE TABLE IF NOT EXISTS comment_upvotes (
 CREATE TABLE IF NOT EXISTS xp_ledger (
     id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id    UUID NOT NULL,
-    reason     VARCHAR(50) NOT NULL,
-    amount     INT NOT NULL,
+    amount     INTEGER NOT NULL,
+    source     VARCHAR(50) NOT NULL,
+    source_id  UUID,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `user_id` | UUID | NOT NULL | Студент |
-| `reason` | VARCHAR(50) | NOT NULL | Причина начисления: `lesson_complete`, `quiz_submit`, `flashcard_review` |
-| `amount` | INT | NOT NULL | Количество XP: lesson_complete=10, quiz_submit=20, flashcard_review=5 |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время начисления |
+Source types: `lesson_complete` (10 XP), `quiz_submit` (20 XP), `flashcard_review` (5 XP), `mission_complete` (50 XP).
 
-**Индексы:** `idx_xp_ledger_user_id` (user_id), `idx_xp_ledger_user_created` (user_id, created_at DESC).
-
-**Бизнес-логика:** Append-only лог начислений XP. Суммарный XP вычисляется как SUM(amount) GROUP BY user_id. GET /xp/me возвращает total_xp, level (total_xp // 100 + 1) и xp_to_next_level.
+---
 
 ### Table: `badges`
 
 ```sql
 CREATE TABLE IF NOT EXISTS badges (
-    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id     UUID NOT NULL,
-    badge_type  VARCHAR(50) NOT NULL,
-    unlocked_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(user_id, badge_type)
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL,
+    type       VARCHAR(50) NOT NULL,
+    metadata   JSONB NOT NULL DEFAULT '{}',
+    earned_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, type)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `user_id` | UUID | NOT NULL | Студент |
-| `badge_type` | VARCHAR(50) | NOT NULL, UNIQUE(user_id, badge_type) | Тип: `first_enrollment`, `streak_7`, `quiz_ace`, `mastery_100` |
-| `unlocked_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время разблокировки |
+Badge types: `first_enrollment`, `streak_7`, `quiz_ace`, `mastery_100`, `first_mission`, `trust_level_up`.
 
-**Индексы:** `idx_badges_user_id` (user_id), UNIQUE (user_id, badge_type).
-
-**Badge types:**
-- `first_enrollment` — первая запись на курс
-- `streak_7` — 7 дней подряд активности
-- `quiz_ace` — сдача квиза на 100%
-- `mastery_100` — достижение 100% mastery по любому concept
+---
 
 ### Table: `pretests`
 
 ```sql
 CREATE TABLE IF NOT EXISTS pretests (
-    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id      UUID NOT NULL,
-    course_id    UUID NOT NULL,
-    status       VARCHAR(20) NOT NULL DEFAULT 'in_progress',
-    started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    completed_at TIMESTAMPTZ
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL,
+    course_id  UUID NOT NULL,
+    status     VARCHAR(20) NOT NULL DEFAULT 'in_progress',
+    result     JSONB,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, course_id)
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `user_id` | UUID | NOT NULL | ID студента (из Identity) |
-| `course_id` | UUID | NOT NULL | ID курса (из Course Service) |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'in_progress' | Статус: `in_progress`, `completed` |
-| `started_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время начала |
-| `completed_at` | TIMESTAMPTZ | nullable | Время завершения |
-
-**Индексы:** PK (id) + idx_pretests_user_course (user_id, course_id).
+---
 
 ### Table: `pretest_answers`
 
 ```sql
 CREATE TABLE IF NOT EXISTS pretest_answers (
-    id             UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    pretest_id     UUID NOT NULL REFERENCES pretests(id) ON DELETE CASCADE,
-    concept_id     UUID NOT NULL,
-    question       TEXT NOT NULL,
-    user_answer    TEXT NOT NULL,
-    correct_answer TEXT NOT NULL,
-    is_correct     BOOLEAN NOT NULL,
-    created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    pretest_id UUID NOT NULL REFERENCES pretests(id) ON DELETE CASCADE,
+    concept_id UUID NOT NULL,
+    is_correct BOOLEAN NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `pretest_id` | UUID | FK → pretests(id) CASCADE, NOT NULL | Пре-тест, к которому относится ответ |
-| `concept_id` | UUID | NOT NULL | Концепт, по которому задан вопрос (из concepts) |
-| `question` | TEXT | NOT NULL | Текст вопроса |
-| `user_answer` | TEXT | NOT NULL | Ответ студента |
-| `correct_answer` | TEXT | NOT NULL | Правильный ответ |
-| `is_correct` | BOOLEAN | NOT NULL | Верен ли ответ |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время ответа |
-
-**Индексы:** PK (id) + idx_pretest_answers_pretest_id (pretest_id).
-
-**Бизнес-логика:** Адаптивный алгоритм выбирает следующий концепт на основе истории ответов текущего пре-теста. При завершении всех концептов (или достижении лимита вопросов) pretest.status переводится в `completed` и вычисляется итоговый score = correct / total.
-
-**Миграции:**
-- `001_quizzes.sql` — создание таблиц quizzes, questions, quiz_attempts и индексов
-- `002_flashcards.sql` — создание таблиц flashcards, review_logs и индексов
-- `003_concepts.sql` — создание таблиц concepts, concept_prerequisites, concept_mastery и индексов
-- `004_streaks.sql` — создание таблицы streaks
-- `006_leaderboard.sql` — создание таблицы leaderboard_scores с partial index
-- `007_discussions.sql` — создание таблиц comments, comment_upvotes с индексами
-- `012_discussion_enhancements.sql` — добавление is_pinned, is_teacher_answer в comments
-- `008_xp_badges.sql` — создание таблиц xp_ledger, badges с индексами
-- `009_pretests.sql` — создание таблиц pretests, pretest_answers с индексами
-- `010_activity_feed.sql` — создание таблицы activity_feed с индексами
-- `011_study_groups.sql` — создание таблиц study_groups, study_group_members с индексами
-- `013_certificates.sql` — создание таблицы certificates с индексами
+---
 
 ### Table: `activity_feed`
 
 ```sql
 CREATE TABLE IF NOT EXISTS activity_feed (
-    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id       UUID NOT NULL,
-    activity_type VARCHAR(50) NOT NULL,
-    payload       JSONB NOT NULL DEFAULT '{}',
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    UUID NOT NULL,
+    type       VARCHAR(50) NOT NULL,
+    metadata   JSONB NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор |
-| `user_id` | UUID | NOT NULL | Пользователь, совершивший действие |
-| `activity_type` | VARCHAR(50) | NOT NULL | Тип: quiz_completed, flashcard_reviewed, badge_earned, streak_milestone, concept_mastered |
-| `payload` | JSONB | NOT NULL, DEFAULT '{}' | Расширяемые данные по типу активности |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время события |
+Activity types: `quiz_completed`, `flashcard_reviewed`, `badge_earned`, `streak_milestone`, `concept_mastered`, `mission_completed`.
 
-**Индексы:** PK (id) + idx_activity_feed_user (user_id, created_at DESC) + idx_activity_feed_created (created_at DESC).
-
-**Бизнес-логика:** Записи создаются автоматически при завершении квизов, review флешкарт, получении бейджей, streak milestones и mastery концептов. Используется для ленты активности пользователя и социального фида.
+---
 
 ### Table: `study_groups`
 
@@ -1372,25 +889,15 @@ CREATE TABLE IF NOT EXISTS activity_feed (
 CREATE TABLE IF NOT EXISTS study_groups (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     course_id   UUID NOT NULL,
-    name        VARCHAR(100) NOT NULL,
-    description TEXT,
-    creator_id  UUID NOT NULL,
-    max_members INT NOT NULL DEFAULT 10,
+    name        VARCHAR(200) NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    created_by  UUID NOT NULL,
+    max_members INTEGER NOT NULL DEFAULT 10,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор группы |
-| `course_id` | UUID | NOT NULL | Курс, к которому привязана группа |
-| `name` | VARCHAR(100) | NOT NULL | Название группы (1–100 символов) |
-| `description` | TEXT | nullable | Описание группы |
-| `creator_id` | UUID | NOT NULL | Создатель группы |
-| `max_members` | INT | NOT NULL, DEFAULT 10 | Максимум участников |
-| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время создания |
-
-**Индексы:** PK (id) + idx_study_groups_course (course_id).
+---
 
 ### Table: `study_group_members`
 
@@ -1404,64 +911,328 @@ CREATE TABLE IF NOT EXISTS study_group_members (
 );
 ```
 
-| Column | Type | Constraints | Описание |
-|--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор записи |
-| `group_id` | UUID | NOT NULL, FK → study_groups(id) CASCADE | Ссылка на группу |
-| `user_id` | UUID | NOT NULL | Пользователь-участник |
-| `joined_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Время вступления |
-
-**Индексы:** PK (id) + UNIQUE(group_id, user_id) + idx_sgm_group (group_id) + idx_sgm_user (user_id).
-
-**Бизнес-логика:** Создатель автоматически добавляется как первый участник. Создатель не может покинуть группу (предотвращение осиротевших групп). Новый участник не может вступить, если count >= max_members.
+---
 
 ### Table: `certificates`
 
 ```sql
 CREATE TABLE IF NOT EXISTS certificates (
-    id                 UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id            UUID NOT NULL,
-    course_id          UUID NOT NULL,
-    issued_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    certificate_number VARCHAR(20) NOT NULL UNIQUE,
-    template_data      JSONB DEFAULT '{}',
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id     UUID NOT NULL,
+    course_id   UUID NOT NULL,
+    certificate_number VARCHAR(50) NOT NULL UNIQUE,
+    issued_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(user_id, course_id)
+);
+```
+
+---
+
+### Table: `missions` (NEW)
+
+```sql
+CREATE TABLE IF NOT EXISTS missions (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           UUID NOT NULL,
+    organization_id   UUID NOT NULL,
+    concept_id        UUID,
+    title             VARCHAR(500) NOT NULL,
+    description       TEXT NOT NULL DEFAULT '',
+    mission_type      VARCHAR(50) NOT NULL DEFAULT 'general',
+    difficulty        VARCHAR(20) NOT NULL DEFAULT 'intermediate',
+    estimated_minutes INTEGER NOT NULL DEFAULT 15,
+    status            VARCHAR(20) NOT NULL DEFAULT 'pending',
+    score             INTEGER,
+    xp_earned         INTEGER,
+    time_spent_minutes INTEGER,
+    started_at        TIMESTAMPTZ,
+    completed_at      TIMESTAMPTZ,
+    mission_date      DATE NOT NULL DEFAULT CURRENT_DATE,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
 | Column | Type | Constraints | Описание |
 |--------|------|-------------|----------|
-| `id` | UUID | PK, auto | Уникальный идентификатор сертификата |
-| `user_id` | UUID | NOT NULL | Пользователь, получивший сертификат |
-| `course_id` | UUID | NOT NULL | Курс, за который выдан сертификат |
-| `issued_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата выдачи |
-| `certificate_number` | VARCHAR(20) | NOT NULL, UNIQUE | Уникальный номер формата CERT-YYYY-XXXXXX |
-| `template_data` | JSONB | DEFAULT '{}' | Расширяемые данные шаблона |
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `user_id` | UUID | NOT NULL | Пользователь |
+| `organization_id` | UUID | NOT NULL | Организация |
+| `concept_id` | UUID | nullable | Привязанный концепт |
+| `title` | VARCHAR(500) | NOT NULL | Название миссии |
+| `description` | TEXT | NOT NULL, DEFAULT '' | Описание |
+| `mission_type` | VARCHAR(50) | NOT NULL, DEFAULT 'general' | Тип: code_review, debugging, implementation, quiz, general |
+| `difficulty` | VARCHAR(20) | NOT NULL, DEFAULT 'intermediate' | beginner, intermediate, advanced |
+| `estimated_minutes` | INTEGER | NOT NULL, DEFAULT 15 | Оценочное время |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | pending, in_progress, completed, skipped |
+| `score` | INTEGER | nullable | Оценка (0–100) |
+| `xp_earned` | INTEGER | nullable | Заработанный XP |
+| `time_spent_minutes` | INTEGER | nullable | Фактическое время |
+| `started_at` | TIMESTAMPTZ | nullable | Время начала |
+| `completed_at` | TIMESTAMPTZ | nullable | Время завершения |
+| `mission_date` | DATE | NOT NULL, DEFAULT CURRENT_DATE | Дата миссии |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
 
-**Индексы:** PK (id) + UNIQUE(certificate_number) + UNIQUE(user_id, course_id) + idx_certificates_user_id (user_id) + idx_certificates_course_id (course_id).
-
-**Бизнес-логика:** Один сертификат на пару (user, course). Номер генерируется автоматически в формате CERT-{YYYY}-{6 случайных символов}. Дубликаты предотвращаются UNIQUE constraint.
+**Индексы:** PK (id) + idx_missions_user_org (user_id, organization_id) + idx_missions_date (user_id, mission_date) + idx_missions_status.
 
 ---
 
-## Connection Pool
+### Table: `trust_levels` (NEW)
 
-Все сервисы используют `asyncpg.Pool`:
-- `min_size = 5` (настраивается через `DB_POOL_MIN_SIZE`)
-- `max_size = 20` (настраивается через `DB_POOL_MAX_SIZE`)
-
-Pool увеличен с 5/5 до 5/20 в Phase 1.0 — saturation снизилась с 100% до 10%.
-
----
-
-## Миграции
-
-Forward-only SQL файлы. Запускаются автоматически при старте сервиса в `app/main.py` через `lifespan`:
-
-```python
-async with create_pool(settings.database_url) as pool:
-    for sql_file in sorted(Path("migrations").glob("*.sql")):
-        await pool.execute(sql_file.read_text())
+```sql
+CREATE TABLE IF NOT EXISTS trust_levels (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id             UUID NOT NULL,
+    organization_id     UUID NOT NULL,
+    level               INTEGER NOT NULL DEFAULT 0 CHECK (level BETWEEN 0 AND 5),
+    missions_completed  INTEGER NOT NULL DEFAULT 0,
+    concepts_mastered   INTEGER NOT NULL DEFAULT 0,
+    streak_days         INTEGER NOT NULL DEFAULT 0,
+    discussions_count   INTEGER NOT NULL DEFAULT 0,
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, organization_id)
+);
 ```
 
-Каждая миграция идемпотентна (`CREATE TABLE IF NOT EXISTS`, `CREATE TYPE IF NOT EXISTS`).
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `user_id` | UUID | NOT NULL | Пользователь |
+| `organization_id` | UUID | NOT NULL | Организация |
+| `level` | INTEGER | NOT NULL, DEFAULT 0, CHECK 0–5 | Trust level (0=Observer, 5=Expert) |
+| `missions_completed` | INTEGER | NOT NULL, DEFAULT 0 | Количество выполненных миссий |
+| `concepts_mastered` | INTEGER | NOT NULL, DEFAULT 0 | Количество освоенных концептов |
+| `streak_days` | INTEGER | NOT NULL, DEFAULT 0 | Текущий streak |
+| `discussions_count` | INTEGER | NOT NULL, DEFAULT 0 | Количество участий в дискуссиях |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата обновления |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + UNIQUE(user_id, organization_id) + idx_trust_org_id.
+
+**Trust Level повышение:** автоматическое на основе missions_completed, concepts_mastered, streak_days, discussions_count.
+
+**Миграции (Learning):**
+- `001_quizzes.sql` — quizzes, questions, quiz_attempts
+- `002_flashcards.sql` — flashcards, review_logs
+- `003_concepts.sql` — concepts, concept_prerequisites, concept_mastery
+- `004_streaks.sql` — streaks
+- `005_leaderboard.sql` — leaderboard_scores
+- `006_discussions.sql` — comments, comment_upvotes
+- `007_xp_badges.sql` — xp_ledger, badges
+- `008_pretests.sql` — pretests, pretest_answers
+- `009_activity_feed.sql` — activity_feed
+- `010_study_groups.sql` — study_groups, study_group_members
+- `011_certificates.sql` — certificates
+- `012_missions.sql` — таблица missions (NEW)
+- `013_trust_levels.sql` — таблица trust_levels (NEW)
+
+---
+
+## RAG DB (NEW)
+
+Новая база данных для RAG сервиса. Требует расширение `pgvector`.
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+```
+
+### Table: `documents` (NEW)
+
+```sql
+CREATE TABLE IF NOT EXISTS documents (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    title           VARCHAR(500) NOT NULL,
+    source_type     VARCHAR(50) NOT NULL DEFAULT 'manual',
+    source_url      VARCHAR(2000),
+    content_hash    VARCHAR(64),
+    chunk_count     INTEGER NOT NULL DEFAULT 0,
+    status          VARCHAR(20) NOT NULL DEFAULT 'pending',
+    metadata        JSONB NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `organization_id` | UUID | NOT NULL | Организация-владелец |
+| `title` | VARCHAR(500) | NOT NULL | Название документа |
+| `source_type` | VARCHAR(50) | NOT NULL, DEFAULT 'manual' | Тип: manual, github, upload |
+| `source_url` | VARCHAR(2000) | nullable | URL источника (для GitHub) |
+| `content_hash` | VARCHAR(64) | nullable | SHA-256 hash содержимого (для дедупликации) |
+| `chunk_count` | INTEGER | NOT NULL, DEFAULT 0 | Количество chunks |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | pending, indexed, error |
+| `metadata` | JSONB | NOT NULL, DEFAULT '{}' | Произвольные метаданные |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата обновления |
+
+**Индексы:** PK (id) + idx_docs_org_id (organization_id) + idx_docs_source_type + idx_docs_content_hash.
+
+---
+
+### Table: `chunks` (NEW)
+
+```sql
+CREATE TABLE IF NOT EXISTS chunks (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    document_id UUID NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+    content     TEXT NOT NULL,
+    embedding   vector(768),
+    chunk_index INTEGER NOT NULL,
+    metadata    JSONB NOT NULL DEFAULT '{}',
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `document_id` | UUID | FK → documents(id) CASCADE, NOT NULL | Родительский документ |
+| `content` | TEXT | NOT NULL | Текстовое содержимое chunk |
+| `embedding` | vector(768) | nullable | Embedding вектор (Gemini Embedding) |
+| `chunk_index` | INTEGER | NOT NULL | Порядковый номер chunk в документе |
+| `metadata` | JSONB | NOT NULL, DEFAULT '{}' | Метаданные (file path, line numbers и т.д.) |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + idx_chunks_doc_id + ivfflat index на embedding для approximate nearest neighbor search.
+
+```sql
+CREATE INDEX IF NOT EXISTS idx_chunks_embedding ON chunks
+USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+```
+
+---
+
+### Table: `org_concepts` (NEW)
+
+```sql
+CREATE TABLE IF NOT EXISTS org_concepts (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    name            VARCHAR(255) NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    importance      NUMERIC(3,2) NOT NULL DEFAULT 0.5,
+    document_ids    UUID[] NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(organization_id, name)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `organization_id` | UUID | NOT NULL | Организация |
+| `name` | VARCHAR(255) | NOT NULL | Название концепта |
+| `description` | TEXT | NOT NULL, DEFAULT '' | Описание |
+| `importance` | NUMERIC(3,2) | NOT NULL, DEFAULT 0.5 | Важность (0.0–1.0) |
+| `document_ids` | UUID[] | NOT NULL, DEFAULT '{}' | Связанные документы |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + UNIQUE(organization_id, name) + idx_org_concepts_org_id.
+
+---
+
+### Table: `concept_relationships` (NEW)
+
+```sql
+CREATE TABLE IF NOT EXISTS concept_relationships (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    from_concept_id UUID NOT NULL REFERENCES org_concepts(id) ON DELETE CASCADE,
+    to_concept_id   UUID NOT NULL REFERENCES org_concepts(id) ON DELETE CASCADE,
+    relationship    VARCHAR(50) NOT NULL DEFAULT 'requires',
+    strength        NUMERIC(3,2) NOT NULL DEFAULT 0.5,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(from_concept_id, to_concept_id, relationship)
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `from_concept_id` | UUID | FK → org_concepts(id) CASCADE, NOT NULL | Исходный концепт |
+| `to_concept_id` | UUID | FK → org_concepts(id) CASCADE, NOT NULL | Целевой концепт |
+| `relationship` | VARCHAR(50) | NOT NULL, DEFAULT 'requires' | Тип: requires, extends, related_to |
+| `strength` | NUMERIC(3,2) | NOT NULL, DEFAULT 0.5 | Сила связи (0.0–1.0) |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + UNIQUE(from_concept_id, to_concept_id, relationship) + idx_cr_from + idx_cr_to.
+
+---
+
+### Table: `onboarding_templates` (NEW)
+
+```sql
+CREATE TABLE IF NOT EXISTS onboarding_templates (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    name            VARCHAR(255) NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    target_role     VARCHAR(100) NOT NULL,
+    estimated_days  INTEGER NOT NULL DEFAULT 30,
+    is_active       BOOLEAN NOT NULL DEFAULT true,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `organization_id` | UUID | NOT NULL | Организация |
+| `name` | VARCHAR(255) | NOT NULL | Название шаблона |
+| `description` | TEXT | NOT NULL, DEFAULT '' | Описание |
+| `target_role` | VARCHAR(100) | NOT NULL | Целевая роль: backend_engineer, frontend_engineer, devops и т.д. |
+| `estimated_days` | INTEGER | NOT NULL, DEFAULT 30 | Оценочная продолжительность в днях |
+| `is_active` | BOOLEAN | NOT NULL, DEFAULT true | Активен ли шаблон |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата обновления |
+
+**Индексы:** PK (id) + idx_templates_org_id.
+
+---
+
+### Table: `template_stages` (NEW)
+
+```sql
+CREATE TABLE IF NOT EXISTS template_stages (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    template_id     UUID NOT NULL REFERENCES onboarding_templates(id) ON DELETE CASCADE,
+    title           VARCHAR(255) NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    "order"         INTEGER NOT NULL DEFAULT 0,
+    estimated_days  INTEGER NOT NULL DEFAULT 5,
+    concept_ids     UUID[] NOT NULL DEFAULT '{}',
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `template_id` | UUID | FK → onboarding_templates(id) CASCADE, NOT NULL | Родительский шаблон |
+| `title` | VARCHAR(255) | NOT NULL | Название этапа |
+| `description` | TEXT | NOT NULL, DEFAULT '' | Описание |
+| `order` | INTEGER | NOT NULL, DEFAULT 0 | Порядок |
+| `estimated_days` | INTEGER | NOT NULL, DEFAULT 5 | Продолжительность |
+| `concept_ids` | UUID[] | NOT NULL, DEFAULT '{}' | Привязанные концепты из org_concepts |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+
+**Индексы:** PK (id) + idx_stages_template_id.
+
+**Миграции (RAG):**
+- `001_documents.sql` — extension vector + таблица documents
+- `002_chunks.sql` — таблица chunks + ivfflat index
+- `003_org_concepts.sql` — org_concepts + concept_relationships
+- `004_onboarding_templates.sql` — onboarding_templates + template_stages
+
+---
+
+## Dormant: Course DB
+
+9 таблиц: `categories`, `courses`, `modules`, `lessons`, `reviews`, `course_bundles`, `bundle_courses`, `course_promotions`, `wishlist`. Код сохранён, не развивается. Детальные schemas доступны в git history.
+
+## Dormant: Enrollment DB
+
+2 таблицы: `enrollments`, `lesson_progress`. Код сохранён, не развивается.

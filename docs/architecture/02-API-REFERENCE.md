@@ -1,7 +1,24 @@
 # 02 — API Reference
 
-> Последнее обновление: 2026-03-04
-> Стадия: Phase 2.5 (MVP Polish — Analytics, Earnings, Flashcard Reminders, Promotions)
+> Последнее обновление: 2026-03-05
+> Стадия: B2B Agentic Adaptive Learning Pivot
+
+---
+
+## Общие endpoints (все сервисы)
+
+### GET /health/live
+
+Liveness probe. Всегда 200 если процесс жив.
+
+**Response `200`:** `{"status": "ok"}`
+
+### GET /health/ready
+
+Readiness probe. Проверяет PostgreSQL и Redis (если есть).
+
+**Response `200`:** `{"status": "ok", "checks": {"postgres": "ok", "redis": "ok"}}`
+**Response `503`:** `{"status": "degraded", "checks": {"postgres": "unavailable"}}`
 
 ---
 
@@ -88,10 +105,28 @@
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
+**Errors:** `401` — отсутствует или невалидный токен.
+
+---
+
+### PATCH /me
+
+Обновление профиля текущего пользователя. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "name": "New Name",       // optional
+  "bio": "About me...",     // optional
+  "avatar_url": "https://..." // optional
+}
+```
+
+**Response `200`:** Объект `UserResponse`.
+
+**Errors:** `401` — невалидный токен. `422` — невалидные данные.
 
 ---
 
@@ -115,12 +150,7 @@
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Невалидный, просроченный или повторно использованный refresh token |
-
-> Token reuse detection: если revoked token используется повторно, вся token family отзывается.
+**Errors:** `401` — невалидный, просроченный или повторно использованный refresh token. Token reuse detection: если revoked token используется повторно, вся token family отзывается.
 
 ---
 
@@ -152,26 +182,7 @@
 
 **Response `200`:** Объект `UserResponse`.
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Невалидный, просроченный или уже использованный токен |
-
----
-
-### POST /resend-verification
-
-Повторная отправка email-верификации. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** No content.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Email уже подтверждён |
-| 401 | Отсутствует или невалидный токен |
+**Errors:** `400` — невалидный, просроченный или уже использованный токен.
 
 ---
 
@@ -204,62 +215,7 @@
 
 **Response `204`:** No content.
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Невалидный, просроченный или уже использованный токен |
-
----
-
-### Health Check Endpoints (все сервисы)
-
-#### GET /health/live
-
-Liveness probe. Всегда 200 если процесс жив.
-
-**Response `200`:** `{"status": "ok"}`
-
-#### GET /health/ready
-
-Readiness probe. Проверяет PostgreSQL и Redis (если есть).
-
-**Response `200`:** `{"status": "ok", "checks": {"postgres": "ok", "redis": "ok"}}`
-**Response `503`:** `{"status": "degraded", "checks": {"postgres": "unavailable"}}`
-
----
-
-### GET /admin/teachers/pending
-
-Список преподавателей, ожидающих верификации. Только для `role=admin`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `limit` | int (1-100) | 50 | Количество записей |
-| `offset` | int (≥0) | 0 | Смещение |
-
-**Response `200`:**
-```json
-{
-  "items": [
-    {
-      "id": "...",
-      "email": "teacher@example.com",
-      "name": "Ivan Petrov",
-      "created_at": "2026-02-20T12:00:00+00:00"
-    }
-  ],
-  "total": 5
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != admin` — "Admin access required" |
+**Errors:** `400` — невалидный, просроченный или уже использованный токен.
 
 ---
 
@@ -281,13 +237,7 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != admin` — "Admin access required" |
-| 404 | Пользователь не найден |
-| 409 | Пользователь не является teacher / уже верифицирован |
+**Errors:** `401` — невалидный токен. `403` — не admin. `404` — пользователь не найден. `409` — не teacher или уже верифицирован.
 
 ---
 
@@ -307,18 +257,11 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-
 ---
 
 ### POST /referral/apply
 
 Применение реферального кода. Привязывает текущего пользователя как реферала. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
 
 **Request:**
 ```json
@@ -327,61 +270,26 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 }
 ```
 
-**Response `201`:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "referrer_id": "...",
-  "referee_id": "...",
-  "referral_code": "REF-A1B2C3D4",
-  "status": "pending",
-  "reward_type": null,
-  "created_at": "2026-03-04T12:00:00+00:00",
-  "completed_at": null
-}
-```
+**Response `201`:** Объект реферала с `id`, `referrer_id`, `referee_id`, `status: "pending"`.
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 404 | Реферальный код не найден |
-| 409 | Пользователь уже применил реферальный код / нельзя реферить самого себя |
+**Errors:** `404` — код не найден. `409` — уже применил код / нельзя реферить себя.
 
 ---
 
 ### POST /referral/complete
 
-Завершение реферала (внутренний/admin триггер). Обновляет статус на `completed`.
-
-**Headers:** `Authorization: Bearer <token>`
+Завершение реферала (admin/внутренний триггер). Обновляет статус на `completed`.
 
 **Request:**
 ```json
 {
-  "referee_id": "550e8400-e29b-41d4-a716-446655440000"
+  "referee_id": "uuid"
 }
 ```
 
-**Response `200`:**
-```json
-{
-  "id": "...",
-  "referrer_id": "...",
-  "referee_id": "...",
-  "referral_code": "REF-A1B2C3D4",
-  "status": "completed",
-  "reward_type": "...",
-  "created_at": "2026-03-04T12:00:00+00:00",
-  "completed_at": "2026-03-04T13:00:00+00:00"
-}
-```
+**Response `200`:** Объект реферала с `status: "completed"`.
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 404 | Реферал не найден |
+**Errors:** `404` — реферал не найден.
 
 ---
 
@@ -403,10 +311,7 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Пользователь не найден или профиль приватный |
+**Errors:** `404` — пользователь не найден или профиль приватный.
 
 ---
 
@@ -424,16 +329,13 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Пользователь не найден или профиль приватный |
+**Errors:** `404` — пользователь не найден или профиль приватный.
 
 ---
 
 ### PATCH /users/me/visibility
 
-Переключение видимости профиля. Требует авторизации (Bearer token).
+Переключение видимости профиля. Требует JWT.
 
 **Request:**
 ```json
@@ -442,19 +344,13 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 }
 ```
 
-**Response:** `204 No Content`
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 422 | Невалидные данные |
+**Response `204`:** No Content.
 
 ---
 
 ### POST /follow/{user_id}
 
-Подписаться на пользователя. Требует авторизации (Bearer token).
+Подписаться на пользователя. Требует JWT.
 
 **Response `201`:**
 ```json
@@ -466,48 +362,31 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Попытка подписаться на себя |
-| 401 | Отсутствует или невалидный токен |
-| 404 | Целевой пользователь не найден |
-| 409 | Уже подписан на этого пользователя |
+**Errors:** `400` — подписка на себя. `404` — пользователь не найден. `409` — уже подписан.
 
 ---
 
 ### DELETE /follow/{user_id}
 
-Отписаться от пользователя. Требует авторизации (Bearer token).
+Отписаться от пользователя. Требует JWT.
 
-**Response:** `204 No Content`
+**Response `204`:** No Content.
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 404 | Не подписан на этого пользователя |
+**Errors:** `404` — не подписан.
 
 ---
 
 ### GET /followers/me
 
-Список подписчиков текущего пользователя. Требует авторизации (Bearer token).
+Список подписчиков текущего пользователя. Требует JWT.
 
-**Query params:** `limit` (default 20, max 100), `offset` (default 0)
+**Query params:** `limit` (default 20, max 100), `offset` (default 0).
 
 **Response `200`:**
 ```json
 {
-  "items": [
-    {
-      "id": "uuid",
-      "follower_id": "uuid",
-      "following_id": "uuid",
-      "created_at": "2026-03-04T12:00:00Z"
-    }
-  ],
-  "total": 42
+  "items": [{"id": "uuid", "name": "...", "avatar_url": "..."}],
+  "total": 10
 }
 ```
 
@@ -515,21 +394,22 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 
 ### GET /following/me
 
-Список подписок текущего пользователя. Требует авторизации (Bearer token).
+Список подписок текущего пользователя. Требует JWT.
 
-**Query params:** `limit` (default 20, max 100), `offset` (default 0)
+**Query params:** `limit` (default 20, max 100), `offset` (default 0).
 
-**Response `200`:** (аналогично `/followers/me`)
+**Response `200`:** Аналогично `/followers/me`.
 
 ---
 
 ### GET /users/{user_id}/followers/count
 
-Количество подписчиков и подписок пользователя. Публичный endpoint, авторизация не требуется.
+Количество подписчиков пользователя. Публичный.
 
 **Response `200`:**
 ```json
 {
+  "user_id": "uuid",
   "followers_count": 42,
   "following_count": 15
 }
@@ -537,365 +417,18 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 
 ---
 
-## Course Service (`:8002`)
+### POST /organizations (NEW)
 
-### GET /categories
-
-Список всех категорий курсов. Публичный endpoint.
-
-**Response `200`:**
-```json
-[
-  {"id": "...", "name": "Programming", "slug": "programming"},
-  {"id": "...", "name": "Design", "slug": "design"}
-]
-```
-
----
-
-### GET /courses
-
-Список курсов с пагинацией, фильтрацией и поиском. Публичный endpoint, не требует авторизации.
-
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `q` | string | — | Поиск по title/description (ILIKE) |
-| `category_id` | UUID | — | Фильтр по категории |
-| `level` | string | — | Фильтр по уровню (beginner/intermediate/advanced) |
-| `is_free` | bool | — | Фильтр по стоимости |
-| `sort_by` | string | created_at | Сортировка: created_at, avg_rating, price |
-| `limit` | int (1-100) | 20 | Количество записей |
-| `offset` | int (≥0) | 0 | Смещение |
-
-**Response `200`:**
-```json
-{
-  "items": [
-    {
-      "id": "...",
-      "teacher_id": "...",
-      "title": "Python для начинающих",
-      "description": "Основы Python...",
-      "is_free": true,
-      "price": null,
-      "duration_minutes": 120,
-      "level": "beginner",
-      "avg_rating": 4.35,
-      "review_count": 12,
-      "category_id": "550e8400-e29b-41d4-a716-446655440001",
-      "created_at": "2026-02-20T12:00:00+00:00"
-    }
-  ],
-  "total": 42
-}
-```
-
----
-
-### GET /courses/{course_id}
-
-Детали одного курса. Публичный endpoint.
-
-**Response `200`:** Объект `Course` (см. выше).
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Курс не найден |
-
----
-
-### POST /courses
-
-Создание курса. Только для **verified teacher**.
+Создание организации. Требует JWT. Создатель автоматически становится `owner`.
 
 **Headers:** `Authorization: Bearer <token>`
 
 **Request:**
 ```json
 {
-  "title": "Python для начинающих",
-  "description": "Основы Python",
-  "is_free": true,
-  "price": null,
-  "duration_minutes": 120,
-  "level": "beginner",
-  "category_id": "550e8400-e29b-41d4-a716-446655440001"
-}
-```
-
-**Response `201`:** Объект `Course`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher` — "Only teachers can create courses" |
-| 403 | `is_verified == false` — "Only verified teachers can create courses" |
-| 422 | Невалидные данные |
-
----
-
-### GET /courses/my
-
-Список курсов текущего преподавателя. Требует JWT (teacher).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit`, `offset` (аналогично /courses).
-
-**Response `200`:** Аналогично GET /courses.
-
----
-
-### GET /courses/{course_id}/curriculum
-
-Программа курса: модули с вложенными уроками. Публичный endpoint.
-
-**Response `200`:**
-```json
-{
-  "course": { "...": "Course object" },
-  "modules": [
-    {
-      "id": "...",
-      "course_id": "...",
-      "title": "Введение",
-      "order": 0,
-      "created_at": "...",
-      "lessons": [
-        {
-          "id": "...",
-          "module_id": "...",
-          "title": "Первый урок",
-          "content": "...",
-          "video_url": null,
-          "duration_minutes": 30,
-          "order": 0,
-          "created_at": "..."
-        }
-      ]
-    }
-  ],
-  "total_lessons": 15
-}
-```
-
----
-
-### PUT /courses/{course_id}
-
-Обновление курса. Только для **verified teacher** (owner check).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:** Все поля опциональны.
-```json
-{
-  "title": "Новое название",
-  "description": "Новое описание",
-  "is_free": false,
-  "price": 29.99,
-  "duration_minutes": 180,
-  "level": "intermediate"
-}
-```
-
-**Response `200`:** Объект `Course`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не owner или не verified teacher |
-| 404 | Курс не найден |
-
----
-
-### POST /courses/{course_id}/modules
-
-Создание модуля. Только для **verified teacher** (owner check).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "title": "Введение",
-  "order": 0
-}
-```
-
-**Response `201`:** Объект `Module`.
-
----
-
-### PUT /modules/{module_id}
-
-Обновление модуля. Только для teacher (owner check).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:** Объект `Module`.
-
----
-
-### DELETE /modules/{module_id}
-
-Удаление модуля (каскадное удаление уроков). Только для teacher (owner check).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** No content.
-
----
-
-### POST /modules/{module_id}/lessons
-
-Создание урока. Только для **verified teacher** (owner check через module→course).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "title": "Первый урок",
-  "content": "Содержимое урока в Markdown",
-  "video_url": "https://youtube.com/embed/...",
-  "duration_minutes": 30,
-  "order": 0
-}
-```
-
-**Response `201`:** Объект `Lesson`.
-
----
-
-### GET /lessons/{lesson_id}
-
-Содержимое урока. Публичный endpoint.
-
-**Response `200`:** Объект `Lesson`.
-
----
-
-### PUT /lessons/{lesson_id}
-
-Обновление урока. Только для teacher (owner check).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:** Объект `Lesson`.
-
----
-
-### DELETE /lessons/{lesson_id}
-
-Удаление урока. Только для teacher (owner check).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** No content.
-
----
-
-### POST /reviews
-
-Оставить отзыв на курс. Только для `role=student`. Один отзыв на курс.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "course_id": "550e8400-e29b-41d4-a716-446655440000",
-  "rating": 5,
-  "comment": "Отличный курс!"
-}
-```
-
-**Response `201`:** Объект `Review`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | `role != student` |
-| 404 | Курс не найден |
-| 409 | Уже оставлен отзыв на этот курс |
-
----
-
-### GET /reviews/course/{course_id}
-
-Отзывы на курс. Публичный endpoint.
-
-**Query params:** `limit`, `offset`.
-
-**Response `200`:**
-```json
-{
-  "items": [
-    {
-      "id": "...",
-      "student_id": "...",
-      "course_id": "...",
-      "rating": 5,
-      "comment": "Отличный курс!",
-      "created_at": "..."
-    }
-  ],
-  "total": 12
-}
-```
-
-### GET /analytics/teacher
-
-Сводная аналитика преподавателя: количество курсов, уроков, средний рейтинг, отзывы. Только для `role=teacher`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "total_courses": 3,
-  "total_lessons": 42,
-  "avg_rating": "4.35",
-  "total_reviews": 27,
-  "courses": [
-    {
-      "course_id": "550e8400-e29b-41d4-a716-446655440000",
-      "title": "Python для начинающих",
-      "avg_rating": "4.50",
-      "review_count": 12,
-      "module_count": 3,
-      "lesson_count": 15
-    }
-  ]
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher` — "Only teachers can view analytics" |
-
----
-
-### POST /bundles
-
-Создать бандл курсов (2–10 курсов, все принадлежат текущему teacher). Только `role=teacher`, `is_verified=true`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "title": "Python Full Stack Bundle",
-  "description": "All Python courses in one bundle",
-  "price": 49.99,
-  "discount_percent": 30,
-  "course_ids": ["uuid1", "uuid2", "uuid3"]
+  "name": "Acme Corp",
+  "slug": "acme-corp",
+  "domain": "acme.com"
 }
 ```
 
@@ -903,225 +436,21 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 ```json
 {
   "id": "uuid",
-  "teacher_id": "uuid",
-  "title": "Python Full Stack Bundle",
-  "description": "All Python courses in one bundle",
-  "price": 49.99,
-  "discount_percent": 30,
-  "is_active": true,
-  "created_at": "2026-03-04T...",
-  "courses": [...]
+  "name": "Acme Corp",
+  "slug": "acme-corp",
+  "domain": "acme.com",
+  "owner_id": "uuid",
+  "created_at": "2026-03-05T00:00:00Z"
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Price <= 0, discount не 1–99%, количество курсов не 2–10 |
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher`, не verified, курс не принадлежит teacher |
-| 404 | Курс не найден |
+**Errors:** `409` — slug или domain уже заняты. `422` — невалидные данные.
 
 ---
 
-### GET /bundles
+### GET /organizations/me (NEW)
 
-Список активных бандлов. Публичный endpoint.
-
-**Query:** `limit` (1–100, default 20), `offset` (>= 0), `teacher_id` (optional UUID filter).
-
-**Response `200`:**
-```json
-{
-  "items": [...],
-  "total": 5
-}
-```
-
----
-
-### GET /bundles/{bundle_id}
-
-Получить бандл по ID с вложенными курсами. Публичный endpoint.
-
-**Response `200`:** Объект бандла с массивом `courses`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Бандл не найден |
-
----
-
-### PUT /bundles/{bundle_id}
-
-Обновить бандл. Только владелец (teacher).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "title": "Updated title",
-  "description": "Updated desc",
-  "price": 39.99,
-  "discount_percent": 25
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Не владелец бандла |
-| 404 | Бандл не найден |
-
----
-
-### DELETE /bundles/{bundle_id}
-
-Удалить бандл. Только владелец (teacher). **Response `204`.**
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Не владелец бандла |
-| 404 | Бандл не найден |
-
----
-
-### POST /courses/{course_id}/promotions
-
-Создать акцию для курса. Только для **verified teacher** (owner check). Одновременно может быть только одна активная акция на курс.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "discount_percent": 20,
-  "starts_at": "2026-03-10T00:00:00+00:00",
-  "ends_at": "2026-03-20T23:59:59+00:00"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "course_id": "...",
-  "discount_percent": 20,
-  "starts_at": "2026-03-10T00:00:00+00:00",
-  "ends_at": "2026-03-20T23:59:59+00:00",
-  "created_at": "2026-03-04T12:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Не owner курса или не verified teacher |
-| 404 | Курс не найден |
-| 409 | Уже существует активная акция на этот курс |
-| 422 | Невалидные данные (discount не 1–99%, ends_at <= starts_at) |
-
----
-
-### GET /courses/{course_id}/promotions
-
-Список активных акций курса. Публичный endpoint. Возвращает только текущие активные акции (starts_at <= now <= ends_at).
-
-**Response `200`:**
-```json
-[
-  {
-    "id": "...",
-    "course_id": "...",
-    "discount_percent": 20,
-    "starts_at": "2026-03-10T00:00:00+00:00",
-    "ends_at": "2026-03-20T23:59:59+00:00",
-    "created_at": "..."
-  }
-]
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Курс не найден |
-
-> Объект `CourseResponse` (GET /courses, GET /courses/{course_id}) включает поле `active_promotion: ActivePromotionResponse | null` с полями `discount_percent`, `starts_at`, `ends_at`.
-
----
-
-### DELETE /promotions/{promotion_id}
-
-Удалить акцию. Только для **verified teacher** (owner check через курс акции). **Response `204`.**
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Не owner курса акции или не verified teacher |
-| 404 | Акция не найдена |
-
-### POST /wishlist
-
-Добавить курс в вишлист. Требуется авторизация.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "course_id": "uuid"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "uuid",
-  "user_id": "uuid",
-  "course_id": "uuid",
-  "course_title": "Python Basics",
-  "course_description": "Learn Python",
-  "created_at": "2026-03-04T12:00:00Z"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 404 | Курс не найден |
-| 409 | Курс уже в вишлисте |
-
-### DELETE /wishlist/{course_id}
-
-Удалить курс из вишлиста. **Response `204`.**
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 404 | Курс не в вишлисте |
-
-### GET /wishlist/me
-
-Получить свой вишлист с пагинацией.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit` (1–100, default 20), `offset` (>=0, default 0)
+Список организаций текущего пользователя. Требует JWT.
 
 **Response `200`:**
 ```json
@@ -1129,1248 +458,163 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
   "items": [
     {
       "id": "uuid",
-      "user_id": "uuid",
-      "course_id": "uuid",
-      "course_title": "Python Basics",
-      "course_description": "Learn Python",
-      "created_at": "2026-03-04T12:00:00Z"
-    }
-  ],
-  "total": 1
-}
-```
-
-### GET /wishlist/check/{course_id}
-
-Проверить, есть ли курс в вишлисте.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "in_wishlist": true
-}
-```
-
----
-
-## Enrollment Service (`:8003`)
-
-### POST /enrollments
-
-Записаться на курс. Только для `role=student`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "course_id": "550e8400-e29b-41d4-a716-446655440000",
-  "payment_id": "660e8400-e29b-41d4-a716-446655440000",  // optional, для платных курсов
-  "total_lessons": 15                                     // optional, для auto-completion
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "student_id": "...",
-  "course_id": "...",
-  "payment_id": null,
-  "status": "enrolled",
-  "total_lessons": 15,
-  "enrolled_at": "2026-02-20T12:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` — "Only students can enroll in courses" |
-| 409 | Уже записан на курс (UNIQUE constraint) |
-| 422 | Невалидные данные |
-
----
-
-### GET /enrollments/me
-
-Мои записи на курсы. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `limit` | int (1-100) | 20 | Количество записей |
-| `offset` | int (≥0) | 0 | Смещение |
-
-**Response `200`:**
-```json
-{
-  "items": [{ "id": "...", "student_id": "...", "course_id": "...", "payment_id": null, "status": "enrolled", "enrolled_at": "..." }],
-  "total": 5
-}
-```
-
----
-
-### GET /enrollments/course/{course_id}/count
-
-Количество записей на курс. Публичный endpoint.
-
-**Response `200`:**
-```json
-{
-  "course_id": "...",
-  "count": 42
-}
-```
-
----
-
-### GET /recommendations/courses/{course_id}
-
-Рекомендации похожих курсов на основе паттернов совместной записи (co-enrollment). Публичный endpoint.
-
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `limit` | int (1-50) | 5 | Количество рекомендаций |
-
-**Response `200`:**
-```json
-{
-  "items": [
-    { "course_id": "...", "co_enrollment_count": 10 },
-    { "course_id": "...", "co_enrollment_count": 5 }
-  ]
-}
-```
-
----
-
-### GET /recommendations/me
-
-Персонализированные рекомендации курсов для текущего пользователя. Основаны на курсах, популярных среди пользователей с похожими записями. Исключает уже записанные курсы.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `limit` | int (1-50) | 10 | Количество рекомендаций |
-
-**Response `200`:**
-```json
-{
-  "items": [
-    { "course_id": "...", "co_enrollment_count": 20 },
-    { "course_id": "...", "co_enrollment_count": 15 }
-  ]
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 422 | Невалидные данные |
-
----
-
-### POST /progress/lessons/{lesson_id}/complete
-
-Отметить урок как пройденный. Только для `role=student`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "course_id": "550e8400-e29b-41d4-a716-446655440000"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "lesson_id": "...",
-  "course_id": "...",
-  "completed_at": "2026-02-20T12:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | `role != student` |
-| 409 | Урок уже пройден |
-
----
-
-### GET /progress/courses/{course_id}
-
-Прогресс студента по курсу. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:**
-| Параметр | Тип | Описание |
-|----------|-----|----------|
-| `total_lessons` | int | Общее количество уроков в курсе |
-
-**Response `200`:**
-```json
-{
-  "course_id": "...",
-  "completed_lessons": 8,
-  "total_lessons": 15,
-  "percentage": 53.3
-}
-```
-
----
-
-### GET /progress/courses/{course_id}/lessons
-
-Список пройденных уроков. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "course_id": "...",
-  "completed_lesson_ids": ["uuid1", "uuid2", "..."]
-}
-```
-
----
-
-## Payment Service (`:8004`)
-
-### POST /payments
-
-Mock оплата курса. Всегда возвращает `status=completed`. Только для `role=student`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "course_id": "550e8400-e29b-41d4-a716-446655440000",
-  "amount": 49.99,
-  "coupon_code": "SAVE20"
-}
-```
-
-> `coupon_code` — опционально. Если указан, валидирует купон и применяет скидку к `amount`.
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "student_id": "...",
-  "course_id": "...",
-  "amount": "49.99",
-  "status": "completed",
-  "created_at": "2026-02-20T12:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` — "Only students can make payments" |
-| 422 | Невалидные данные (amount <= 0) |
-
----
-
-### GET /payments/{id}
-
-Статус оплаты. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:** Объект `Payment`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Оплата не найдена |
-
----
-
-### GET /payments/me
-
-Мои оплаты. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit`, `offset` (аналогично другим /me endpoints).
-
-**Response `200`:**
-```json
-{
-  "items": [{ "id": "...", "student_id": "...", "course_id": "...", "amount": "49.99", "status": "completed", "created_at": "..." }],
-  "total": 3
-}
-```
-
----
-
-### GET /payments/{payment_id}/invoice
-
-Скачать PDF-инвойс для оплаты. Доступен владельцу оплаты или admin.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-- Content-Type: `application/pdf`
-- Content-Disposition: `attachment; filename="invoice_{payment_id}.pdf"`
-
-**Errors:**
-
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Оплата принадлежит другому пользователю |
-| 404 | Оплата не найдена |
-
----
-
-### POST /coupons
-
-Создание промокода. Только для `role=admin`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "code": "SAVE20",
-  "discount_type": "percentage",
-  "discount_value": 20,
-  "max_uses": 100,
-  "valid_from": "2026-03-01T00:00:00+00:00",
-  "valid_until": "2026-04-01T00:00:00+00:00",
-  "course_id": null
-}
-```
-
-> `max_uses` и `course_id` — опционально. `course_id=null` = все курсы.
-
-**Response `201`:** Объект `Coupon`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Невалидный код, percentage > 100, valid_until <= valid_from |
-| 403 | `role != admin` |
-
----
-
-### GET /coupons
-
-Список купонов. Только для `role=admin`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit`, `offset`.
-
-**Response `200`:**
-```json
-{
-  "items": [{ "id": "...", "code": "SAVE20", "discount_type": "percentage", "discount_value": "20.00", ... }],
-  "total": 5
-}
-```
-
----
-
-### POST /coupons/validate
-
-Валидация купона и расчёт скидки. Требует JWT (любая роль).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "code": "SAVE20",
-  "course_id": "550e8400-e29b-41d4-a716-446655440000",
-  "amount": 100.00
-}
-```
-
-**Response `200`:**
-```json
-{
-  "original_price": "100.00",
-  "discount_amount": "20.00",
-  "final_price": "80.00",
-  "coupon_code": "SAVE20"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Купон уже использован этим пользователем |
-| 404 | Купон не найден, истёк, деактивирован, лимит исчерпан, не для этого курса |
-
----
-
-### PATCH /coupons/{coupon_id}/deactivate
-
-Деактивация купона. Только для `role=admin`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** Без тела.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | `role != admin` |
-| 404 | Купон не найден |
-
----
-
-### GET /earnings/me/summary
-
-Сводка доходов преподавателя. Только для `role=teacher`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "total_gross": "1000.00",
-  "total_net": "700.00",
-  "total_pending": "200.00",
-  "total_paid": "500.00",
-  "earnings": [
-    {
-      "id": "...",
-      "teacher_id": "...",
-      "course_id": "...",
-      "payment_id": "...",
-      "gross_amount": "49.99",
-      "commission_rate": "0.3000",
-      "net_amount": "34.99",
-      "status": "pending",
-      "created_at": "2026-03-01T12:00:00+00:00"
+      "name": "Acme Corp",
+      "slug": "acme-corp",
+      "role": "owner",
+      "joined_at": "2026-03-05T00:00:00Z"
     }
   ]
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher` — "Only teachers can view earnings" |
-
 ---
 
-### GET /earnings/me
+### GET /organizations/{org_id} (NEW)
 
-Список доходов преподавателя (пагинация). Только для `role=teacher`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit` (1–100, default 20), `offset` (default 0).
+Информация об организации. Требует JWT + membership в организации.
 
 **Response `200`:**
-```json
-{
-  "items": [
-    {
-      "id": "...",
-      "teacher_id": "...",
-      "course_id": "...",
-      "payment_id": "...",
-      "gross_amount": "49.99",
-      "commission_rate": "0.3000",
-      "net_amount": "34.99",
-      "status": "pending",
-      "created_at": "2026-03-01T12:00:00+00:00"
-    }
-  ],
-  "total": 15
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher` — "Only teachers can view earnings" |
-
----
-
-### POST /earnings/payouts
-
-Запрос на выплату. Только для `role=teacher`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "amount": 100.00
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "teacher_id": "...",
-  "amount": "100.00",
-  "stripe_transfer_id": null,
-  "status": "pending",
-  "requested_at": "2026-03-01T12:00:00+00:00",
-  "completed_at": null
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher` — "Only teachers can request payouts" |
-| 422 | Невалидные данные (amount <= 0) |
-
----
-
-### GET /earnings/payouts
-
-Список выплат преподавателя (пагинация). Только для `role=teacher`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit` (1–100, default 20), `offset` (default 0).
-
-**Response `200`:**
-```json
-{
-  "items": [
-    {
-      "id": "...",
-      "teacher_id": "...",
-      "amount": "100.00",
-      "stripe_transfer_id": null,
-      "status": "pending",
-      "requested_at": "2026-03-01T12:00:00+00:00",
-      "completed_at": null
-    }
-  ],
-  "total": 5
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher` — "Only teachers can view payouts" |
-
----
-
-### POST /refunds
-
-Подать заявку на возврат средств. Только владелец оплаты, в течение 14 дней.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "payment_id": "uuid",
-  "reason": "Changed my mind"
-}
-```
-
-**Response (201):**
 ```json
 {
   "id": "uuid",
-  "payment_id": "uuid",
+  "name": "Acme Corp",
+  "slug": "acme-corp",
+  "domain": "acme.com",
+  "owner_id": "uuid",
+  "member_count": 25,
+  "created_at": "2026-03-05T00:00:00Z"
+}
+```
+
+**Errors:** `403` — не член организации. `404` — организация не найдена.
+
+---
+
+### POST /organizations/{org_id}/members (NEW)
+
+Добавление участника в организацию. Требует JWT + role `owner` или `admin` в организации.
+
+**Request:**
+```json
+{
   "user_id": "uuid",
-  "reason": "Changed my mind",
-  "status": "requested",
-  "amount": "49.99",
-  "admin_note": null,
-  "requested_at": "2026-03-01T12:00:00+00:00",
-  "processed_at": null
+  "role": "member"    // "member" | "admin" | "owner"
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Оплата не в статусе completed или прошло более 14 дней |
-| 401 | Отсутствует или невалидный токен |
-| 403 | Пользователь не является владельцем оплаты |
-| 404 | Оплата не найдена |
-| 409 | Заявка на возврат уже существует для этой оплаты |
-
----
-
-### GET /refunds/me
-
-Мои заявки на возврат. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query:** `limit` (1-100, default 20), `offset` (default 0)
-
-**Response (200):**
-```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "payment_id": "uuid",
-      "user_id": "uuid",
-      "reason": "Changed my mind",
-      "status": "requested",
-      "amount": "49.99",
-      "admin_note": null,
-      "requested_at": "2026-03-01T12:00:00+00:00",
-      "processed_at": null
-    }
-  ],
-  "total": 1
-}
-```
-
----
-
-### GET /refunds
-
-Список всех заявок на возврат. Только admin.
-
-**Headers:** `Authorization: Bearer <token>` (admin)
-
-**Query:** `status` (optional: requested, approved, rejected, processed), `limit` (1-100, default 20), `offset` (default 0)
-
-**Response (200):**
-```json
-{
-  "items": [...],
-  "total": 5
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != admin` — "Only admins can list all refunds" |
-
----
-
-### PATCH /refunds/{refund_id}/approve
-
-Одобрить заявку на возврат. Только admin. Устанавливает статус оплаты в 'refunded'.
-
-**Headers:** `Authorization: Bearer <token>` (admin)
-
-**Response (200):**
+**Response `201`:**
 ```json
 {
   "id": "uuid",
-  "payment_id": "uuid",
+  "organization_id": "uuid",
   "user_id": "uuid",
-  "reason": "Changed my mind",
-  "status": "approved",
-  "amount": "49.99",
-  "admin_note": null,
-  "requested_at": "2026-03-01T12:00:00+00:00",
-  "processed_at": "2026-03-02T10:00:00+00:00"
+  "role": "member",
+  "joined_at": "2026-03-05T00:00:00Z"
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Заявка уже обработана (status != requested) |
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != admin` |
-| 404 | Заявка не найдена |
+**Errors:** `403` — нет прав. `404` — организация или пользователь не найдены. `409` — уже член.
 
 ---
 
-### PATCH /refunds/{refund_id}/reject
+### DELETE /organizations/{org_id}/members/{user_id} (NEW)
 
-Отклонить заявку на возврат. Только admin.
+Удаление участника из организации. Требует JWT + role `owner` или `admin`.
 
-**Headers:** `Authorization: Bearer <token>` (admin)
+**Response `204`:** No Content.
 
-**Request:**
-```json
-{
-  "reason": "Course was already completed"
-}
-```
-
-**Response (200):**
-```json
-{
-  "id": "uuid",
-  "payment_id": "uuid",
-  "user_id": "uuid",
-  "reason": "Changed my mind",
-  "status": "rejected",
-  "amount": "49.99",
-  "admin_note": "Course was already completed",
-  "requested_at": "2026-03-01T12:00:00+00:00",
-  "processed_at": "2026-03-02T10:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Заявка уже обработана (status != requested) |
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != admin` |
-| 404 | Заявка не найдена |
+**Errors:** `403` — нет прав. `404` — не найден.
 
 ---
 
-### POST /gifts
+### GET /organizations/{org_id}/members (NEW)
 
-Подарить курс другому пользователю. Создаёт gift_purchase с уникальным gift_code. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "course_id": "uuid",
-  "recipient_email": "friend@example.com",
-  "message": "Enjoy the course!"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "uuid",
-  "buyer_id": "uuid",
-  "recipient_email": "friend@example.com",
-  "course_id": "uuid",
-  "payment_id": "uuid",
-  "gift_code": "GIFT-XXXX-XXXX-XXXX",
-  "status": "purchased",
-  "message": "Enjoy the course!",
-  "created_at": "2026-03-04T10:00:00+00:00",
-  "redeemed_at": null,
-  "redeemed_by": null,
-  "expires_at": "2026-04-04T10:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 404 | Курс не найден |
-| 422 | Невалидные данные |
-
----
-
-### GET /gifts/me/sent
-
-Список подаренных курсов (отправленных текущим пользователем). Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit` (default 20), `offset` (default 0)
-
-**Response `200`:**
-```json
-[
-  {
-    "id": "uuid",
-    "buyer_id": "uuid",
-    "recipient_email": "friend@example.com",
-    "course_id": "uuid",
-    "payment_id": "uuid",
-    "gift_code": "GIFT-XXXX-XXXX-XXXX",
-    "status": "purchased",
-    "message": "Enjoy the course!",
-    "created_at": "2026-03-04T10:00:00+00:00",
-    "redeemed_at": null,
-    "redeemed_by": null,
-    "expires_at": "2026-04-04T10:00:00+00:00"
-  }
-]
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-
----
-
-### POST /gifts/redeem
-
-Активировать подарочный код и получить доступ к курсу. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "gift_code": "GIFT-XXXX-XXXX-XXXX"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "buyer_id": "uuid",
-  "recipient_email": "friend@example.com",
-  "course_id": "uuid",
-  "payment_id": "uuid",
-  "gift_code": "GIFT-XXXX-XXXX-XXXX",
-  "status": "redeemed",
-  "message": "Enjoy the course!",
-  "created_at": "2026-03-04T10:00:00+00:00",
-  "redeemed_at": "2026-03-05T09:00:00+00:00",
-  "redeemed_by": "uuid",
-  "expires_at": "2026-04-04T10:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Код уже использован или истёк срок действия |
-| 401 | Отсутствует или невалидный токен |
-| 404 | Код не найден |
-
----
-
-### GET /gifts/{gift_code}/info
-
-Публичная информация о подарке (без аутентификации). Возвращает ограниченный набор полей.
-
-**Response `200`:**
-```json
-{
-  "gift_code": "GIFT-XXXX-XXXX-XXXX",
-  "course_id": "uuid",
-  "status": "purchased",
-  "message": "Enjoy the course!",
-  "expires_at": "2026-04-04T10:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Код не найден |
-
----
-
-## Notification Service (`:8005`)
-
-### POST /notifications
-
-Создать уведомление. Логирует `[NOTIFICATION]` в stdout. Требует JWT.
-
-Для типов `welcome`, `course_completed`, `review_received`, `streak_at_risk` — если передан `email`, автоматически отправляет email-уведомление через EmailAdapter. При ошибке отправки email уведомление всё равно создаётся с `email_sent: false`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "type": "enrollment",
-  "title": "Вы записались на курс: Python 101",
-  "body": "Бесплатная запись",
-  "email": "user@example.com"  // optional, triggers email for lifecycle types
-}
-```
-
-**Email subjects by type:**
-| Type | Subject |
-|------|---------|
-| `welcome` | Добро пожаловать в EduPlatform! |
-| `course_completed` | Поздравляем с завершением курса! |
-| `review_received` | Новый отзыв на ваш курс |
-| `streak_at_risk` | Ваша серия под угрозой! |
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "user_id": "...",
-  "type": "enrollment",
-  "title": "...",
-  "body": "...",
-  "is_read": false,
-  "created_at": "2026-02-20T12:00:00+00:00",
-  "email_sent": false
-}
-```
-
----
-
-### GET /notifications/me
-
-Мои уведомления. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit`, `offset`.
-
-**Response `200`:**
-```json
-{
-  "items": [{ "id": "...", "user_id": "...", "type": "enrollment", "title": "...", "body": "...", "is_read": false, "created_at": "..." }],
-  "total": 10
-}
-```
-
----
-
-### PATCH /notifications/{id}/read
-
-Пометить уведомление как прочитанное. Требует JWT. Проверяет, что уведомление принадлежит текущему пользователю.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:** Объект `Notification` с `is_read: true`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Уведомление не найдено или не принадлежит пользователю |
-
----
-
-### POST /notifications/streak-reminders/send
-
-Отправить streak-reminder уведомления пользователям, которые не занимались сегодня. Требует JWT с ролью `admin`. Пропускает пользователей, у которых уже есть непрочитанный streak_reminder.
-
-**Headers:** `Authorization: Bearer <admin-token>`
-
-**Request:**
-```json
-{
-  "user_ids": ["uuid1", "uuid2"]
-}
-```
-
-**Response `200`:**
-```json
-{
-  "sent_count": 2
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не админ |
-
----
-
-### POST /notifications/flashcard-reminders/send
-
-Отправить flashcard-reminder уведомления пользователям, у которых есть карточки для повторения. Требует JWT с ролью `admin`. Пропускает пользователей, у которых уже есть непрочитанный flashcard_reminder.
-
-**Headers:** `Authorization: Bearer <admin-token>`
-
-**Request:**
-```json
-{
-  "items": [
-    {"user_id": "uuid1", "card_count": 5},
-    {"user_id": "uuid2", "card_count": 3}
-  ]
-}
-```
-
-**Response `200`:**
-```json
-{
-  "sent_count": 2
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не админ |
-
----
-
-### POST /notifications/flashcard-reminders/smart
-
-Умная отправка flashcard-reminder уведомлений на основе FSRS due dates. Для каждого пользователя:
-- Проверяет количество просроченных карточек через Learning Service
-- Если карточек <= 5 — пропускает
-- Если активный стрик > 3 дней и пользователь активен сегодня — пропускает (уже вовлечён)
-- Если уже есть непрочитанный flashcard_reminder — пропускает (дедупликация)
-- Иначе — отправляет напоминание
-
-Требует JWT с ролью `admin`.
-
-**Headers:** `Authorization: Bearer <admin-token>`
-
-**Request:** нет тела запроса
-
-**Response `200`:**
-```json
-{
-  "users_checked": 100,
-  "reminders_sent": 15,
-  "skipped_active_streak": 30,
-  "skipped_low_cards": 40,
-  "skipped_existing": 10,
-  "skipped_errors": 5
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не админ |
-
----
-
-### POST /messages
-
-Отправить прямое сообщение другому пользователю. Создаёт conversation при первом сообщении. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "recipient_id": "uuid",
-  "content": "Hello, I have a question about the course"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "conversation_id": "...",
-  "sender_id": "...",
-  "content": "Hello, I have a question about the course",
-  "is_read": false,
-  "created_at": "2026-03-04T12:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Самому себе или пустой/длинный контент (1-2000 символов) |
-
----
-
-### GET /conversations/me
-
-Мои диалоги с превью последнего сообщения. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit` (default 20), `offset` (default 0).
-
-**Response `200`:**
-```json
-{
-  "items": [
-    {
-      "conversation_id": "...",
-      "other_user_id": "...",
-      "last_message_content": "Hello!",
-      "last_message_at": "...",
-      "unread_count": 2
-    }
-  ],
-  "total": 5
-}
-```
-
----
-
-### GET /conversations/{conversation_id}/messages
-
-Сообщения в диалоге. Требует JWT. Только участники диалога.
-
-**Headers:** `Authorization: Bearer <token>`
+Список участников организации. Требует JWT + membership.
 
 **Query params:** `limit` (default 50), `offset` (default 0).
 
 **Response `200`:**
 ```json
 {
-  "items": [{ "id": "...", "conversation_id": "...", "sender_id": "...", "content": "...", "is_read": false, "created_at": "..." }],
-  "total": 10
+  "items": [
+    {
+      "id": "uuid",
+      "user_id": "uuid",
+      "name": "Ivan Petrov",
+      "email": "ivan@acme.com",
+      "role": "member",
+      "joined_at": "2026-03-05T00:00:00Z"
+    }
+  ],
+  "total": 25
 }
 ```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не участник диалога |
-| 404 | Диалог не найден |
-
----
-
-### PATCH /messages/{message_id}/read
-
-Пометить сообщение как прочитанное. Только получатель (не отправитель) может пометить. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** No content.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Только получатель может пометить |
-| 404 | Сообщение не найдено |
 
 ---
 
 ## AI Service (`:8006`)
 
-Все AI-эндпоинты (quiz, summary, tutor/chat, moderate) потребляют 1 кредит за вызов из общего дневного пула.
-Лимиты зависят от `subscription_tier` в JWT: `free` = 10/день, `student` = 100/день, `pro` = безлимит.
-
 ### GET /ai/credits/me
 
-Статус кредитов текущего пользователя. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
+Баланс кредитов текущего пользователя. Требует JWT.
 
 **Response `200`:**
 ```json
 {
-  "used": 3,
-  "limit": 10,
-  "remaining": 7,
-  "reset_at": "2026-03-04T00:00:00+00:00",
-  "tier": "free"
+  "user_id": "uuid",
+  "tier": "student",
+  "daily_limit": 100,
+  "used_today": 15,
+  "remaining": 85
 }
 ```
-
-> `limit = -1` и `remaining = 999999` для `pro` тира.
 
 ---
 
 ### POST /ai/quiz/generate
 
-Генерация квиза из содержания урока через Gemini Flash. Требует JWT. Потребляет 1 AI-кредит.
-
-**Headers:** `Authorization: Bearer <token>`
+Генерация квиза из содержания урока. Требует JWT.
 
 **Request:**
 ```json
 {
-  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
-  "content": "Текст урока (min 10, max 50000 символов)"
+  "lesson_content": "Text of the lesson...",
+  "num_questions": 5
 }
 ```
 
-**Response `200`:**
-```json
-{
-  "lesson_id": "...",
-  "questions": [
-    {
-      "text": "Вопрос?",
-      "options": ["A", "B", "C", "D"],
-      "correct_index": 1,
-      "explanation": "Объяснение"
-    }
-  ],
-  "model_used": "gemini-2.0-flash-lite",
-  "cached": false
-}
-```
+**Response `200`:** Список вопросов с вариантами ответов.
 
 ---
 
 ### POST /ai/summary/generate
 
-Генерация краткого содержания урока. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
+Генерация краткого содержания. Требует JWT.
 
 **Request:**
 ```json
 {
-  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
-  "content": "Текст урока (min 10, max 50000 символов)"
+  "content": "Long text to summarize..."
 }
 ```
 
-**Response `200`:**
-```json
-{
-  "lesson_id": "...",
-  "summary": "Краткое содержание...",
-  "model_used": "gemini-2.0-flash-lite",
-  "cached": true
-}
-```
+**Response `200`:** Сжатое summary текста.
 
 ---
 
 ### POST /ai/tutor/chat
 
-Сократический AI-тьютор. Отправка сообщения в контексте урока. AI не даёт прямых ответов — задаёт наводящие вопросы. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
+Socratic AI-тьютор (чат по уроку). Требует JWT.
 
 **Request:**
 ```json
 {
-  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
-  "message": "Что такое переменная?",
-  "lesson_content": "Текст урока (min 10, max 50000 символов)",
-  "session_id": null
+  "lesson_id": "uuid",
+  "message": "I don't understand recursion..."
 }
 ```
 
-> `session_id` — `null` для нового диалога, строка для продолжения существующего.
-
-**Response `200`:**
-```json
-{
-  "session_id": "uuid-строка",
-  "message": "Хороший вопрос! Как ты думаешь, что происходит когда ты присваиваешь значение имени?",
-  "model_used": "gemini-2.0-flash-lite",
-  "credits_remaining": 9
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | AI-кредиты исчерпаны (free: 10/день, student: 100/день, pro: безлимит) |
+**Response `200`:** Ответ тьютора (Socratic method).
 
 ---
 
@@ -2378,1623 +622,1301 @@ Mock оплата курса. Всегда возвращает `status=complete
 
 Оценка ответа тьютора (thumbs up/down). Требует JWT.
 
-**Headers:** `Authorization: Bearer <token>`
-
 **Request:**
 ```json
 {
-  "session_id": "uuid-строка",
-  "message_index": 1,
-  "rating": 1
+  "message_id": "uuid",
+  "rating": "up"    // "up" | "down"
 }
 ```
 
-> `rating`: -1 (плохо), 0 (нейтрально), 1 (хорошо)
+**Response `200`:** `{"status": "recorded"}`.
 
-**Response `200`:**
-```json
-{
-  "status": "ok"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Невалидный message_index |
-| 401 | Отсутствует или невалидный токен |
-| 404 | Сессия не найдена |
+---
 
 ### POST /ai/course/outline
 
-Генерация структуры курса (модули и уроки) через AI. Только для **teacher** и **admin**. Требует JWT. Использует кредиты.
-
-**Headers:** `Authorization: Bearer <token>`
+Генерация outline курса. Только teacher/admin.
 
 **Request:**
 ```json
 {
-  "topic": "Python Programming",
-  "level": "beginner",
-  "target_audience": "Complete beginners with no coding experience",
+  "topic": "Introduction to Rust",
+  "target_audience": "junior developers",
   "num_modules": 5
 }
 ```
 
-> `level`: `"beginner"` | `"intermediate"` | `"advanced"`
-> `num_modules`: 2–10, default 5
-
-**Response `200`:**
-```json
-{
-  "modules": [
-    {
-      "title": "Introduction to Python",
-      "description": "Getting started with Python",
-      "lessons": [
-        {
-          "title": "Installing Python",
-          "description": "How to set up your environment",
-          "key_concepts": ["installation", "IDE setup"],
-          "estimated_duration_minutes": 15
-        }
-      ]
-    }
-  ],
-  "total_lessons": 18,
-  "estimated_duration_hours": 6,
-  "model_used": "gemini-2.0-flash-lite"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Роль не teacher/admin или лимит кредитов исчерпан |
-| 422 | Невалидные параметры (level, num_modules range) |
-| 502 | Ошибка Gemini API или невалидный JSON от LLM |
+**Response `200`:** Структурированный outline с модулями и уроками.
 
 ---
 
 ### POST /ai/lesson/generate
 
-Генерация контента урока (markdown) через AI. Только для **teacher** и **admin**. Требует JWT. Потребляет 1 AI кредит.
-
-**Headers:** `Authorization: Bearer <token>`
+Генерация контента урока. Только teacher/admin.
 
 **Request:**
 ```json
 {
-  "title": "Introduction to Variables",
-  "description": "Learn what variables are and how to use them",
-  "course_context": "Beginner Python course for absolute beginners",
-  "format": "article"
+  "title": "Ownership and Borrowing",
+  "outline": "Key concepts...",
+  "level": "beginner"
 }
 ```
 
-> `format`: `"article"` | `"tutorial"`, default `"article"`
-> `title`: max 200 символов
-> `description`: max 1000 символов (optional)
-> `course_context`: max 500 символов (optional)
-
-**Response `200`:**
-```json
-{
-  "content": "# Introduction to Variables\n\nA variable is a named container...",
-  "key_concepts": ["variable", "assignment", "data types"],
-  "estimated_duration_minutes": 10,
-  "model_used": "gemini-2.0-flash-lite"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Роль не teacher/admin или лимит кредитов исчерпан |
-| 422 | Невалидные параметры (title пустой, превышен max length) |
-| 502 | Ошибка Gemini API или невалидный JSON от LLM |
+**Response `200`:** Сгенерированный контент урока.
 
 ---
 
 ### POST /ai/study-plan
 
-Генерация персонализированного недельного плана обучения. Учитывает текущий уровень mastery по концептам курса (через service-to-service вызов к Learning Service). Требует JWT (любой авторизованный пользователь). Потребляет 1 AI кредит.
-
-**Headers:** `Authorization: Bearer <token>`
+Персонализированный недельный план обучения. Требует JWT. Вызывает Learning Service для получения concept mastery.
 
 **Request:**
 ```json
 {
-  "course_id": "550e8400-e29b-41d4-a716-446655440000",
-  "weeks": 4,
+  "course_id": "uuid",
   "hours_per_week": 5
 }
 ```
 
-> `course_id`: UUID курса (обязательный)
-> `weeks`: количество недель (1–12, default 4)
-> `hours_per_week`: часов в неделю (1–40, default 5)
+**Response `200`:** Недельный план с ежедневными задачами.
 
-**Response `200`:**
-```json
-{
-  "course_id": "550e8400-e29b-41d4-a716-446655440000",
-  "weeks": [
-    {
-      "week_number": 1,
-      "theme": "Fundamentals of Variables and Data Types",
-      "goals": ["Understand variable assignment", "Learn primitive data types"],
-      "tasks": [
-        "Complete lessons 1-3",
-        "Practice quiz on variables",
-        "Review flashcards for data types"
-      ],
-      "estimated_hours": 5
-    }
-  ],
-  "model_used": "gemini-2.0-flash-lite"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Лимит кредитов исчерпан |
-| 422 | Невалидные параметры (course_id пустой, weeks вне диапазона) |
-| 502 | Ошибка Gemini API, невалидный JSON от LLM, или недоступен Learning Service |
+---
 
 ### POST /ai/moderate
 
-Проверка качества и безопасности контента курса (advisory, не блокирует). Только для **teacher** или **admin**. Потребляет 1 кредит.
-
-**Headers:** `Authorization: Bearer <token>`
+Модерация контента (advisory). Только teacher/admin.
 
 **Request:**
 ```json
 {
-  "content": "Learn Python programming from scratch with hands-on projects.",
-  "content_type": "course_description"
+  "content": "Text to moderate..."
 }
 ```
 
-| Поле | Тип | Обязательно | Описание |
-|------|-----|-------------|----------|
-| content | string(1..10000) | ✅ | Текст контента для проверки |
-| content_type | string | ✅ | `course_description`, `lesson_content`, или `review_text` |
-
-**Response `200`:**
-```json
-{
-  "approved": true,
-  "flags": [],
-  "quality_score": 8,
-  "suggestions": ["Consider adding more examples"]
-}
-```
-
-| Поле | Тип | Описание |
-|------|-----|----------|
-| approved | bool | `true` если quality_score ≥ 5 и нет critical flags |
-| flags | string[] | Флаги: `low_quality`, `potential_spam`, `inappropriate_content`, `hate_speech`, `off_topic`, `generic_template`, `promotional`, `moderation_unavailable` |
-| quality_score | int(1-10) | Оценка качества (0 если модерация недоступна) |
-| suggestions | string[] | Рекомендации по улучшению |
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | Не teacher/admin или лимит кредитов исчерпан |
-| 422 | Невалидные параметры (content_type не из допустимых, content пустой или > 10000 символов) |
+**Response `200`:** Результат модерации (safe/flagged + причины).
 
 ---
 
-## Learning Engine Service (`:8007`)
+### POST /ai/strategist/plan-path (NEW)
 
-### POST /quizzes
-
-Создать квиз для урока из результата AI-генерации. Только для **verified teacher** (owner check по `teacher_id`).
-
-**Headers:** `Authorization: Bearer <token>`
+Планирование пути обучения для пользователя в организации. Требует JWT + org membership.
 
 **Request:**
 ```json
 {
-  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
-  "course_id": "660e8400-e29b-41d4-a716-446655440000",
-  "questions": [
-    {
-      "text": "Что такое переменная?",
-      "options": ["Значение", "Именованная ячейка памяти", "Функция", "Тип данных"],
-      "correct_index": 1,
-      "explanation": "Переменная — именованная область памяти для хранения данных.",
-      "order": 0
-    }
-  ]
+  "organization_id": "uuid",
+  "user_id": "uuid",
+  "template_id": "uuid"    // optional, onboarding template
 }
 ```
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "lesson_id": "...",
-  "course_id": "...",
-  "teacher_id": "...",
-  "created_at": "2026-02-25T12:00:00+00:00",
-  "questions": [
-    {
-      "id": "...",
-      "quiz_id": "...",
-      "text": "Что такое переменная?",
-      "options": ["Значение", "Именованная ячейка памяти", "Функция", "Тип данных"],
-      "order": 0
-    }
-  ]
-}
-```
-
-> Поле `correct_index` и `explanation` не возвращаются в ответе — только при сабмите.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher` или `is_verified == false` |
-| 409 | Квиз для этого урока уже существует (UNIQUE constraint на `lesson_id`) |
-| 422 | Невалидные данные |
-
----
-
-### GET /quizzes/lesson/{lesson_id}
-
-Получить квиз для урока. Требует JWT. Правильные ответы (`correct_index`, `explanation`) не возвращаются студентам.
-
-**Headers:** `Authorization: Bearer <token>`
 
 **Response `200`:**
 ```json
 {
-  "id": "...",
-  "lesson_id": "...",
-  "course_id": "...",
-  "teacher_id": "...",
-  "created_at": "2026-02-25T12:00:00+00:00",
-  "questions": [
-    {
-      "id": "...",
-      "quiz_id": "...",
-      "text": "Что такое переменная?",
-      "options": ["Значение", "Именованная ячейка памяти", "Функция", "Тип данных"],
-      "order": 0
-    }
-  ]
+  "learning_path": [
+    {"concept_id": "uuid", "concept_name": "Git Basics", "estimated_days": 2, "priority": 1},
+    {"concept_id": "uuid", "concept_name": "CI/CD Pipeline", "estimated_days": 3, "priority": 2}
+  ],
+  "total_estimated_days": 30,
+  "current_trust_level": 1,
+  "target_trust_level": 3
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 404 | Квиз для урока не найден |
-
 ---
 
-### POST /quizzes/{quiz_id}/submit
+### POST /ai/strategist/next-concept (NEW)
 
-Сдать квиз. Только для `role=student`. Возвращает оценку и обратную связь по каждому вопросу.
-
-**Headers:** `Authorization: Bearer <token>`
+Выбор следующего концепта для изучения. Требует JWT.
 
 **Request:**
 ```json
 {
-  "answers": [1, 0, 2]
+  "organization_id": "uuid"
 }
 ```
-
-> `answers` — массив выбранных индексов (`int`) по порядку вопросов.
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "quiz_id": "...",
-  "student_id": "...",
-  "score": 0.67,
-  "answers": [1, 0, 2],
-  "completed_at": "2026-02-25T12:00:00+00:00",
-  "feedback": [
-    {
-      "question_id": "...",
-      "correct": true,
-      "correct_index": 1,
-      "explanation": "Переменная — именованная область памяти для хранения данных."
-    }
-  ]
-}
-```
-
-> `score` — доля правильных ответов (0.0–1.0).
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` |
-| 404 | Квиз не найден |
-| 422 | Количество ответов не совпадает с количеством вопросов |
-
----
-
-### GET /quizzes/{quiz_id}/attempts/me
-
-Список попыток текущего студента по квизу. Только для `role=student`.
-
-**Headers:** `Authorization: Bearer <token>`
 
 **Response `200`:**
 ```json
-[
-  {
-    "id": "...",
-    "quiz_id": "...",
-    "student_id": "...",
-    "score": 0.67,
-    "answers": [1, 0, 2],
-    "completed_at": "2026-02-25T12:00:00+00:00"
+{
+  "concept_id": "uuid",
+  "concept_name": "Docker Networking",
+  "reason": "Prerequisite for Kubernetes deployment, which is next in your path",
+  "estimated_minutes": 15,
+  "difficulty": "intermediate"
+}
+```
+
+---
+
+### POST /ai/strategist/adapt (NEW)
+
+Адаптация пути обучения на основе прогресса. Требует JWT.
+
+**Request:**
+```json
+{
+  "organization_id": "uuid",
+  "feedback": "too_easy"    // "too_easy" | "too_hard" | "stuck" | "auto"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "adjustments": [
+    {"action": "skip", "concept_id": "uuid", "reason": "Already mastered"},
+    {"action": "add", "concept_id": "uuid", "reason": "Fills knowledge gap"}
+  ],
+  "new_pace": "accelerated"
+}
+```
+
+---
+
+### POST /ai/designer/mission (NEW)
+
+Генерация 15-минутной миссии для концепта. Требует JWT.
+
+**Request:**
+```json
+{
+  "concept_id": "uuid",
+  "organization_id": "uuid",
+  "difficulty": "intermediate",
+  "mission_type": "code_review"    // "code_review" | "debugging" | "implementation" | "quiz"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "mission": {
+    "title": "Review Authentication Middleware",
+    "description": "...",
+    "estimated_minutes": 15,
+    "steps": [
+      {"order": 1, "type": "read", "content": "..."},
+      {"order": 2, "type": "question", "content": "..."},
+      {"order": 3, "type": "code", "content": "..."}
+    ],
+    "context_snippets": [
+      {"source": "auth/middleware.py", "content": "..."}
+    ]
   }
-]
+}
 ```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` |
 
 ---
 
-### POST /flashcards
+### POST /ai/designer/recap (NEW)
 
-Создать флешкарту. Только для `role=student`.
-
-**Headers:** `Authorization: Bearer <token>`
+Генерация recap/summary после завершения миссии. Требует JWT.
 
 **Request:**
 ```json
 {
-  "course_id": "660e8400-e29b-41d4-a716-446655440000",
-  "concept": "Что такое FSRS?",
-  "answer": "Free Spaced Repetition Scheduler — алгоритм для оптимального повторения",
-  "source_type": "manual",
-  "source_id": null
+  "mission_id": "uuid",
+  "user_answers": [...]
 }
 ```
-
-**Response `201`:**
-```json
-{
-  "id": "...",
-  "course_id": "...",
-  "concept": "Что такое FSRS?",
-  "answer": "Free Spaced Repetition Scheduler...",
-  "source_type": "manual",
-  "stability": 0.0,
-  "difficulty": 0.0,
-  "due": "2026-02-25T12:00:00+00:00",
-  "state": 0,
-  "reps": 0,
-  "lapses": 0,
-  "created_at": "2026-02-25T12:00:00+00:00"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` |
-| 422 | Невалидные данные |
-
----
-
-### GET /flashcards/due
-
-Карточки, которые нужно повторить сейчас (`due <= now()`). Только для `role=student`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit` (default 20), `offset` (default 0)
 
 **Response `200`:**
 ```json
 {
-  "items": [
-    {
-      "id": "...",
-      "course_id": "...",
-      "concept": "Что такое FSRS?",
-      "answer": "Free Spaced Repetition Scheduler...",
-      "source_type": "manual",
-      "stability": 4.93,
-      "difficulty": 5.31,
-      "due": "2026-02-25T12:00:00+00:00",
-      "state": 2,
-      "reps": 3,
-      "lapses": 0,
-      "created_at": "2026-02-20T10:00:00+00:00"
-    }
-  ],
-  "total": 5
+  "recap": "...",
+  "key_takeaways": ["...", "..."],
+  "mastery_delta": 0.15,
+  "next_suggestion": "Try a debugging mission on the same topic"
 }
 ```
 
 ---
 
-### POST /flashcards/{card_id}/review
+### POST /ai/coach/start (NEW)
 
-Повторить карточку. FSRS рассчитывает следующую дату повторения. Только для `role=student`, только свои карточки.
-
-**Headers:** `Authorization: Bearer <token>`
+Начало guided session с Coach агентом. Требует JWT.
 
 **Request:**
 ```json
 {
-  "rating": 3,
-  "review_duration_ms": 5200
+  "mission_id": "uuid"
 }
 ```
-
-> `rating`: 1=Again, 2=Hard, 3=Good, 4=Easy
 
 **Response `200`:**
 ```json
 {
-  "card_id": "...",
-  "rating": 3,
-  "new_stability": 4.93,
-  "new_difficulty": 5.31,
-  "next_due": "2026-03-02T12:00:00+00:00",
-  "new_state": 2
+  "session_id": "uuid",
+  "greeting": "Let's work through this authentication middleware review...",
+  "first_prompt": "Start by reading the code snippet. What do you notice about the token validation?"
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` или не ваша карточка |
-| 404 | Карточка не найдена |
-
 ---
 
-### DELETE /flashcards/{card_id}
+### POST /ai/coach/chat (NEW)
 
-Удалить флешкарту. Только для `role=student`, только свои.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** Нет тела.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` |
-| 404 | Карточка не найдена или не ваша |
-
----
-
-### POST /concepts
-
-Создать concept (знание) для курса. Только для **verified teacher**.
-
-**Headers:** `Authorization: Bearer <token>`
+Сообщение в активной Coach session. Требует JWT.
 
 **Request:**
 ```json
 {
-  "course_id": "660e8400-e29b-41d4-a716-446655440000",
-  "name": "Variables",
-  "description": "Understanding variables and assignment",
-  "lesson_id": null,
-  "parent_id": null,
-  "order": 0
+  "session_id": "uuid",
+  "message": "I think the token is validated using HS256..."
 }
 ```
 
-**Response `201`:**
+**Response `200`:**
 ```json
 {
-  "id": "...",
-  "course_id": "...",
-  "lesson_id": null,
-  "name": "Variables",
-  "description": "Understanding variables and assignment",
-  "parent_id": null,
-  "order": 0,
-  "created_at": "2026-02-25T12:00:00+00:00"
+  "response": "Good observation! Now, what happens if the token is expired?",
+  "hints_remaining": 2,
+  "progress_percent": 40
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != teacher` или `is_verified == false` |
-| 409 | Concept с таким именем уже существует в курсе (UNIQUE constraint) |
-
 ---
 
-### PUT /concepts/{concept_id}
+### POST /ai/coach/end (NEW)
 
-Обновить concept. Только для **verified teacher**.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:** Все поля опциональны.
-```json
-{
-  "name": "Updated Name",
-  "description": "New description",
-  "lesson_id": "550e8400-e29b-41d4-a716-446655440000",
-  "parent_id": null,
-  "order": 1
-}
-```
-
-**Response `200`:** Объект `Concept`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не verified teacher |
-| 404 | Concept не найден |
-
----
-
-### DELETE /concepts/{concept_id}
-
-Удалить concept. Только для **verified teacher**.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** No content.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не verified teacher |
-| 404 | Concept не найден |
-
----
-
-### POST /concepts/{concept_id}/prerequisites
-
-Добавить prerequisite связь между concepts (в рамках одного курса). Только для **verified teacher**.
-
-**Headers:** `Authorization: Bearer <token>`
+Завершение Coach session. Требует JWT.
 
 **Request:**
 ```json
 {
-  "prerequisite_id": "770e8400-e29b-41d4-a716-446655440000"
+  "session_id": "uuid"
 }
 ```
-
-**Response `201`:** `{"status": "ok"}`
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не verified teacher или concepts из разных курсов |
-| 404 | Concept или prerequisite не найден |
-
----
-
-### DELETE /concepts/{concept_id}/prerequisites/{prerequisite_id}
-
-Удалить prerequisite связь. Только для **verified teacher**.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** No content.
-
----
-
-### GET /concepts/course/{course_id}
-
-Knowledge graph курса: все concepts с prerequisite связями. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
 
 **Response `200`:**
 ```json
 {
-  "course_id": "...",
-  "concepts": [
-    {
-      "id": "...",
-      "course_id": "...",
-      "lesson_id": null,
-      "name": "Variables",
-      "description": "...",
-      "parent_id": null,
-      "order": 0,
-      "created_at": "...",
-      "prerequisites": []
-    },
-    {
-      "id": "...",
-      "course_id": "...",
-      "lesson_id": null,
-      "name": "Functions",
-      "description": "...",
-      "parent_id": null,
-      "order": 1,
-      "created_at": "...",
-      "prerequisites": ["<variables-concept-id>"]
-    }
-  ]
+  "summary": "...",
+  "score": 85,
+  "time_spent_minutes": 12,
+  "concepts_practiced": ["jwt_validation", "middleware_patterns"]
 }
 ```
 
 ---
 
-### GET /concepts/mastery/course/{course_id}
+### GET /ai/mission/daily (NEW)
 
-Mastery студента по concepts курса. Требует JWT.
+Получение ежедневной миссии для пользователя. Если миссия ещё не сгенерирована — генерирует через Strategist → Designer pipeline. Требует JWT.
 
-**Headers:** `Authorization: Bearer <token>`
+**Query params:** `organization_id` (required).
 
 **Response `200`:**
 ```json
 {
-  "course_id": "...",
-  "items": [
-    {
-      "concept_id": "...",
-      "name": "Variables",
-      "mastery": 0.75
-    }
-  ]
+  "mission_id": "uuid",
+  "title": "Review Authentication Middleware",
+  "concept": "JWT Validation",
+  "estimated_minutes": 15,
+  "status": "pending",
+  "created_at": "2026-03-05T08:00:00Z"
 }
 ```
-
-> `mastery` — значение 0.0–1.0. Обновляется автоматически при сдаче квиза (score × 0.3).
 
 ---
 
-### POST /streaks/activity
+### GET /ai/memory/{user_id} (NEW)
 
-Записать ежедневную активность. Требует JWT (любая роль). При первом вызове создаёт streak. Повторный вызов в тот же день — no-op. Consecutive day — инкремент. Gap >1 дня — сброс до 1.
-
-**Headers:** `Authorization: Bearer <token>`
+Получение agent memory для пользователя. Требует JWT (admin или сам пользователь).
 
 **Response `200`:**
 ```json
 {
-  "current_streak": 3,
-  "longest_streak": 7,
-  "last_activity_date": "2026-02-26",
-  "active_today": true
+  "user_id": "uuid",
+  "learning_style": "visual",
+  "preferred_difficulty": "intermediate",
+  "recent_topics": ["docker", "kubernetes"],
+  "strengths": ["backend", "sql"],
+  "weaknesses": ["frontend", "css"],
+  "last_updated": "2026-03-05T12:00:00Z"
 }
 ```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
 
 ---
 
-### GET /streaks/me
+### POST /ai/memory/{user_id} (NEW)
 
-Текущий streak пользователя. Требует JWT. Если streak прерван (last_activity > вчера), `current_streak` возвращается как 0.
+Обновление agent memory для пользователя. Требует JWT (admin или internal).
 
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
+**Request:**
 ```json
 {
-  "current_streak": 3,
-  "longest_streak": 7,
-  "last_activity_date": "2026-02-26",
-  "active_today": true
+  "learning_style": "visual",
+  "preferred_difficulty": "intermediate",
+  "strengths": ["backend", "sql"]
 }
 ```
 
-> Если у пользователя нет записи — возвращает `current_streak: 0, longest_streak: 0, last_activity_date: null, active_today: false`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
+**Response `200`:** Обновлённый объект memory.
 
 ---
 
-### GET /streaks/at-risk
+## Learning Engine (`:8007`)
 
-Список user_id с активными streak, которые не занимались сегодня (last_activity = вчера). Для cron-job, вызывающего streak-reminder. Требует JWT с ролью `admin`.
+### Quizzes (4 endpoints)
 
-**Headers:** `Authorization: Bearer <admin-token>`
+#### POST /quizzes
+Создание квиза для урока. Teacher-only (role=teacher + is_verified).
 
-**Response `200`:**
-```json
-{
-  "user_ids": ["uuid1", "uuid2"]
-}
-```
+#### GET /quizzes/lesson/{lesson_id}
+Получение квиза для урока. Authenticated.
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Не админ |
+#### POST /quizzes/{quiz_id}/submit
+Сдача квиза. Student-only. Автоматически обновляет concept mastery (score × 0.3).
+
+#### GET /quizzes/{quiz_id}/attempts/me
+Мои попытки квиза. Student-only.
 
 ---
 
-### Leaderboard
+### Flashcards + FSRS (4 endpoints)
 
-Opt-in рейтинг студентов внутри курса. Студент должен сначала opt-in в курс, чтобы участвовать.
+#### POST /flashcards
+Создание карточки. Student-only.
 
-#### `POST /leaderboards/courses/{course_id}/opt-in`
+#### GET /flashcards/due
+Карточки к повторению (FSRS algorithm). Student-only.
 
-Подписаться на leaderboard курса. Идемпотентно — повторный opt-in сохраняет score.
+#### POST /flashcards/{id}/review
+Повторение карточки с рейтингом. Student-only.
 
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "course_id": "uuid",
-  "opted_in": true,
-  "score": 0
-}
-```
-
-#### `DELETE /leaderboards/courses/{course_id}/opt-in`
-
-Отписаться от leaderboard курса. Score сохраняется.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "course_id": "uuid",
-  "opted_in": false,
-  "score": 150
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Запись не найдена (не был opt-in) |
-
-#### `GET /leaderboards/courses/{course_id}`
-
-Получить рейтинг курса (только opted-in пользователи).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query:** `limit` (1-100, default 20), `offset` (>=0, default 0)
-
-**Response `200`:**
-```json
-{
-  "course_id": "uuid",
-  "entries": [
-    { "student_id": "uuid", "score": 200, "rank": 1 },
-    { "student_id": "uuid", "score": 150, "rank": 2 }
-  ],
-  "total": 42
-}
-```
-
-#### `GET /leaderboards/courses/{course_id}/me`
-
-Получить свою позицию в рейтинге курса.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "course_id": "uuid",
-  "score": 150,
-  "rank": 3,
-  "opted_in": true
-}
-```
-
-> Если opted_in=false, rank=0 (не участвует в рейтинге, но score сохранён).
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Запись не найдена |
-
-#### `POST /leaderboards/courses/{course_id}/score`
-
-Добавить баллы в leaderboard (для XP system и других сервисов).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Body:**
-```json
-{
-  "points": 20
-}
-```
-
-**Response `200`:**
-```json
-{
-  "course_id": "uuid",
-  "opted_in": true,
-  "score": 170
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Запись не найдена (не был opt-in) |
+#### DELETE /flashcards/{id}
+Удаление карточки. Student-only (owner).
 
 ---
 
-### POST /discussions/comments
+### Concepts / Knowledge Graph (7 endpoints)
 
-Создать комментарий к уроку (поддерживает ответы на комментарии).
+#### GET /concepts/course/{course_id}
+Граф концептов курса. Authenticated.
 
-**Headers:** `Authorization: Bearer <token>`
+#### GET /concepts/course/{course_id}/mastery
+Мастерство по концептам курса. Authenticated.
 
-**Request Body:**
+#### POST /concepts
+Создание концепта. Teacher-only.
+
+#### PUT /concepts/{id}
+Обновление концепта. Teacher-only.
+
+#### DELETE /concepts/{id}
+Удаление концепта. Teacher-only.
+
+#### POST /concepts/{id}/prerequisites
+Добавление prerequisite связи. Teacher-only.
+
+#### DELETE /concepts/{id}/prerequisites/{prereq_id}
+Удаление prerequisite связи. Teacher-only.
+
+---
+
+### Streaks (2 endpoints)
+
+#### GET /streaks/me
+Текущий streak пользователя. Authenticated.
+
+#### POST /streaks/checkin
+Отметка ежедневной активности. Authenticated.
+
+---
+
+### Leaderboard (5 endpoints)
+
+#### GET /leaderboard
+Общий рейтинг. Authenticated.
+
+#### GET /leaderboard/course/{course_id}
+Рейтинг по курсу. Authenticated.
+
+#### GET /leaderboard/weekly
+Еженедельный рейтинг. Authenticated.
+
+#### GET /leaderboard/me
+Позиция текущего пользователя. Authenticated.
+
+#### GET /leaderboard/friends
+Рейтинг среди подписок. Authenticated.
+
+---
+
+### Discussions (8 endpoints)
+
+#### POST /discussions
+Создание комментария. Authenticated.
+
+#### GET /discussions/lesson/{lesson_id}
+Threaded список обсуждений урока. Authenticated. Сортировка: pinned → teacher_answer → date.
+
+#### PATCH /discussions/{id}
+Обновление комментария. Owner only.
+
+#### DELETE /discussions/{id}
+Удаление комментария. Owner or admin.
+
+#### POST /discussions/{id}/upvote
+Голосование за комментарий. Authenticated.
+
+#### POST /discussions/{id}/reply
+Ответ на комментарий (max 2 уровня вложенности). Authenticated.
+
+#### PATCH /discussions/{id}/pin
+Закрепление/открепление комментария. Teacher-only.
+
+#### PATCH /discussions/{id}/mark-answer
+Отметить как ответ преподавателя. Teacher-only.
+
+---
+
+### XP (1 endpoint)
+
+#### GET /xp/me
+XP текущего пользователя. Authenticated.
+
+**Response `200`:**
 ```json
 {
-  "lesson_id": "uuid",
-  "course_id": "uuid",
-  "content": "Great explanation!",
-  "parent_id": "uuid | null"
+  "user_id": "uuid",
+  "total_xp": 1500,
+  "level": 7,
+  "xp_to_next_level": 200
 }
 ```
 
-**Response (201):**
+XP rewards: lesson_complete=10, quiz_submit=20, flashcard_review=5.
+
+---
+
+### Badges (1 endpoint)
+
+#### GET /badges/me
+Значки текущего пользователя. Authenticated.
+
+Badge types: `first_enrollment`, `streak_7`, `quiz_ace`, `mastery_100`.
+
+---
+
+### Adaptive Pre-tests (3 endpoints)
+
+#### POST /pretests/start
+Начало adaptive pre-test. Student-only.
+
+#### POST /pretests/answer
+Ответ на вопрос pre-test. Student-only.
+
+#### GET /pretests/results
+Результаты pre-test. Student-only.
+
+Concept-order-based difficulty, min 5 questions, mastery thresholds: 0.7 correct / 0.1 wrong.
+
+---
+
+### Velocity (1 endpoint)
+
+#### GET /velocity/me
+Скорость обучения текущего пользователя. Authenticated.
+
+---
+
+### Activity Feed (2 endpoints)
+
+#### GET /activity/me
+Персональная лента активности. Authenticated.
+
+#### GET /activity/feed
+Общая лента активности (друзья). Authenticated.
+
+Activity types: `quiz_completed`, `flashcard_reviewed`, `badge_earned`, `streak_milestone`, `concept_mastered`.
+
+---
+
+### Study Groups (6 endpoints)
+
+#### POST /study-groups
+Создание учебной группы. Authenticated.
+
+#### GET /study-groups/course/{course_id}
+Группы по курсу. Authenticated.
+
+#### POST /study-groups/{id}/join
+Вступление в группу. Authenticated.
+
+#### DELETE /study-groups/{id}/leave
+Выход из группы. Authenticated.
+
+#### GET /study-groups/{id}/members
+Участники группы. Authenticated.
+
+#### GET /study-groups/me
+Мои группы. Authenticated.
+
+---
+
+### Certificates (3 endpoints)
+
+#### POST /certificates/generate
+Генерация сертификата при завершении курса. Student-only.
+
+#### GET /certificates/me
+Мои сертификаты. Authenticated.
+
+#### GET /certificates/{id}
+Получение сертификата. Public (для проверки).
+
+---
+
+### Missions (NEW — 5 endpoints)
+
+#### GET /missions/today (NEW)
+Сегодняшняя миссия пользователя. Authenticated.
+
+**Query params:** `organization_id` (required).
+
+**Response `200`:**
 ```json
 {
   "id": "uuid",
-  "lesson_id": "uuid",
-  "course_id": "uuid",
   "user_id": "uuid",
-  "content": "Great explanation!",
-  "parent_id": null,
-  "upvote_count": 0,
-  "created_at": "2025-01-01T00:00:00Z",
-  "updated_at": "2025-01-01T00:00:00Z",
-  "is_pinned": false,
-  "is_teacher_answer": false
+  "organization_id": "uuid",
+  "concept_id": "uuid",
+  "title": "Review Authentication Middleware",
+  "status": "pending",
+  "estimated_minutes": 15,
+  "created_at": "2026-03-05T08:00:00Z"
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | parent_id указан, но комментарий не найден |
-
 ---
 
-### GET /discussions/lessons/{lesson_id}/comments
+#### POST /missions/{id}/start (NEW)
+Начало выполнения миссии. Меняет статус на `in_progress`. Authenticated.
 
-Список комментариев к уроку (threaded, пагинация по top-level комментариям).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query:** `?limit=20&offset=0`
-
-**Response (200):**
+**Response `200`:**
 ```json
 {
-  "threads": [
-    {
-      "comment": {
-        "id": "uuid",
-        "lesson_id": "uuid",
-        "course_id": "uuid",
-        "user_id": "uuid",
-        "content": "Great explanation!",
-        "parent_id": null,
-        "upvote_count": 3,
-        "created_at": "2025-01-01T00:00:00Z",
-        "updated_at": "2025-01-01T00:00:00Z",
-        "is_pinned": true,
-        "is_teacher_answer": false
-      },
-      "replies": [
-        {
-          "id": "uuid",
-          "parent_id": "uuid",
-          "content": "Thanks!",
-          "is_pinned": false,
-          "is_teacher_answer": true,
-          "..."
-        }
-      ]
-    }
-  ],
-  "total": 42
+  "id": "uuid",
+  "status": "in_progress",
+  "started_at": "2026-03-05T09:00:00Z"
 }
 ```
 
-**Сортировка:** pinned DESC, teacher_answer DESC, created_at DESC. Ответы — по created_at ASC.
-```
-
 ---
 
-### PATCH /discussions/comments/{comment_id}
-
-Редактировать свой комментарий.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request Body:**
-```json
-{
-  "content": "Updated text"
-}
-```
-
-**Response (200):** CommentResponse (см. POST)
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Попытка редактировать чужой комментарий |
-| 404 | Комментарий не найден |
-
----
-
-### DELETE /discussions/comments/{comment_id}
-
-Удалить свой комментарий (каскадно удаляет ответы).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response:** `204 No Content`
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Попытка удалить чужой комментарий |
-| 404 | Комментарий не найден |
-
----
-
-### POST /discussions/comments/{comment_id}/upvote
-
-Toggle upvote на комментарий. Повторный вызов — снимает upvote.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response (200):**
-```json
-{
-  "comment_id": "uuid",
-  "upvoted": true,
-  "upvote_count": 4
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 404 | Комментарий не найден |
-
----
-
-### POST /discussions/comments/{comment_id}/reply
-
-Создать ответ на комментарий. Максимальная глубина — 2 уровня (ответ на ответ запрещён).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request Body:**
-```json
-{
-  "content": "Thanks for the explanation!"
-}
-```
-
-**Response (201):** CommentResponse (с `parent_id` = id родительского комментария, `is_pinned`, `is_teacher_answer`)
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Попытка создать ответ глубже 2-го уровня |
-| 404 | Родительский комментарий не найден |
-
----
-
-### PATCH /discussions/comments/{comment_id}/pin
-
-Toggle pin/unpin комментария. Только для учителей.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response (200):** CommentResponse (с обновлённым `is_pinned`)
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Роль не teacher |
-| 404 | Комментарий не найден |
-
----
-
-### PATCH /discussions/comments/{comment_id}/mark-answer
-
-Toggle отметки "ответ учителя". Только для учителей.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response (200):** CommentResponse (с обновлённым `is_teacher_answer`)
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 403 | Роль не teacher |
-| 404 | Комментарий не найден |
-
----
-
-### GET /xp/me
-
-Получить XP-саммари текущего пользователя. Общее количество XP и история событий.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:** `limit` (int, default 20), `offset` (int, default 0)
-
-**Response (200):**
-```json
-{
-  "total_xp": 75,
-  "events": [
-    {
-      "action": "lesson_complete",
-      "points": 10,
-      "course_id": "uuid | null",
-      "created_at": "2026-02-26T12:00:00+00:00"
-    }
-  ]
-}
-```
-
-> XP начисления: `lesson_complete` = 10, `quiz_submit` = 20, `flashcard_review` = 5.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-
----
-
-### GET /badges/me
-
-Получить все бейджи текущего пользователя.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response (200):**
-```json
-{
-  "badges": [
-    {
-      "badge_type": "streak_7",
-      "description": "Maintain a 7-day streak",
-      "unlocked_at": "2026-02-26T12:00:00+00:00"
-    }
-  ],
-  "total": 1
-}
-```
-
-> Типы бейджей: `first_enrollment`, `streak_7`, `quiz_ace`, `mastery_100`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-
----
-
-### POST /pretests/course/{course_id}/start
-
-Начать адаптивный пре-тест для курса. Только для `role=student`. Создаёт новую запись pretest со статусом `in_progress` и возвращает первый вопрос, подобранный адаптивным алгоритмом на основе концептов курса.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `201`:**
-```json
-{
-  "pretest_id": "550e8400-e29b-41d4-a716-446655440000",
-  "concept_id": "660e8400-e29b-41d4-a716-446655440000",
-  "question": "Что такое замыкание в Python?",
-  "options": ["Класс", "Функция внутри функции", "Декоратор", "Генератор"]
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` |
-| 404 | Курс не найден или концепты не определены |
-
----
-
-### POST /pretests/{pretest_id}/answer
-
-Отправить ответ на текущий вопрос пре-теста и получить следующий. Адаптивный алгоритм выбирает следующий концепт на основе истории ответов. Когда вопросы заканчиваются — возвращает `completed: true` и итоговый `score`.
-
-**Headers:** `Authorization: Bearer <token>`
+#### POST /missions/{id}/complete (NEW)
+Завершение миссии. Authenticated.
 
 **Request:**
 ```json
 {
-  "concept_id": "660e8400-e29b-41d4-a716-446655440000",
-  "user_answer": "Функция внутри функции"
+  "score": 85,
+  "time_spent_minutes": 12
 }
 ```
 
 **Response `200`:**
 ```json
 {
-  "is_correct": true,
-  "correct_answer": "Функция внутри функции",
-  "completed": false,
-  "next_question": {
-    "concept_id": "770e8400-e29b-41d4-a716-446655440000",
-    "question": "Что такое декоратор?",
-    "options": ["Класс", "Синтаксический сахар для обёртки функции", "Переменная", "Модуль"]
-  }
-}
-```
-
-> Когда `completed: true`, поле `next_question` отсутствует, а `score` (0.0–1.0) добавляется в ответ.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` или пре-тест не принадлежит текущему студенту |
-| 404 | Пре-тест не найден |
-| 409 | Пре-тест уже завершён |
-
----
-
-### GET /pretests/course/{course_id}/results
-
-Получить результаты последнего завершённого пре-теста студента по курсу. Требует `role=student`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "pretest_id": "550e8400-e29b-41d4-a716-446655440000",
-  "course_id": "660e8400-e29b-41d4-a716-446655440000",
-  "score": 0.75,
+  "id": "uuid",
   "status": "completed",
-  "started_at": "2026-03-04T10:00:00+00:00",
-  "completed_at": "2026-03-04T10:05:00+00:00",
-  "answers": [
+  "score": 85,
+  "xp_earned": 50,
+  "mastery_delta": 0.15,
+  "completed_at": "2026-03-05T09:12:00Z"
+}
+```
+
+---
+
+#### GET /missions/me (NEW)
+История миссий пользователя. Authenticated.
+
+**Query params:** `organization_id` (required), `limit` (default 20), `offset` (default 0), `status` (optional filter).
+
+**Response `200`:**
+```json
+{
+  "items": [...],
+  "total": 42
+}
+```
+
+---
+
+#### GET /missions/streak (NEW)
+Streak миссий пользователя. Authenticated.
+
+**Response `200`:**
+```json
+{
+  "current_streak": 7,
+  "longest_streak": 15,
+  "total_missions_completed": 42,
+  "last_mission_date": "2026-03-05"
+}
+```
+
+---
+
+### Trust Levels (NEW — 2 endpoints)
+
+#### GET /trust-level/me (NEW)
+Trust level текущего пользователя. Authenticated.
+
+**Query params:** `organization_id` (required).
+
+**Response `200`:**
+```json
+{
+  "user_id": "uuid",
+  "organization_id": "uuid",
+  "level": 2,
+  "level_name": "Contributor",
+  "progress_to_next": 0.65,
+  "criteria": {
+    "missions_completed": 15,
+    "concepts_mastered": 8,
+    "streak_days": 7,
+    "discussions_count": 5
+  }
+}
+```
+
+---
+
+#### GET /trust-level/org/{org_id} (NEW)
+Trust levels всех участников организации. Authenticated + org admin.
+
+**Response `200`:**
+```json
+{
+  "items": [
     {
-      "concept_id": "770e8400-e29b-41d4-a716-446655440000",
-      "question": "Что такое декоратор?",
-      "user_answer": "Синтаксический сахар для обёртки функции",
-      "correct_answer": "Синтаксический сахар для обёртки функции",
-      "is_correct": true
+      "user_id": "uuid",
+      "name": "Ivan Petrov",
+      "level": 3,
+      "level_name": "Practitioner"
     }
   ]
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 403 | `role != student` |
-| 404 | Завершённый пре-тест для курса не найден |
-
 ---
 
-### GET /velocity/me
+### Daily Summary (NEW — 1 endpoint)
 
-Получить метрики скорости обучения текущего студента: тренд освоения концептов, средние баллы квизов по неделям, retention rate флешкарт, streak, прогресс по курсам.
-
-**Headers:** `Authorization: Bearer <token>`
+#### GET /daily/me (NEW)
+Ежедневная сводка прогресса. Authenticated.
 
 **Response `200`:**
 ```json
 {
-  "concepts_mastered_this_week": 5,
-  "concepts_mastered_last_week": 3,
-  "trend": "up",
-  "quiz_score_trend": [
-    { "week_start": "2026-02-16", "avg_score": 0.65 },
-    { "week_start": "2026-02-23", "avg_score": 0.72 },
-    { "week_start": "2026-03-02", "avg_score": 0.85 }
-  ],
-  "flashcard_retention_rate": 0.82,
-  "streak_days": 14,
-  "course_progress": [
+  "date": "2026-03-05",
+  "mission_completed": true,
+  "xp_earned_today": 75,
+  "concepts_practiced": 3,
+  "streak_days": 7,
+  "trust_level": 2
+}
+```
+
+---
+
+## RAG Service (`:8008`)
+
+### Health
+
+#### GET /health/live
+Liveness probe. Всегда `{"status": "ok"}`.
+
+#### GET /health/ready
+Readiness probe. Проверяет PostgreSQL (pgvector) pool.
+
+---
+
+### Documents (3 endpoints)
+
+#### POST /documents
+Загрузка документа для индексирования. Требует JWT + org membership.
+
+**Request:**
+```json
+{
+  "organization_id": "uuid",
+  "title": "Authentication Guide",
+  "content": "Markdown content...",
+  "source_type": "manual",
+  "metadata": {"category": "security"}
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "uuid",
+  "organization_id": "uuid",
+  "title": "Authentication Guide",
+  "chunk_count": 12,
+  "status": "indexed",
+  "created_at": "2026-03-05T00:00:00Z"
+}
+```
+
+---
+
+#### GET /documents
+Список документов организации. Требует JWT + org membership.
+
+**Query params:** `organization_id` (required), `limit` (default 50), `offset` (default 0).
+
+---
+
+#### DELETE /documents/{id}
+Удаление документа и его chunks. Требует JWT + org admin.
+
+**Response `204`:** No Content.
+
+---
+
+### Search (1 endpoint)
+
+#### POST /search
+Семантический поиск по документам организации. Требует JWT + org membership.
+
+**Request:**
+```json
+{
+  "organization_id": "uuid",
+  "query": "How does authentication work?",
+  "limit": 10,
+  "similarity_threshold": 0.7
+}
+```
+
+**Response `200`:**
+```json
+{
+  "results": [
     {
-      "course_id": "660e8400-e29b-41d4-a716-446655440000",
-      "total_concepts": 20,
-      "mastered": 10,
-      "mastery_pct": 50.0,
-      "estimated_weeks_left": 3.0
+      "chunk_id": "uuid",
+      "document_id": "uuid",
+      "document_title": "Auth Guide",
+      "content": "...",
+      "similarity": 0.92,
+      "metadata": {}
     }
   ]
 }
 ```
 
-**Поля:**
-| Поле | Тип | Описание |
-|------|-----|----------|
-| `trend` | `"up"` / `"down"` / `"stable"` | Сравнение текущей и прошлой недели |
-| `flashcard_retention_rate` | float | Доля правильных ответов (rating >= 3) за 30 дней |
-| `estimated_weeks_left` | float / null | Оценка недель до завершения курса; `null` если нет данных |
+---
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
+### Concepts (2 endpoints)
+
+#### GET /concepts
+Список концептов организации. Требует JWT + org membership.
+
+**Query params:** `organization_id` (required).
 
 ---
 
-### GET /activity/me
-
-Получить ленту собственных учебных активностей (quiz_completed, flashcard_reviewed, badge_earned, streak_milestone, concept_mastered).
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `limit` | int | 20 | Максимум записей (1–100) |
-| `offset` | int | 0 | Смещение для пагинации |
+#### POST /concepts/extract/{document_id}
+Извлечение концептов из документа с помощью AI. Требует JWT + org admin.
 
 **Response `200`:**
 ```json
 {
-  "activities": [
-    {
-      "id": "550e8400-e29b-41d4-a716-446655440000",
-      "user_id": "660e8400-e29b-41d4-a716-446655440000",
-      "activity_type": "quiz_completed",
-      "payload": {"quiz_id": "...", "score": 0.8},
-      "created_at": "2026-03-04T12:00:00Z"
-    }
+  "document_id": "uuid",
+  "concepts_extracted": [
+    {"name": "JWT Validation", "description": "...", "importance": 0.9}
   ],
-  "total": 1
+  "relationships": [
+    {"from": "JWT Validation", "to": "Middleware Patterns", "type": "requires"}
+  ]
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
+---
+
+### Sources (1 endpoint)
+
+#### POST /sources/github
+Подключение GitHub репозитория как источника документов. Требует JWT + org admin.
+
+**Request:**
+```json
+{
+  "organization_id": "uuid",
+  "repo_url": "https://github.com/acme/backend",
+  "branch": "main",
+  "file_patterns": ["*.md", "*.py", "*.rs"],
+  "exclude_patterns": ["node_modules/**", ".git/**"]
+}
+```
+
+**Response `202`:**
+```json
+{
+  "job_id": "uuid",
+  "status": "processing",
+  "estimated_documents": 150
+}
+```
 
 ---
 
-### GET /activity/feed
+### Upload (2 endpoints)
 
-Получить социальную ленту активностей указанных пользователей (тех, на кого подписан). User IDs передаются клиентом.
+#### POST /upload/markdown
+Загрузка markdown файла. Требует JWT + org membership.
 
-**Headers:** `Authorization: Bearer <token>`
+**Request:** multipart/form-data с файлом и `organization_id`.
 
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `user_ids` | string | — | Comma-separated UUID пользователей |
-| `limit` | int | 20 | Максимум записей (1–100) |
-| `offset` | int | 0 | Смещение для пагинации |
-
-**Response `200`:** Аналогичен `/activity/me`.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Невалидный UUID в user_ids |
-| 401 | Отсутствует или невалидный токен |
+**Response `201`:** Объект документа.
 
 ---
 
-### POST /study-groups
+#### POST /upload/bulk
+Массовая загрузка документов. Требует JWT + org admin.
 
-Создать учебную группу для курса. Создатель автоматически добавляется как первый участник.
+**Request:** multipart/form-data с zip-архивом и `organization_id`.
 
-**Headers:** `Authorization: Bearer <token>`
+**Response `202`:**
+```json
+{
+  "job_id": "uuid",
+  "status": "processing",
+  "files_count": 25
+}
+```
+
+---
+
+### Knowledge Base Management (5 endpoints)
+
+#### GET /kb/{org_id}/stats
+Статистика knowledge base организации. Требует JWT + org membership.
+
+**Response `200`:**
+```json
+{
+  "organization_id": "uuid",
+  "total_documents": 150,
+  "total_chunks": 3200,
+  "total_concepts": 85,
+  "total_relationships": 120,
+  "last_updated": "2026-03-05T00:00:00Z"
+}
+```
+
+---
+
+#### GET /kb/{org_id}/sources
+Список источников knowledge base. Требует JWT + org membership.
+
+---
+
+#### GET /kb/{org_id}/concepts
+Концепты knowledge base с relationships. Требует JWT + org membership.
+
+---
+
+#### POST /kb/{org_id}/search
+Поиск в knowledge base (alias для POST /search с org_id). Требует JWT + org membership.
+
+---
+
+#### POST /kb/{org_id}/refresh/{document_id}
+Переиндексация документа. Требует JWT + org admin.
+
+**Response `202`:**
+```json
+{
+  "document_id": "uuid",
+  "status": "reindexing"
+}
+```
+
+---
+
+### Onboarding Templates (6 endpoints)
+
+#### POST /templates
+Создание шаблона онбординга. Требует JWT + org admin.
+
+**Request:**
+```json
+{
+  "organization_id": "uuid",
+  "name": "Backend Engineer Onboarding",
+  "description": "30-day onboarding for backend engineers",
+  "target_role": "backend_engineer",
+  "estimated_days": 30
+}
+```
+
+**Response `201`:** Объект шаблона.
+
+---
+
+#### GET /templates
+Список шаблонов организации. Требует JWT + org membership.
+
+**Query params:** `organization_id` (required).
+
+---
+
+#### GET /templates/{id}
+Шаблон с stages. Требует JWT + org membership.
+
+---
+
+#### POST /templates/{id}/stages
+Добавление этапа в шаблон. Требует JWT + org admin.
+
+**Request:**
+```json
+{
+  "title": "Week 1: Development Environment",
+  "description": "Setup and understand the dev environment",
+  "order": 1,
+  "estimated_days": 5,
+  "concept_ids": ["uuid", "uuid"]
+}
+```
+
+**Response `201`:** Объект stage.
+
+---
+
+#### PUT /templates/{id}/stages/{stage_id}
+Обновление этапа. Требует JWT + org admin.
+
+---
+
+#### DELETE /templates/{id}/stages/{stage_id}
+Удаление этапа. Требует JWT + org admin.
+
+**Response `204`:** No Content.
+
+---
+
+## Notification Service (`:8005`)
+
+### POST /notifications
+
+Создание уведомления (internal/admin). Логирует в stdout (email stub).
+
+**Request:**
+```json
+{
+  "user_id": "uuid",
+  "type": "mission_reminder",
+  "title": "Daily Mission Available",
+  "message": "Your daily mission is ready!"
+}
+```
+
+**Response `201`:** Объект уведомления.
+
+---
+
+### GET /notifications/me
+
+Уведомления текущего пользователя. Требует JWT.
+
+**Query params:** `limit` (default 20), `offset` (default 0), `unread_only` (default false).
+
+---
+
+### PATCH /notifications/{id}/read
+
+Отметить уведомление как прочитанное. Требует JWT (owner only).
+
+**Response `200`:** Обновлённый объект уведомления.
+
+---
+
+### POST /streak-reminders/send
+
+Массовая отправка streak reminders. Admin-only. Дедупликация по дню.
+
+---
+
+### POST /flashcard-reminders/send
+
+Массовая отправка flashcard reminders. Admin-only. Дедупликация по дню.
+
+---
+
+### POST /flashcard-reminders/smart
+
+FSRS-based smart reminders через Learning Service. Admin-only.
+
+---
+
+### POST /messages
+
+Отправка прямого сообщения. Требует JWT. Лимит: 1–2000 символов.
+
+**Request:**
+```json
+{
+  "recipient_id": "uuid",
+  "content": "Hello!"
+}
+```
+
+**Response `201`:** Объект сообщения.
+
+---
+
+### GET /conversations/me
+
+Список диалогов текущего пользователя. Требует JWT.
+
+---
+
+### GET /conversations/{id}/messages
+
+Сообщения диалога. Требует JWT (participant only).
+
+**Query params:** `limit` (default 50), `offset` (default 0).
+
+---
+
+### PATCH /messages/{id}/read
+
+Отметить сообщение как прочитанное. Требует JWT (recipient only).
+
+---
+
+## Payment Service (`:8004`)
+
+### POST /payments
+
+Создание платежа (mock, всегда completed). Optional `coupon_code`. Student-only.
 
 **Request:**
 ```json
 {
   "course_id": "uuid",
-  "name": "Study Buddies",
-  "description": "Optional description"
+  "amount": 29.99,
+  "coupon_code": "SAVE20"    // optional
 }
 ```
 
-**Response `201`:**
+---
+
+### GET /payments/{id}
+
+Информация о платеже. Authenticated (owner or admin).
+
+---
+
+### GET /payments/me
+
+Мои платежи. Authenticated.
+
+**Query params:** `limit` (default 20), `offset` (default 0).
+
+---
+
+### GET /payments/{id}/invoice
+
+Скачивание PDF invoice. Authenticated (owner or admin).
+
+---
+
+### POST /coupons
+
+Создание купона. Teacher/admin.
+
+**Request:**
 ```json
 {
-  "id": "uuid",
+  "code": "SAVE20",
+  "discount_percent": 20,
+  "max_uses": 100,
+  "expires_at": "2026-12-31T23:59:59Z"
+}
+```
+
+---
+
+### GET /coupons
+
+Список купонов. Teacher/admin.
+
+---
+
+### POST /coupons/validate
+
+Валидация купона. Authenticated.
+
+---
+
+### PATCH /coupons/{id}/deactivate
+
+Деактивация купона. Teacher/admin (owner).
+
+---
+
+### POST /refunds
+
+Запрос возврата. Authenticated (owner). 14-дневное окно, один на платёж.
+
+---
+
+### GET /refunds/me
+
+Мои возвраты. Authenticated.
+
+---
+
+### GET /refunds
+
+Все возвраты. Admin-only.
+
+---
+
+### PATCH /refunds/{id}/approve
+
+Одобрение возврата. Admin-only. Payment status → `refunded`.
+
+---
+
+### PATCH /refunds/{id}/reject
+
+Отклонение возврата. Admin-only.
+
+---
+
+### POST /gifts
+
+Покупка подарка (курс). Authenticated.
+
+**Request:**
+```json
+{
   "course_id": "uuid",
-  "name": "Study Buddies",
-  "description": "Optional description",
-  "creator_id": "uuid",
-  "max_members": 10,
-  "created_at": "2026-01-15T12:00:00Z"
+  "recipient_email": "friend@example.com",
+  "message": "Happy learning!"
 }
 ```
 
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 422 | Имя группы пустое или > 100 символов |
+---
+
+### GET /gifts/me/sent
+
+Мои отправленные подарки. Authenticated.
 
 ---
 
-### GET /study-groups/course/{course_id}
+### POST /gifts/redeem
 
-Получить список учебных групп курса с количеством участников.
+Активация подарка по коду. Authenticated.
 
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `limit` | int | 20 | Максимум записей (1–100) |
-| `offset` | int | 0 | Смещение для пагинации |
+---
 
-**Response `200`:**
+### GET /gifts/{gift_code}/info
+
+Публичная информация о подарке (limited fields).
+
+---
+
+### GET /earnings/me/summary
+
+Сводка доходов преподавателя. Teacher-only.
+
+---
+
+### GET /earnings/me
+
+Детализация доходов. Teacher-only.
+
+---
+
+### POST /earnings/payouts
+
+Запрос выплаты. Teacher-only.
+
+---
+
+### GET /earnings/payouts
+
+Мои выплаты. Teacher-only.
+
+---
+
+### POST /org-subscriptions (NEW)
+
+Создание подписки организации. Требует JWT + org owner/admin.
+
+**Request:**
 ```json
 {
-  "groups": [
-    {
-      "id": "uuid",
-      "course_id": "uuid",
-      "name": "Study Buddies",
-      "description": "...",
-      "creator_id": "uuid",
-      "max_members": 10,
-      "created_at": "2026-01-15T12:00:00Z",
-      "member_count": 5
-    }
-  ],
-  "total": 1
+  "organization_id": "uuid",
+  "plan": "team",          // "team" | "enterprise"
+  "seats": 25,
+  "billing_period": "monthly"
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "uuid",
+  "organization_id": "uuid",
+  "plan": "team",
+  "seats": 25,
+  "status": "active",
+  "current_period_start": "2026-03-05T00:00:00Z",
+  "current_period_end": "2026-04-05T00:00:00Z"
 }
 ```
 
 ---
 
-### POST /study-groups/{group_id}/join
+### GET /org-subscriptions/{org_id} (NEW)
 
-Вступить в учебную группу.
+Информация о подписке организации. Требует JWT + org membership.
 
-**Headers:** `Authorization: Bearer <token>`
+---
 
-**Response `201`:**
+### POST /org-subscriptions/{org_id}/cancel (NEW)
+
+Отмена подписки организации. Требует JWT + org owner.
+
+**Response `200`:**
 ```json
 {
   "id": "uuid",
-  "group_id": "uuid",
-  "user_id": "uuid",
-  "joined_at": "2026-01-15T12:00:00Z"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Группа заполнена (count >= max_members) |
-| 401 | Отсутствует или невалидный токен |
-| 404 | Группа не найдена |
-| 409 | Уже состоит в группе |
-
----
-
-### DELETE /study-groups/{group_id}/leave
-
-Покинуть учебную группу. Создатель не может покинуть свою группу.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `204`:** No content.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Создатель группы не может её покинуть |
-| 401 | Отсутствует или невалидный токен |
-| 404 | Группа не найдена или пользователь не участник |
-
----
-
-### GET /study-groups/{group_id}/members
-
-Получить список участников группы.
-
-**Query params:**
-| Параметр | Тип | Default | Описание |
-|----------|-----|---------|----------|
-| `limit` | int | 20 | Максимум записей (1–100) |
-| `offset` | int | 0 | Смещение для пагинации |
-
-**Response `200`:**
-```json
-{
-  "members": [
-    {
-      "id": "uuid",
-      "group_id": "uuid",
-      "user_id": "uuid",
-      "joined_at": "2026-01-15T12:00:00Z"
-    }
-  ],
-  "total": 5
+  "status": "cancelled",
+  "cancels_at": "2026-04-05T00:00:00Z"
 }
 ```
 
 ---
 
-### GET /study-groups/me
+### POST /webhooks/stripe-org (NEW)
 
-Получить список групп, в которых состоит текущий пользователь.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:** Массив `StudyGroupResponse` объектов.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
+Webhook для Stripe events связанных с org subscriptions. Публичный (verification via Stripe signature).
 
 ---
 
-### POST /certificates/issue
+## Dormant Services
 
-Выдать сертификат пользователю за курс. Один сертификат на пару (user, course).
+### Course Service (`:8002`) — dormant
 
-**Headers:** `Authorization: Bearer <token>`
+17 endpoints. CRUD courses + modules + lessons + reviews, ILIKE search, curriculum, categories, filtering/sorting, bundles, promotions, wishlist. Код сохранён, не развивается.
 
-**Request body:**
-```json
-{
-  "course_id": "UUID"
-}
-```
+### Enrollment Service (`:8003`) — dormant
 
-**Response `201`:**
-```json
-{
-  "id": "UUID",
-  "user_id": "UUID",
-  "course_id": "UUID",
-  "issued_at": "2026-03-04T12:00:00Z",
-  "certificate_number": "CERT-2026-A1B2C3"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 409 | Сертификат уже выдан для этого курса |
-
----
-
-### GET /certificates/me
-
-Получить список своих сертификатов.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "certificates": [
-    {
-      "id": "UUID",
-      "user_id": "UUID",
-      "course_id": "UUID",
-      "issued_at": "2026-03-04T12:00:00Z",
-      "certificate_number": "CERT-2026-A1B2C3"
-    }
-  ],
-  "total": 1
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-
----
-
-### GET /certificates/{certificate_id}
-
-Получить сертификат по ID.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:** `CertificateResponse` объект.
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует или невалидный токен |
-| 404 | Сертификат не найден |
-
----
-
-## JWT Token Format
-
-```json
-{
-  "sub": "550e8400-e29b-41d4-a716-446655440000",
-  "iat": 1740000000,
-  "exp": 1740003600,
-  "role": "teacher",
-  "is_verified": true,
-  "email_verified": true
-}
-```
-
-| Claim | Тип | Описание |
-|-------|-----|----------|
-| `sub` | UUID string | User ID |
-| `iat` | int | Issued at (unix timestamp) |
-| `exp` | int | Expiration (iat + 3600 сек) |
-| `role` | string | `"student"`, `"teacher"` или `"admin"` |
-| `is_verified` | bool | Верифицирован ли преподаватель |
-| `email_verified` | bool | Подтверждён ли email |
-
-- Алгоритм: **HS256**
-- Shared secret: `JWT_SECRET` env var (одинаковый для всех сервисов)
-- TTL: 1 час (3600 секунд)
-- Все 7 сервисов валидируют JWT самостоятельно, без обращения к Identity
-
----
-
-## Frontend Proxy (Next.js Rewrites)
-
-Фронтенд проксирует запросы к API через Next.js rewrites:
-
-| Frontend path | Backend destination |
-|---------------|-------------------|
-| `/api/identity/*` | `http://localhost:8001/*` |
-| `/api/course/*` | `http://localhost:8002/*` |
-| `/api/enrollment/*` | `http://localhost:8003/*` |
-| `/api/payment/*` | `http://localhost:8004/*` |
-| `/api/notification/*` | `http://localhost:8005/*` |
-| `/api/ai/*` | `http://localhost:8006/*` |
-| `/api/learning/*` | `http://localhost:8007/*` |
-
----
-
-## Error Response Format
-
-Все ошибки возвращаются в едином формате:
-
-```json
-{
-  "detail": "Описание ошибки"
-}
-```
+8 endpoints. POST /enrollments, GET /me, lesson progress, auto-completion, course enrollment count, recommendations. Код сохранён, не развивается.

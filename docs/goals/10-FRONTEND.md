@@ -1,324 +1,226 @@
 # 10 — Frontend Architecture
 
 > Владелец: Architect / Frontend Lead
-> Последнее обновление: 2026-02-24
+> Последнее обновление: 2026-03-05
 
 ---
 
 ## Бизнес-контекст
 
-80%+ трафика — мобильный. Первое впечатление — страница курса из поисковика или соцсетей. Если страница грузится > 2 сек — пользователь уходит. Фронтенд должен быть быстрым, SEO-friendly и работать на слабых устройствах.
+B2B платформа адаптивного онбординга инженеров. Основные пользователи: новые инженеры компании-клиента (выполняют миссии, общаются с AI Coach), менеджеры (отслеживают прогресс), администраторы организации (управление, биллинг, настройка RAG).
+
+Нет каталога курсов, корзины, checkout, видео-плеера. Основной UX: daily mission dashboard + Coach chat + knowledge graph.
 
 ---
 
-## Три приложения
+## Приложения
 
-| Приложение | Аудитория | Приоритет | Описание |
-|-----------|----------|-----------|----------|
-| **Student App** | Студенты | P0 | Каталог курсов, поиск, карточка курса, видео-уроки, прогресс обучения |
-| **Teacher Dashboard** | Преподаватели | P0 | Управление курсами, уроками, аналитика, video upload |
-| **Admin Panel** | Операторы | P1 | Модерация, финансы, поддержка, настройки платформы |
-
----
-
-## Стек и ADR
-
-### ADR-F01: Next.js (App Router) как основной фреймворк
-- [x] ✅ **Решение:** Next.js с App Router
-- **Контекст:** SSR/SSG для SEO страниц курсов и каталога. React Server Components для уменьшения JS bundle. Streaming SSR для быстрого FCP. Встроенный image optimization
-- **Альтернативы:** Nuxt (меньше экосистема), Remix (слабее SSG), SvelteKit (меньше специалистов)
-
-### ADR-F02: Монорепа — фронтенд внутри общей репы
-- [x] ✅ **Решение:** `apps/` директория в корне монорепы, shared UI в `packages/ui/`
-- **Контекст:** Общие proto-типы, единый CI, атомарные изменения API + фронтенд
-- **Инструмент:** Turborepo для build orchestration фронтенд-части
-
-### ADR-F03: Tailwind CSS + Radix UI как UI foundation
-- [x] ✅ **Решение:** Tailwind для стилей, Radix UI для accessible primitives
-- **Контекст:** Tailwind — утилитарный, минимальный CSS output, purge неиспользуемого. Radix — headless, accessible из коробки, не навязывает стиль
-- **Альтернативы:** Shadcn/UI поверх Radix (рассмотреть), MUI (тяжелый, не нужен), Chakra (хуже tree-shaking)
-
-### ADR-F04: Zustand для client state, TanStack Query для server state
-- [x] ✅ **Решение:** Zustand (client) + TanStack Query (server cache)
-- **Контекст:** Zustand — минимальный (1KB), без boilerplate. TanStack Query — кэширование, дедупликация запросов, optimistic updates. Не нужен Redux — оверкил для этого проекта
-- **Пересмотр:** Если state станет сложным (> 20 stores), оценить другие решения
-
-### ADR-F05: TypeScript strict mode
-- [x] ✅ **Решение:** TypeScript с `strict: true`
-- **Контекст:** На 10M users баги стоят дорого. Строгая типизация ловит ошибки до продакшена
+| Приложение | Аудитория | Статус | Описание |
+|-----------|----------|--------|----------|
+| **Buyer App** | Инженеры + org admins | Active | Mission dashboard, Coach chat, knowledge, progress, admin |
+| **Seller App** | — | Dormant | B2C teacher marketplace (frozen, не развивается) |
 
 ---
 
-## Структура в монорепе
+## Стек
+
+| Решение | Технология | Статус |
+|---------|-----------|--------|
+| Framework | Next.js (App Router) | ✅ |
+| Styles | Tailwind CSS | ✅ |
+| UI primitives | Radix UI (headless, accessible) | ✅ |
+| Client state | Zustand | ✅ |
+| Server state | TanStack Query | ✅ |
+| Build | Turborepo | ✅ |
+| Types | TypeScript `strict: true` | ✅ |
+| Package manager | pnpm | ✅ |
+
+---
+
+## Структура Buyer App
 
 ```
-apps/
-├── buyer/                    # Next.js — студенческое приложение
-│   ├── app/                  #   App Router pages
-│   │   ├── (marketing)/      #     Лендинги, SEO страницы (SSG)
-│   │   ├── (courses)/        #     Каталог, поиск, карточка курса (SSR)
-│   │   ├── (learning)/       #     Прогресс, видео-уроки (client)
-│   │   ├── (account)/        #     Профиль, мои курсы, настройки
-│   │   └── courses/[id]/     #     Страница курса (SSR/ISR)
-│   ├── components/           #   Компоненты специфичные для student app
-│   ├── hooks/                #   Custom hooks
-│   ├── lib/                  #   API клиент, утилиты
-│   └── public/               #   Статика
+apps/buyer/
+├── app/
+│   ├── layout.tsx               # Root layout, providers
+│   ├── page.tsx                 # Landing / redirect to dashboard
+│   ├── (auth)/
+│   │   ├── login/page.tsx       # Login (org SSO or credentials)
+│   │   └── register/page.tsx    # Registration
+│   ├── onboarding/
+│   │   └── page.tsx             # New engineer onboarding wizard
+│   ├── dashboard/
+│   │   └── page.tsx             # Daily mission, streaks, trust level
+│   ├── mission/
+│   │   └── [id]/page.tsx        # Active mission: Coach chat + tasks
+│   ├── knowledge/
+│   │   └── page.tsx             # Knowledge graph, concept mastery
+│   ├── progress/
+│   │   └── page.tsx             # Learning progress, trust level history
+│   ├── admin/
+│   │   ├── page.tsx             # Org admin dashboard
+│   │   ├── analytics/page.tsx   # Team progress, onboarding metrics
+│   │   └── billing/page.tsx     # Org billing, resource usage
+│   └── api/                     # Next.js API routes (BFF)
 │
-├── seller/                   # Next.js — дашборд преподавателя
-│   ├── app/
-│   │   ├── (dashboard)/      #     Обзор, метрики
-│   │   ├── (courses)/        #     Управление курсами и уроками
-│   │   ├── (students)/       #     Студенты, прогресс, Q&A
-│   │   ├── (content)/        #     Upload видео, материалы
-│   │   └── (analytics)/      #     Аналитика курсов
-│   ├── components/
-│   ├── hooks/
-│   └── lib/
+├── components/
+│   ├── MissionDashboard.tsx     # Today's mission, progress overview
+│   ├── CoachChat.tsx            # Socratic dialogue interface
+│   ├── KnowledgeGraph.tsx       # Concept map visualization
+│   ├── TrustLevel.tsx           # Trust level indicator (0-5)
+│   ├── OrgSwitcher.tsx          # Organization context switcher
+│   ├── AdminDashboard.tsx       # Org admin: team progress, settings
+│   ├── MissionCard.tsx          # Mission summary card
+│   ├── ConceptNode.tsx          # Knowledge graph node
+│   ├── StreakIndicator.tsx      # Learning streak display
+│   └── PhaseProgress.tsx        # Coach session phase indicator
 │
-└── admin/                    # Next.js — админ-панель (Phase 1)
-    └── ...
-
-packages/
-├── ui/                       # Shared UI kit (Radix + Tailwind)
-│   ├── components/           #   Button, Input, Modal, Card, VideoPlayer...
-│   ├── tokens/               #   Design tokens: colors, spacing, typography
-│   └── index.ts
+├── hooks/
+│   ├── use-daily.ts             # Daily mission, today's tasks
+│   ├── use-coach.ts             # Coach session: start, send message, end
+│   ├── use-knowledge-base.ts    # Knowledge graph, concept mastery
+│   ├── use-trust-level.ts       # Trust level state, progression
+│   ├── use-organizations.ts     # Org context, membership, switching
+│   ├── use-admin.ts             # Admin: team stats, user management
+│   ├── use-billing.ts           # Org billing, resource usage
+│   ├── use-progress.ts          # Learning progress, history
+│   └── use-notifications.ts     # Notification feed
 │
-├── api-client/               # Typed API client (сгенерированный из OpenAPI)
-│   ├── generated/            #   Auto-generated types и fetch functions
-│   └── index.ts
+├── lib/
+│   ├── api.ts                   # Typed API client (namespace objects)
+│   └── utils.ts                 # Shared utilities
 │
-└── shared/                   # Shared utilities
-    ├── validators/            #   Zod schemas (переиспользуются в формах и API)
-    ├── formatters/            #   Цены, даты, числа
-    └── constants/             #   Enum-ы, маршруты, конфиг
+└── public/
 ```
 
 ---
 
-## Страницы и экраны
+## Страницы и рендеринг
 
-### Student App
-
-| Страница | Рендеринг | Performance Budget | Статус |
-|----------|----------|-------------------|--------|
-| **Главная** (каталог + поиск) | SSR + streaming | LCP < 1.5s, CLS < 0.1 | ✅ |
-| **Поиск** | SSR (query) | Результат < 200ms, FID < 100ms | ✅ |
-| **Карточка курса** + curriculum | SSR | LCP < 2s | ✅ |
-| **Страница урока** | Client-side (auth) | — | ✅ |
-| **Прогресс обучения** (прогресс-бар) | Client-side | INP < 200ms | ✅ |
-| **Регистрация / Логин** | Client-side | TTI < 1.5s | ✅ |
-| **Onboarding** (3-step wizard) | Client-side (auth required) | TTI < 1.5s | ✅ |
-| **Создание курса** | Client-side (auth protected) | FCP < 1s | ✅ |
-| **Редактирование курса** | Client-side (auth protected) | FCP < 1s | ✅ |
-| **Мои курсы** (enrollments) | Client-side (auth protected) | FCP < 1s | ✅ |
-| **Уведомления** | Client-side (auth protected) | FCP < 1s | ✅ |
-| **Admin: teachers** | Client-side (admin only) | — | ✅ |
-| **Категории** + фильтры | SSR + ISR | LCP < 2s | 🔴 |
-| **Отзывы** (форма + список) | SSR (список) + client (форма) | — | ✅ (backend), 🔴 (frontend page) |
-
-### Teacher Dashboard
-
-| Страница | Описание | Статус |
-|----------|---------|--------|
-| **Обзор** | Revenue, студенты, completion rate, графики за неделю/месяц | 🔴 |
-| **Курсы** — список | Таблица с поиском, фильтрами, статус (draft/published) | 🔴 |
-| **Курсы** — редактирование | Форма: описание, модули, уроки, видео, цены | 🔴 |
-| **Уроки** — video upload | Upload видео, прогресс транскодирования, preview | 🔴 |
-| **Студенты** — список | Enrolled студенты, прогресс, Q&A | 🔴 |
-| **Аналитика** | Просмотры, enrollments, completion, drop-off points, revenue | 🔴 |
-| **Финансы** | Баланс, история выплат, комиссии, вывод средств | 🔴 |
-| **Промо** | Создание скидок, купонов, bundles | 🔴 |
-
-### Admin Panel (Phase 1)
-
-| Страница | Описание | Статус |
-|----------|---------|--------|
-| **Модерация** — очередь | Курсы/видео на проверку, approve/reject с причиной | 🔴 |
-| **Пользователи** | Поиск, блокировка, история действий | 🔴 |
-| **Преподаватели** — верификация | Очередь верификации, документы, approve/reject | 🔴 |
-| **Финансы** | Общий revenue, комиссии, payouts, reconciliation | 🔴 |
-| **Контент** | Категории, баннеры, промо-страницы | 🔴 |
+| Страница | Route | Рендеринг | Performance Budget |
+|----------|-------|----------|-------------------|
+| **Dashboard** | `/dashboard` | SSR + client hydration | LCP < 1.5s |
+| **Mission** | `/mission/[id]` | Client-side (auth, WebSocket) | TTI < 1.5s |
+| **Knowledge Graph** | `/knowledge` | Client-side (interactive) | INP < 200ms |
+| **Progress** | `/progress` | SSR | LCP < 2s |
+| **Onboarding** | `/onboarding` | Client-side (wizard) | TTI < 1.5s |
+| **Admin Dashboard** | `/admin` | SSR + client | LCP < 2s |
+| **Admin Analytics** | `/admin/analytics` | SSR + client charts | LCP < 2.5s |
+| **Admin Billing** | `/admin/billing` | SSR | LCP < 2s |
+| **Login** | `/login` | Client-side | TTI < 1s |
 
 ---
 
-## Ключевые компоненты UI Kit (`packages/ui/`)
+## Ключевые компоненты
 
-### TODO: определить и реализовать
+### MissionDashboard
+- Текущая миссия дня (от Designer agent)
+- Progress bar по фазам: recap → reading → questions → code_case → wrap_up
+- Trust Level индикатор
+- Streak counter
 
-#### Базовые
-- [ ] 🔴 Button (variants: primary, secondary, ghost, danger; sizes: sm, md, lg)
-- [ ] 🔴 Input, Textarea, Select, Checkbox, Radio, Switch
-- [ ] 🔴 Modal / Dialog, Drawer (mobile bottom sheet)
-- [ ] 🔴 Toast / Notifications
-- [ ] 🔴 Skeleton loaders
-- [ ] 🔴 Pagination, Infinite scroll
+### CoachChat
+- Socratic dialogue интерфейс
+- Поддержка markdown + code blocks (syntax highlighting)
+- Phase indicator (текущая фаза coach session)
+- RAG context display (ссылки на документацию компании)
+- Typing indicator для AI responses
 
-#### Каталог курсов
-- [ ] 🔴 CourseCard (thumbnail, title, level badge, price/free, duration, rating)
-- [ ] 🔴 CourseGrid (responsive: 2 col mobile, 3 tablet, 4 desktop)
-- [ ] 🔴 SearchBar (with autocomplete dropdown)
-- [ ] 🔴 FilterPanel (category tree, level, price range, ratings, duration)
-- [ ] 🔴 SortDropdown (relevance, newest, popular, rating)
-- [ ] 🔴 CategoryBreadcrumbs
+### KnowledgeGraph
+- Визуализация concept map (interactive, zoomable)
+- Цветовая кодировка mastery level per concept
+- Clickable nodes → детали по concept + related missions
 
-#### Видео
-- [ ] 🔴 VideoPlayer (HLS, poster, play/pause, speed control, resume, progress tracking)
-- [ ] 🔴 VideoUploader (drag-n-drop, progress, preview, crop thumbnail)
-- [ ] 🔴 LessonList (sidebar with checkmarks for completed lessons)
+### TrustLevel
+- Визуальный индикатор уровня 0-5
+- Progress к следующему уровню
+- Список разблокированных возможностей на текущем уровне
 
-#### Enrollment
-- [ ] 🔴 EnrollButton (free → instant, paid → checkout)
-- [ ] 🔴 ProgressBar (% completion, current lesson)
-- [ ] 🔴 CertificateCard (completion date, verify link)
-- [ ] 🔴 PaymentForm (Stripe Elements integration)
+### OrgSwitcher
+- Переключение между организациями (если пользователь в нескольких)
+- Отображение текущей org + роль
 
-#### Teacher
-- [ ] 🔴 DataTable (sortable, filterable, selectable rows, bulk actions)
-- [ ] 🔴 StatsCard (number + trend arrow + sparkline)
-- [ ] 🔴 Chart (line, bar — Recharts или lightweight альтернатива)
-- [ ] 🔴 FileUploader (video: single, drag-n-drop, progress)
-- [ ] 🔴 RichTextEditor (описание курса — lightweight, без WYSIWYG монстров)
-- [ ] 🔴 CurriculumEditor (drag-n-drop модули и уроки)
+### AdminDashboard
+- Team overview: активные пользователи, средний trust level
+- Onboarding funnel: новые → active → trust level milestones
+- RAG status: indexed documents, last sync
+- Resource usage: LLM tokens, storage
+
+---
+
+## TanStack Query Hooks
+
+| Hook | API Endpoints | Key Features |
+|------|--------------|--------------|
+| `use-daily` | GET /missions/today, GET /missions/history | staleTime: 5min, refetch on window focus |
+| `use-coach` | POST /coach/session, POST /coach/message, POST /coach/end | Streaming responses, optimistic UI |
+| `use-knowledge-base` | GET /concepts, GET /concepts/graph, GET /concepts/mastery | Lazy loading nodes |
+| `use-trust-level` | GET /trust-level/me, GET /trust-level/history | Cache: 10min |
+| `use-organizations` | GET /orgs/me, POST /orgs/switch | Persisted in Zustand |
+| `use-admin` | GET /admin/team, GET /admin/stats, PATCH /admin/users | Role-gated |
+| `use-billing` | GET /billing/usage, GET /billing/invoices | Org-admin only |
+| `use-progress` | GET /progress/me, GET /progress/timeline | SSR prefetch |
+| `use-notifications` | GET /notifications/me, PATCH /notifications/:id/read | Optimistic read |
 
 ---
 
 ## Performance
 
-### Core Web Vitals целевые значения
+### Core Web Vitals
 
-| Метрика | Student (mobile) | Teacher Dashboard | Admin |
-|---------|-----------------|-----------------|-------|
-| LCP | < 1.5s | < 2.5s | < 3s |
-| FID / INP | < 100ms | < 200ms | < 300ms |
-| CLS | < 0.1 | < 0.15 | < 0.2 |
-| TTFB | < 400ms | < 500ms | — |
-| Bundle size (initial) | < 100KB gzip | < 150KB gzip | < 200KB gzip |
+| Метрика | Engineer App | Admin Pages |
+|---------|-------------|-------------|
+| LCP | < 1.5s | < 2.5s |
+| FID / INP | < 100ms | < 200ms |
+| CLS | < 0.1 | < 0.15 |
+| TTFB | < 400ms | < 500ms |
+| Bundle size (initial) | < 100KB gzip | < 150KB gzip |
 
-### TODO: Performance
+### Оптимизации
 
-- [ ] 🔴 Bundle analyzer: отслеживать размер каждого route bundle в CI
-- [ ] 🔴 Image optimization: Next.js Image component, WebP/AVIF, srcset, lazy loading
-- [ ] 🔴 Video: poster frame → autoplay muted → user interaction → sound. Без autoplay с звуком
-- [ ] 🔴 Font loading: `font-display: swap`, preload critical fonts, subset кириллица + латиница
-- [ ] 🔴 Code splitting: dynamic import для тяжелых компонентов (charts, editors, video player)
-- [ ] 🔴 Prefetch: prefetch следующей вероятной страницы (hover на карточке → prefetch курса)
-- [ ] 🔴 Service Worker: офлайн shell для student app, кэш каталога (Phase 2)
-- [ ] 🔴 Стратегия Third-party scripts: отложенная загрузка analytics после LCP
+- `next/image` для изображений, `next/link` для навигации
+- Dynamic import: KnowledgeGraph (d3/force-graph), CoachChat (markdown renderer), charts
+- `next/font` для шрифтов (без внешних CDN)
+- Server Components по умолчанию, `"use client"` только при hooks/events/browser API
+- Prefetch: dashboard → mission page при hover
 
 ---
 
-## SEO
+## Seller App (Dormant)
 
-### Критично для платформы — органический трафик = бесплатные студенты
-
-- [ ] 🔴 Страницы курсов — SSR, structured data (Course schema, aggregateRating)
-- [ ] 🔴 Категории — SSR, canonical URLs, хлебные крошки
-- [ ] 🔴 Sitemap: автогенерация для всех курсов, категорий
-- [ ] 🔴 Open Graph / Twitter Cards: каждая страница — title, description, image (или video preview)
-- [ ] 🔴 Video SEO: VideoObject schema, video sitemap для Google Video Search
-- [ ] 🔴 Мультиязычность: hreflang tags, URL strategy (subdomain vs path prefix)
-- [ ] 🔴 robots.txt: закрыть профиль, admin от индексации
-- [ ] 🔴 Page Speed: Google учитывает Core Web Vitals в ранжировании — бюджеты выше
-
----
-
-## Mobile
-
-### 80%+ трафика — мобильные устройства
-
-- [ ] 🔴 Mobile-first responsive design. Desktop — адаптация, не наоборот
-- [ ] 🔴 Touch targets: минимум 44x44px для интерактивных элементов
-- [ ] 🔴 Bottom navigation bar для student app (главная, поиск, мои курсы, профиль)
-- [ ] 🔴 Pull-to-refresh на списках
-- [ ] 🔴 Swipe gestures: переключение уроков, навигация
-- [ ] 🔴 PWA manifest: install prompt, splash screen, standalone mode
-- [ ] 🔴 Оптимизация для медленных сетей: skeleton screens, progressive image loading, offline fallback
-- [ ] 🔴 Deep linking: ссылки из push/email открывают правильную страницу
-- [ ] 🔴 Native app (Phase 3): React Native или Capacitor — решить позже, пока PWA
+B2C teacher marketplace заморожен. Директория `apps/seller/` сохранена, но не развивается. Если B2B потребует teacher-like функциональность (content authoring для org admins), она будет добавлена в buyer app, а не в seller.
 
 ---
 
 ## API взаимодействие
 
-### Typed API client
-
-- [ ] 🔴 OpenAPI spec генерируется из FastAPI (backend) автоматически
-- [ ] 🔴 TypeScript клиент генерируется из OpenAPI spec (`openapi-typescript-codegen` или `orval`)
-- [ ] 🔴 Авто-обновление при изменении backend API в CI
-- [ ] 🔴 TanStack Query wrappers вокруг сгенерированного клиента
-- [ ] 🔴 Optimistic updates для enrollment, favorites, отзывов
-- [ ] 🔴 WebSocket клиент для: progress tracking, Q&A, real-time notifications
-
-### Error handling на фронте
-
-- [ ] 🔴 Global error boundary (React Error Boundary) с fallback UI
-- [ ] 🔴 Per-route error boundaries для изоляции
-- [ ] 🔴 Toast notifications для операционных ошибок (enrollment, оплата)
-- [ ] 🔴 Retry стратегия: автоматический retry для network errors (TanStack Query built-in)
-- [ ] 🔴 Offline indicator + queue actions для отправки при восстановлении сети
+- API client в `apps/buyer/lib/api.ts` — типизированные namespace-объекты
+- Data fetching в Client Components через TanStack Query hooks
+- Optimistic updates: notification read, mission progress
+- Coach session: streaming responses через Server-Sent Events или WebSocket
+- Error handling: per-route error boundaries + global fallback
 
 ---
 
-## Интернационализация (i18n)
+## Тестирование
 
-- [ ] 🔴 next-intl или next-i18next — определить библиотеку
-- [ ] 🔴 Поддержка RTL (если целевые рынки требуют)
-- [ ] 🔴 Формат: цены (валюта, разделители), даты, числа — через Intl API
-- [ ] 🔴 Языки Phase 1: русский, английский
-- [ ] 🔴 Стратегия: ключи в коде, переводы в JSON файлах, lazy load по locale
-
----
-
-## Тестирование фронтенда
-
-| Тип | Инструмент | Что тестируем | Когда |
-|-----|-----------|--------------|-------|
-| Unit | Vitest | Hooks, утилиты, форматтеры | Каждый PR |
-| Component | Vitest + Testing Library | UI компоненты в изоляции | Каждый PR |
-| Integration | Playwright | Критические flow (поиск → курс → enrollment) | Каждый PR |
-| Visual regression | Playwright screenshots | UI не сломался после изменений | Каждый PR |
-| Accessibility | axe-core + Playwright | WCAG 2.1 AA compliance | Еженедельно |
-| Performance | Lighthouse CI | Core Web Vitals не деградировали | Каждый PR |
-
-### TODO: Testing
-
-- [ ] 🔴 Vitest + React Testing Library setup
-- [ ] 🔴 Playwright setup с base fixtures (auth, seeded data)
-- [ ] 🔴 Lighthouse CI в GitHub Actions: fail PR если LCP > budget
-- [ ] 🔴 Storybook для UI Kit components (документация + visual testing)
-- [ ] 🔴 Mock Service Worker (MSW) для тестов без реального API
+| Тип | Инструмент | Что тестируем |
+|-----|-----------|--------------|
+| Unit | Vitest | Hooks, утилиты, форматтеры |
+| Component | Vitest + Testing Library | UI компоненты в изоляции |
+| Integration | Playwright | Mission flow, coach session, admin |
+| API mocks | MSW | Mock backend для тестов |
 
 ---
 
-## Фазовость
+## TODO
 
-### Phase 0: MVP ✅ DONE
-- Student: каталог, поиск, карточка курса, curriculum, страница урока, прогресс, enrollment, notifications
-- Teacher: создание/редактирование курса, мои курсы (через buyer app)
-- Admin: верификация teachers (/admin/teachers)
-- UI Kit: CourseCard, Header
-- Seller app: заглушка (пустые директории)
-
-### Phase 1: Launch
-- Teacher dashboard MVP (курсы, студенты, базовая аналитика)
-- Video upload + player (HLS streaming)
-- Admin panel MVP (модерация, пользователи)
-- Push notifications (Web Push API)
-- Student-Teacher Q&A
-- i18n: 2 языка
-
-### Phase 2: Growth
-- CurriculumEditor (drag-n-drop модули и уроки)
-- Advanced teacher analytics (Recharts)
-- A/B testing разных UI вариантов
-- Performance optimization: Service Worker, advanced prefetching
-- Recommendation widgets
-
-### Phase 3: Scale
-- Native mobile app (React Native или Capacitor)
-- Live lessons UI (video + chat + Q&A overlay)
-- AI-powered course search
-- PWA offline mode (cached lessons)
-- 5+ языков
+- [ ] Реализовать MissionDashboard component
+- [ ] Реализовать CoachChat с streaming responses
+- [ ] Реализовать KnowledgeGraph visualization (d3 или force-graph)
+- [ ] TrustLevel component с progression animation
+- [ ] OrgSwitcher с Zustand persistence
+- [ ] AdminDashboard с team metrics
+- [ ] Все TanStack Query hooks
+- [ ] Playwright E2E: onboarding → first mission → coach session
+- [ ] Vitest setup с MSW

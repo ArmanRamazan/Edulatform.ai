@@ -1,94 +1,21 @@
-# 07 — Видео-уроки и Медиа-платформа
+# 07 — Видео и медиа
 
-> Владелец: Architect / Principal Developer
-> Последнее обновление: 2026-02-24
->
-> **Приоритет:** Phase 3-4. Текущий фокус — Learning Intelligence (Phase 2).
+> Владелец: Architect
+> Последнее обновление: 2026-03-05
 
 ---
 
-## Бизнес-контекст
+## Статус: не приоритет для B2B MVP
 
-Видео — главный дифференциатор учебной платформы. Каждый курс включает видео-уроки. Это **не YouTube** — это образовательное видео, оптимизированное под усвоение материала и completion rate.
+После пивота на B2B Agentic Adaptive Learning видео-платформа **не является приоритетом**.
 
----
+Основной контент для онбординга инженеров — код, документация, ADR, markdown. Обучение проходит через 15-минутные текстовые Mission-сессии с AI Coach.
 
-## Типы видео-контента
+### Будущие возможности (не планируются в Sprints 17-22)
 
-| Тип | Длительность | Цель | Приоритет |
-|-----|-------------|------|-----------|
-| **Course intro** | 1-3 мин | Превью курса, привлечение студентов | P0 |
-| **Video lesson** | 5-30 мин | Основной учебный контент | P0 |
-| **Short-form (tips)** | 30-90 сек | Вирусность, привлечение трафика | P1 |
-| **Live lesson** | 30-120 мин | Real-time обучение с Q&A | P3 |
+- **Screen recording:** опциональная запись code walkthroughs от Senior'ов для Knowledge Base
+- **Video explainers:** короткие видео-объяснения архитектурных решений (загрузка, не генерация)
 
----
+### Если понадобится
 
-## TODO: Video Architecture
-
-### Phase 1 — MVP (Managed, до 100K users)
-- [ ] 🔴 Определить SaaS для начала: Cloudflare Stream / Mux / Bunny.net
-- [ ] 🔴 Upload flow: browser → presigned URL → storage → webhook → transcode
-- [ ] 🔴 Базовые качества: 360p, 720p, 1080p
-- [ ] 🔴 HLS streaming с adaptive bitrate
-- [ ] 🔴 Thumbnail auto-generation (3 варианта на выбор преподавателю)
-- [ ] 🔴 Лимиты: max 30 мин, max 2GB, форматы MP4/MOV/WebM
-- [ ] 🔴 Cost model: рассчитать стоимость на 100K users ($X per minute stored + streamed)
-
-### Phase 2 — Собственный pipeline (100K → 1M users)
-- [ ] 🔴 Rust transcoding сервис: FFmpeg bindings, job queue
-- [ ] 🔴 Multi-quality output: 240p, 360p, 480p, 720p, 1080p
-- [ ] 🔴 Стратегия хранения:
-  - Оригинал → S3 Glacier (дешево, для re-transcode)
-  - Транскодированные → S3 Standard
-  - Hot cache → CDN Edge (последние 30 дней популярные)
-- [ ] 🔴 Smart bitrate: анализ контента → выбор оптимального набора качеств
-- [ ] 🔴 Video player: собственный на базе hls.js/dash.js, resume playback, speed control
-- [ ] 🔴 Preload стратегия: первые 5 сек в высоком качестве, остальное адаптивно
-
-### Phase 3 — Scale (1M → 10M users)
-- [ ] 🔴 Multi-region CDN: видео ближе к пользователю
-- [ ] 🔴 Edge transcoding: транскодирование ближе к upload point
-- [ ] 🔴 AI-driven optimization:
-  - Автоматическое определение "лучшего кадра" для thumbnail
-  - Автосубтитры (speech-to-text) + перевод
-  - Content-aware encoding (скринкаст vs живая съёмка)
-- [ ] 🔴 Cost optimization: удаление неиспользуемых quality levels, intelligent tiering
-- [ ] 🔴 Live streaming infrastructure (если P3 станет актуальным)
-
----
-
-## Course Landing Page
-
-### Бизнес-цель
-Страница курса убеждает студента записаться за < 3 минут. Конверсия > 5%.
-
-### TODO:
-- [ ] 🔴 Структура: Video intro → Описание → Программа курса → Отзывы → CTA
-- [ ] 🔴 SEO: SSR/SSG для страниц курсов, structured data (Course schema), og:video meta
-- [ ] 🔴 Performance budget: LCP < 2.5s, CLS < 0.1, FID < 100ms
-- [ ] 🔴 Mobile-first: 80%+ трафика с мобильных устройств
-- [ ] 🔴 Progress indicator для записанных студентов
-- [ ] 🔴 Analytics: scroll depth, video engagement, enrollment conversion
-
----
-
-## Capacity Estimation (Video)
-
-```
-Phase 3 (10M DAU):
-- Active teachers с видео: 100K
-- Среднее видео на преподавателя: 25 (5 курсов × 5 уроков)
-- Всего видео: 2.5M
-- Средний размер оригинала: 500MB (длинные уроки)
-- Средний размер после транскодирования (все качества): 1.5GB
-- Хранение оригиналов: 1.25PB
-- Хранение транскодированных: 3.75PB
-- Ежедневный просмотр: 30M views
-- Средняя длительность просмотра: 10 мин
-- Bandwidth: 30M × 10 мин × 2Mbps = ~11 Gbps average, ~40 Gbps peak
-- Storage cost (S3): ~$90K/мес
-- Bandwidth cost (CDN): ~$50K/мес (с оптимизацией)
-- Transcoding cost: ~$10K/мес
-- TOTAL: ~$150K/мес на видео-инфраструктуру
-```
+Существующая документация по видео-архитектуре (upload → transcode → HLS) сохранена в git history. При необходимости — восстановить и адаптировать под B2B context.

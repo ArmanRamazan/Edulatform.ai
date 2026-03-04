@@ -1,7 +1,7 @@
 # 05 — Infrastructure & Docker
 
-> Последнее обновление: 2026-03-03
-> Стадия: Phase 3.2 (Monetization backend — Stripe, subscriptions, earnings, payouts)
+> Последнее обновление: 2026-03-05
+> Стадия: B2B Agentic Adaptive Learning Pivot
 
 ---
 
@@ -23,54 +23,22 @@ docker compose -f docker-compose.dev.yml up
 | Container | Image / Build | Порт |
 |-----------|--------------|------|
 | identity-db | postgres:16-alpine | 5433 |
-| course-db | postgres:16-alpine | 5434 |
-| enrollment-db | postgres:16-alpine | 5435 |
+| course-db (dormant) | postgres:16-alpine | 5434 |
+| enrollment-db (dormant) | postgres:16-alpine | 5435 |
 | payment-db | postgres:16-alpine | 5436 |
 | notification-db | postgres:16-alpine | 5437 |
 | learning-db | postgres:16-alpine | 5438 |
+| rag-db | postgres:16-alpine + pgvector | 5439 |
 | redis | redis:7-alpine | 6379 |
 | identity | Dockerfile build | 8001 |
-| course | Dockerfile build | 8002 |
-| enrollment | Dockerfile build | 8003 |
+| course (dormant) | Dockerfile build | 8002 |
+| enrollment (dormant) | Dockerfile build | 8003 |
 | payment | Dockerfile build | 8004 |
 | notification | Dockerfile build | 8005 |
 | ai | Dockerfile build | 8006 |
 | learning | Dockerfile build | 8007 |
+| rag | Dockerfile build | 8008 |
 | seed (profile) | Dockerfile build | — |
-
-### Staging (`docker-compose.staging.yml`)
-
-```bash
-docker compose -f docker-compose.staging.yml up -d
-# Seed demo data:
-docker compose -f docker-compose.staging.yml --profile seed up seed
-```
-
-- Pre-built images from GHCR (`ghcr.io/{owner}/{service}:latest`)
-- 2 uvicorn workers (lower resource usage than prod)
-- No monitoring stack (no Prometheus/Grafana)
-- Staging-specific DB ports (5443–5448), Redis on 6380
-- Env vars via `deploy/staging/.env.staging` (env_file) + `ENVIRONMENT=staging`
-- Seed profile for demo data on first run
-
-**Сервисы:**
-| Container | Image | Порт (host) |
-|-----------|-------|-------------|
-| identity-db | postgres:16-alpine | 5443 |
-| course-db | postgres:16-alpine | 5444 |
-| enrollment-db | postgres:16-alpine | 5445 |
-| payment-db | postgres:16-alpine | 5446 |
-| notification-db | postgres:16-alpine | 5447 |
-| learning-db | postgres:16-alpine | 5448 |
-| redis | redis:7-alpine | 6380 |
-| identity | ghcr.io/{owner}/identity | 8001 |
-| course | ghcr.io/{owner}/course | 8002 |
-| enrollment | ghcr.io/{owner}/enrollment | 8003 |
-| payment | ghcr.io/{owner}/payment | 8004 |
-| notification | ghcr.io/{owner}/notification | 8005 |
-| ai | ghcr.io/{owner}/ai | 8006 |
-| learning | ghcr.io/{owner}/learning | 8007 |
-| seed (profile) | ghcr.io/{owner}/seed | — |
 
 ### Prod (`docker-compose.prod.yml`)
 
@@ -130,13 +98,45 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "<port>"]
 
 **Файлы:**
 - `deploy/docker/identity.Dockerfile`
-- `deploy/docker/course.Dockerfile`
-- `deploy/docker/enrollment.Dockerfile`
+- `deploy/docker/course.Dockerfile` (dormant)
+- `deploy/docker/enrollment.Dockerfile` (dormant)
 - `deploy/docker/payment.Dockerfile`
 - `deploy/docker/notification.Dockerfile`
 - `deploy/docker/learning.Dockerfile`
+- `deploy/docker/rag.Dockerfile` (NEW)
 - `deploy/docker/seed.Dockerfile`
 - `deploy/docker/locust.Dockerfile`
+
+### RAG Service Dockerfile (NEW)
+
+RAG Service Dockerfile отличается тем, что не использует AI Service Dockerfile (без БД), а использует стандартный шаблон с PostgreSQL. AI Service Dockerfile не имеет DATABASE_URL.
+
+---
+
+## RAG DB — pgvector (NEW)
+
+RAG DB использует PostgreSQL с расширением pgvector для хранения embeddings:
+
+```yaml
+# docker-compose.dev.yml
+rag-db:
+  image: pgvector/pgvector:pg16
+  environment:
+    POSTGRES_USER: rag
+    POSTGRES_PASSWORD: rag
+    POSTGRES_DB: rag
+  ports:
+    - "5439:5432"
+  healthcheck:
+    test: ["CMD-SHELL", "pg_isready -U rag"]
+    interval: 5s
+    timeout: 3s
+    retries: 5
+```
+
+Image: `pgvector/pgvector:pg16` (вместо `postgres:16-alpine`) — включает расширение `vector`.
+
+Миграция `001_documents.sql` выполняет `CREATE EXTENSION IF NOT EXISTS vector;`.
 
 ---
 
@@ -166,6 +166,25 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 - `POST /login` — 10 req/min per IP
 - `POST /register` — 5 req/min per IP
 
+### AI-specific
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `GEMINI_API_KEY` | — (required) | Google Gemini API key для LLM вызовов |
+| `LEARNING_SERVICE_URL` | `http://learning:8007` | URL Learning Service для concept mastery |
+| `RAG_SERVICE_URL` | `http://rag:8008` | URL RAG Service для semantic search (NEW) |
+
+### RAG-specific (NEW)
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `DATABASE_URL` | — (required) | PostgreSQL + pgvector DSN |
+| `GEMINI_API_KEY` | — (required) | Google Gemini API key для embeddings |
+| `GITHUB_TOKEN` | `""` (empty) | GitHub personal access token для доступа к private repos |
+| `EMBEDDING_MODEL` | `text-embedding-004` | Модель для генерации embeddings |
+| `CHUNK_SIZE` | `500` | Размер chunk в tokens |
+| `CHUNK_OVERLAP` | `50` | Overlap между chunks |
+
 ### Payment-specific
 
 | Variable | Default | Описание |
@@ -179,30 +198,32 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 |----------|---------|----------|
 | `RESEND_API_KEY` | `""` (empty) | Resend API key; empty = StubEmailClient (logs only) |
 | `EMAIL_FROM_ADDRESS` | `noreply@eduplatform.ru` | Sender address for outgoing emails |
-| `LEARNING_SERVICE_URL` | `http://localhost:8007/api/learning` | Learning service URL for smart reminders |
+| `LEARNING_SERVICE_URL` | `http://learning:8007` | Learning service URL for smart reminders |
 
 ### Dev compose values
 
 | Service | DATABASE_URL | JWT_SECRET |
 |---------|-------------|------------|
 | identity | `postgresql://identity:identity@identity-db:5432/identity` | `dev-secret-key` |
-| course | `postgresql://course:course@course-db:5432/course` | `dev-secret-key` |
-| enrollment | `postgresql://enrollment:enrollment@enrollment-db:5432/enrollment` | `dev-secret-key` |
+| course (dormant) | `postgresql://course:course@course-db:5432/course` | `dev-secret-key` |
+| enrollment (dormant) | `postgresql://enrollment:enrollment@enrollment-db:5432/enrollment` | `dev-secret-key` |
 | payment | `postgresql://payment:payment@payment-db:5432/payment` | `dev-secret-key` |
 | notification | `postgresql://notification:notification@notification-db:5432/notification` | `dev-secret-key` |
-| ai | — (stateless, Redis cache only) | `dev-secret-key` |
+| ai | — (stateless, Redis only) | `dev-secret-key` |
 | learning | `postgresql://learning:learning@learning-db:5432/learning` | `dev-secret-key` |
+| rag | `postgresql://rag:rag@rag-db:5432/rag` | `dev-secret-key` |
 
 ### Seed-specific
 
 | Variable | Value | Описание |
 |----------|-------|----------|
 | `IDENTITY_DB_URL` | `postgresql://identity:identity@identity-db:5432/identity` | Identity DB |
-| `COURSE_DB_URL` | `postgresql://course:course@course-db:5432/course` | Course DB |
-| `ENROLLMENT_DB_URL` | `postgresql://enrollment:enrollment@enrollment-db:5432/enrollment` | Enrollment DB |
+| `COURSE_DB_URL` | `postgresql://course:course@course-db:5432/course` | Course DB (dormant) |
+| `ENROLLMENT_DB_URL` | `postgresql://enrollment:enrollment@enrollment-db:5432/enrollment` | Enrollment DB (dormant) |
 | `PAYMENT_DB_URL` | `postgresql://payment:payment@payment-db:5432/payment` | Payment DB |
 | `NOTIFICATION_DB_URL` | `postgresql://notification:notification@notification-db:5432/notification` | Notification DB |
 | `LEARNING_DB_URL` | `postgresql://learning:learning@learning-db:5432/learning` | Learning DB |
+| `RAG_DB_URL` | `postgresql://rag:rag@rag-db:5432/rag` | RAG DB (NEW) |
 
 ---
 
@@ -218,10 +239,14 @@ docker compose -f docker-compose.dev.yml --profile seed up seed
 - **100,000 курсов**: привязаны к verified teachers
 - **~35,000 модулей**: 3-5 модулей на курс (первые 10K курсов)
 - **~210,000 уроков**: 3-8 уроков на модуль (первые 10K курсов)
-- **~100,000 отзывов**: рейтинг 1-5 (weighted: 40% пятёрок), обновляет avg_rating/review_count
-- **200,000 записей (enrollments)**: 60% на бесплатные курсы, 40% на платные
+- **~100,000 отзывов**: рейтинг 1-5, обновляет avg_rating/review_count
+- **200,000 записей (enrollments)**: 60% бесплатные, 40% платные
 - **50,000 оплат (payments)**: для платных курсов, status=completed
 - **Learning data**: quizzes, concepts, flashcards, XP, badges, streaks, leaderboard, comments
+- **Organizations** (NEW): sample organizations с members
+- **Missions** (NEW): sample missions для тестирования
+- **Trust levels** (NEW): initial trust levels для org members
+- **RAG data** (NEW): sample documents и chunks для knowledge base
 - Пароль для всех: `password123` (bcrypt hash)
 
 ---
@@ -231,7 +256,7 @@ docker compose -f docker-compose.dev.yml --profile seed up seed
 Scripts in `deploy/scripts/`:
 
 ```bash
-# Backup all 6 databases (compressed .sql.gz)
+# Backup all databases (compressed .sql.gz)
 ./deploy/scripts/backup-all-dbs.sh
 
 # List existing backups
@@ -244,7 +269,7 @@ Scripts in `deploy/scripts/`:
 - Backups saved to `deploy/backups/` (gitignored)
 - Uses `pg_dump` via `docker exec` on running containers
 - Restore drops and recreates the target database
-- Supported services: identity, course, enrollment, payment, notification, learning
+- Supported services: identity, course, enrollment, payment, notification, learning, rag (NEW)
 
 ---
 
@@ -254,7 +279,7 @@ Scripts in `deploy/scripts/`:
 
 Scrape config (`deploy/docker/prometheus/prometheus.yml`):
 - `scrape_interval: 5s`
-- Jobs: `identity` (`:8001`), `course` (`:8002`), `enrollment` (`:8003`), `payment` (`:8004`), `notification` (`:8005`), `ai` (`:8006`), `learning` (`:8007`)
+- Jobs: `identity` (`:8001`), `course` (`:8002`), `enrollment` (`:8003`), `payment` (`:8004`), `notification` (`:8005`), `ai` (`:8006`), `learning` (`:8007`), `rag` (`:8008`) (NEW)
 
 Метрики автоматически экспортируются через `prometheus-fastapi-instrumentator`:
 - `http_requests_total` — счётчик запросов
@@ -297,16 +322,17 @@ Locust UI: http://localhost:8089
 | Container | Check | Interval | Timeout | Retries |
 |-----------|-------|----------|---------|---------|
 | identity-db | `pg_isready -U identity` | 5s | 3s | 5 |
-| course-db | `pg_isready -U course` | 5s | 3s | 5 |
-| enrollment-db | `pg_isready -U enrollment` | 5s | 3s | 5 |
+| course-db (dormant) | `pg_isready -U course` | 5s | 3s | 5 |
+| enrollment-db (dormant) | `pg_isready -U enrollment` | 5s | 3s | 5 |
 | payment-db | `pg_isready -U payment` | 5s | 3s | 5 |
 | notification-db | `pg_isready -U notification` | 5s | 3s | 5 |
 | learning-db | `pg_isready -U learning` | 5s | 3s | 5 |
+| rag-db | `pg_isready -U rag` | 5s | 3s | 5 |
 | redis | `redis-cli ping` | 5s | 3s | 5 |
 
 Все сервисы запускаются после `service_healthy` condition на своих БД.
 
-### Application-level (все 7 Python сервисов)
+### Application-level (все Python сервисы)
 
 | Endpoint | Описание | Checks |
 |----------|----------|--------|
@@ -347,19 +373,15 @@ Frontend-приложения запускаются отдельно через
 
 ```bash
 cd apps/buyer && pnpm dev   # :3001
-cd apps/seller && pnpm dev  # :3002
+cd apps/seller && pnpm dev  # :3002 (dormant)
 ```
 
 **Buyer App** проксирует API через Next.js rewrites:
 - `/api/identity/*` → `http://localhost:8001/*`
-- `/api/course/*` → `http://localhost:8002/*`
-- `/api/enrollment/*` → `http://localhost:8003/*`
+- `/api/course/*` → `http://localhost:8002/*` (dormant)
+- `/api/enrollment/*` → `http://localhost:8003/*` (dormant)
 - `/api/payment/*` → `http://localhost:8004/*`
 - `/api/notification/*` → `http://localhost:8005/*`
+- `/api/ai/*` → `http://localhost:8006/*`
 - `/api/learning/*` → `http://localhost:8007/*`
-
-**Seller App** проксирует API через Next.js rewrites:
-- `/api/identity/*` → `http://localhost:8001/*`
-- `/api/course/*` → `http://localhost:8002/*`
-- `/api/payment/*` → `http://localhost:8004/*`
-- `/api/notification/*` → `http://localhost:8005/*`
+- `/api/rag/*` → `http://localhost:8008/*` (NEW)
