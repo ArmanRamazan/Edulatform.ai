@@ -115,12 +115,12 @@ cd services/py/course      && uv run --package course pytest tests/ -v       # 1
 cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 28 tests
 cd services/py/payment     && uv run --package payment pytest tests/ -v      # 151 tests
 cd services/py/notification && uv run --package notification pytest tests/ -v # 57 tests
-cd services/py/ai          && uv run --package ai pytest tests/ -v           # 126 tests
+cd services/py/ai          && uv run --package ai pytest tests/ -v           # 153 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 175 tests
 cd services/py/rag         && uv run --package rag pytest tests/ -v          # 115 tests
 ```
 
-**Итого:** 805 тестов по 8 сервисам.
+**Итого:** 832 тестов по 8 сервисам.
 
 ## Инфраструктура
 

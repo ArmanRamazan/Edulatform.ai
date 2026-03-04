@@ -140,6 +140,43 @@ class StudyPlanResponse(BaseModel):
     model_used: str
 
 
+class CoachStartRequest(BaseModel):
+    mission_id: UUID
+    personality: str = Field(default="friendly", max_length=50)
+
+
+class CoachStartResponse(BaseModel):
+    session_id: str
+    content: str
+    phase: str
+    phase_progress: int
+
+
+class CoachChatRequest(BaseModel):
+    session_id: str
+    message: str = Field(min_length=1, max_length=2000)
+
+
+class CoachChatResponse(BaseModel):
+    session_id: str
+    content: str
+    phase: str
+    phase_progress: int
+
+
+class CoachEndRequest(BaseModel):
+    session_id: str
+
+
+class CoachEndResponse(BaseModel):
+    session_id: str
+    score: float
+    mastery_delta: float
+    duration_seconds: int
+    strengths: list[str]
+    gaps: list[str]
+
+
 class ModerationRequest(BaseModel):
     content: str = Field(min_length=1, max_length=10000)
     content_type: str = Field(pattern=r"^(course_description|lesson_content|review_text)$")

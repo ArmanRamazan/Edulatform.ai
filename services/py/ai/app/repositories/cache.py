@@ -98,6 +98,40 @@ class AICache:
     async def set_path(self, key: str, data: str, ttl: int) -> None:
         await self._set(key, data, ttl)
 
+    # --- Coach session ---
+
+    async def get_coach_session(self, session_id: str) -> dict | None:
+        """Get full coach session data (messages, system prompt, phase, etc.)."""
+        try:
+            val = await self._redis.get(f"ai:coach:session:{session_id}")
+            if val is None:
+                return None
+            raw = val.decode() if isinstance(val, bytes) else val
+            return json.loads(raw)
+        except Exception:
+            logger.warning("coach_session_get_failed", session_id=session_id)
+            return None
+
+    async def save_coach_session(
+        self, session_id: str, data: dict, ttl: int
+    ) -> None:
+        """Save full coach session data."""
+        try:
+            await self._redis.set(
+                f"ai:coach:session:{session_id}",
+                json.dumps(data),
+                ex=ttl,
+            )
+        except Exception:
+            logger.warning("coach_session_save_failed", session_id=session_id)
+
+    async def delete_coach_session(self, session_id: str) -> None:
+        """Delete a coach session from cache."""
+        try:
+            await self._redis.delete(f"ai:coach:session:{session_id}")
+        except Exception:
+            logger.warning("coach_session_delete_failed", session_id=session_id)
+
     # --- Tutor feedback ---
 
     async def save_feedback(

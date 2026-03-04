@@ -835,69 +835,76 @@ Socratic AI-тьютор (чат по уроку). Требует JWT.
 
 ---
 
-### POST /ai/coach/start (NEW)
+### POST /ai/coach/start
 
-Начало guided session с Coach агентом. Требует JWT.
+Начало structured 15-min coaching session. Требует JWT. Consumes 1 credit.
 
 **Request:**
 ```json
 {
-  "mission_id": "uuid"
+  "mission_id": "uuid",
+  "personality": "friendly"  // optional, default "friendly"
 }
 ```
 
 **Response `200`:**
 ```json
 {
-  "session_id": "uuid",
-  "greeting": "Let's work through this authentication middleware review...",
-  "first_prompt": "Start by reading the code snippet. What do you notice about the token validation?"
+  "session_id": "uuid-string",
+  "content": "Welcome! Let's start with a quick recap. What is a closure?",
+  "phase": "recap",
+  "phase_progress": 1
 }
 ```
 
 ---
 
-### POST /ai/coach/chat (NEW)
+### POST /ai/coach/chat
 
-Сообщение в активной Coach session. Требует JWT.
+Сообщение в активной Coach session. Требует JWT. Consumes 1 credit.
 
 **Request:**
 ```json
 {
-  "session_id": "uuid",
-  "message": "I think the token is validated using HS256..."
+  "session_id": "uuid-string",
+  "message": "A closure captures variables from the enclosing scope"
 }
 ```
 
 **Response `200`:**
 ```json
 {
-  "response": "Good observation! Now, what happens if the token is expired?",
-  "hints_remaining": 2,
-  "progress_percent": 40
+  "session_id": "uuid-string",
+  "content": "Good thinking! Can you give an example?",
+  "phase": "recap",
+  "phase_progress": 1
 }
 ```
+
+Phases: `recap` → `read` → `check` → `practice` → `wrap-up`
 
 ---
 
-### POST /ai/coach/end (NEW)
+### POST /ai/coach/end
 
-Завершение Coach session. Требует JWT.
+Завершение Coach session с оценкой. Требует JWT.
 
 **Request:**
 ```json
 {
-  "session_id": "uuid"
+  "session_id": "uuid-string"
 }
 ```
 
 **Response `200`:**
 ```json
 {
-  "summary": "...",
-  "score": 85,
-  "time_spent_minutes": 12,
-  "concepts_practiced": ["jwt_validation", "middleware_patterns"]
+  "session_id": "uuid-string",
+  "score": 78.0,
+  "mastery_delta": 0.15,
+  "duration_seconds": 600,
+  "strengths": ["Good understanding of closures"],
+  "gaps": ["Needs practice with async decorators"]
 }
 ```
 
