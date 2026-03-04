@@ -7,7 +7,7 @@ from uuid import uuid4
 from app.domain.notification import Notification, NotificationType
 from app.repositories.notification_repo import NotificationRepository
 from app.services.notification_service import NotificationService
-from app.adapters.email import EmailAdapter
+from app.adapters.email import EmailClient
 
 
 EMAIL_TRIGGERING_TYPES = {"welcome", "course_completed", "review_received", "streak_at_risk"}
@@ -32,7 +32,7 @@ def mock_repo():
 
 @pytest.fixture
 def mock_email_adapter():
-    adapter = AsyncMock(spec=EmailAdapter)
+    adapter = AsyncMock(spec=EmailClient)
     adapter.send.return_value = True
     return adapter
 
@@ -81,9 +81,9 @@ class TestEmailTriggerForWelcome:
         )
 
         mock_email_adapter.send.assert_called_once_with(
-            to_email="user@example.com",
+            to="user@example.com",
             subject="Добро пожаловать в EduPlatform!",
-            body="Welcome to EduPlatform",
+            html_body="Welcome to EduPlatform",
         )
         assert result.email_sent is True
 
@@ -105,9 +105,9 @@ class TestEmailTriggerForCourseCompleted:
         )
 
         mock_email_adapter.send.assert_called_once_with(
-            to_email="user@example.com",
+            to="user@example.com",
             subject="Поздравляем с завершением курса!",
-            body="You finished the course",
+            html_body="You finished the course",
         )
 
 
@@ -128,9 +128,9 @@ class TestEmailTriggerForReviewReceived:
         )
 
         mock_email_adapter.send.assert_called_once_with(
-            to_email="teacher@example.com",
+            to="teacher@example.com",
             subject="Новый отзыв на ваш курс",
-            body="Someone reviewed your course",
+            html_body="Someone reviewed your course",
         )
 
 
@@ -151,9 +151,9 @@ class TestEmailTriggerForStreakAtRisk:
         )
 
         mock_email_adapter.send.assert_called_once_with(
-            to_email="user@example.com",
+            to="user@example.com",
             subject="Ваша серия под угрозой!",
-            body="Your streak is at risk!",
+            html_body="Your streak is at risk!",
         )
 
 

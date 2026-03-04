@@ -18,7 +18,7 @@ from app.config import Settings
 from app.repositories.notification_repo import NotificationRepository
 from app.repositories.conversation_repo import ConversationRepository
 from app.repositories.message_repo import MessageRepository
-from app.adapters.email import EmailAdapter
+from app.adapters.email import EmailClient, StubEmailClient, ResendEmailClient
 from app.services.notification_service import NotificationService
 from app.services.smart_reminder_service import SmartReminderService
 from app.services.messaging_service import MessagingService
@@ -80,10 +80,21 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
+    _http_client = httpx.AsyncClient()
 
     repo = NotificationRepository(_pool)
-    email_adapter = EmailAdapter()
-    _notification_service = NotificationService(repo, email_adapter=email_adapter)
+    email_client: EmailClient
+    if app_settings.resend_api_key:
+        email_client = ResendEmailClient(
+            api_key=app_settings.resend_api_key,
+            http_client=_http_client,
+            from_address=app_settings.email_from_address,
+        )
+        logger.info("email_client_initialized", type="resend")
+    else:
+        email_client = StubEmailClient()
+        logger.info("email_client_initialized", type="stub")
+    _notification_service = NotificationService(repo, email_adapter=email_client)
 
     conversation_repo = ConversationRepository(_pool)
     message_repo = MessageRepository(_pool)
@@ -92,7 +103,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         message_repo=message_repo,
     )
 
-    _http_client = httpx.AsyncClient()
     _smart_reminder_service = SmartReminderService(
         repo=repo,
         http_client=_http_client,
