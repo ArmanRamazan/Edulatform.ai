@@ -291,6 +291,100 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 
 ---
 
+### GET /referral/me
+
+Статистика реферальной программы текущего пользователя. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Response `200`:**
+```json
+{
+  "referral_code": "REF-A1B2C3D4",
+  "total_referrals": 5,
+  "completed_referrals": 3,
+  "pending_referrals": 2
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+
+---
+
+### POST /referral/apply
+
+Применение реферального кода. Привязывает текущего пользователя как реферала. Требует JWT.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "referral_code": "REF-A1B2C3D4"
+}
+```
+
+**Response `201`:**
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "referrer_id": "...",
+  "referee_id": "...",
+  "referral_code": "REF-A1B2C3D4",
+  "status": "pending",
+  "reward_type": null,
+  "created_at": "2026-03-04T12:00:00+00:00",
+  "completed_at": null
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 404 | Реферальный код не найден |
+| 409 | Пользователь уже применил реферальный код / нельзя реферить самого себя |
+
+---
+
+### POST /referral/complete
+
+Завершение реферала (внутренний/admin триггер). Обновляет статус на `completed`.
+
+**Headers:** `Authorization: Bearer <token>`
+
+**Request:**
+```json
+{
+  "referee_id": "550e8400-e29b-41d4-a716-446655440000"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "id": "...",
+  "referrer_id": "...",
+  "referee_id": "...",
+  "referral_code": "REF-A1B2C3D4",
+  "status": "completed",
+  "reward_type": "...",
+  "created_at": "2026-03-04T12:00:00+00:00",
+  "completed_at": "2026-03-04T13:00:00+00:00"
+}
+```
+
+**Errors:**
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует или невалидный токен |
+| 404 | Реферал не найден |
+
+---
+
 ## Course Service (`:8002`)
 
 ### GET /categories

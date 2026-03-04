@@ -2,9 +2,10 @@ from uuid import UUID
 
 import asyncpg
 
+from app.domain.referral import generate_referral_code
 from app.domain.user import User, UserRole
 
-_COLUMNS = "id, email, password_hash, name, role, is_verified, created_at, email_verified"
+_COLUMNS = "id, email, password_hash, name, role, is_verified, created_at, email_verified, referral_code"
 
 
 class UserRepository:
@@ -12,16 +13,18 @@ class UserRepository:
         self._pool = pool
 
     async def create(self, email: str, password_hash: str, name: str, role: UserRole) -> User:
+        referral_code = generate_referral_code()
         row = await self._pool.fetchrow(
             f"""
-            INSERT INTO users (email, password_hash, name, role)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO users (email, password_hash, name, role, referral_code)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING {_COLUMNS}
             """,
             email,
             password_hash,
             name,
             role,
+            referral_code,
         )
         return self._to_entity(row)
 
@@ -85,6 +88,20 @@ class UserRepository:
             password_hash,
         )
 
+    async def get_referral_code(self, user_id: UUID) -> str | None:
+        return await self._pool.fetchval(
+            "SELECT referral_code FROM users WHERE id = $1",
+            user_id,
+        )
+
+    async def set_referral_code(self, user_id: UUID, referral_code: str) -> str:
+        await self._pool.execute(
+            "UPDATE users SET referral_code = $2 WHERE id = $1",
+            user_id,
+            referral_code,
+        )
+        return referral_code
+
     @staticmethod
     def _to_entity(row: asyncpg.Record) -> User:
         return User(
@@ -96,4 +113,5 @@ class UserRepository:
             is_verified=row["is_verified"],
             created_at=row["created_at"],
             email_verified=row["email_verified"],
+            referral_code=row["referral_code"],
         )

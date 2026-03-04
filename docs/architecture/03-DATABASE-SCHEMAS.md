@@ -15,7 +15,8 @@ identity-db (PostgreSQL 16 Alpine, :5433)
        ├── table: users
        ├── table: refresh_tokens
        ├── table: email_verification_tokens
-       └── table: password_reset_tokens
+       ├── table: password_reset_tokens
+       └── table: referrals
 
 course-db (PostgreSQL 16 Alpine, :5434)
   └── database: course
@@ -69,7 +70,7 @@ learning-db (PostgreSQL 16 Alpine, :5438)
        └── table: pretest_answers
 ```
 
-**Итого: 34 таблицы в 6 базах данных.**
+**Итого: 35 таблиц в 6 базах данных.**
 
 ---
 
@@ -92,6 +93,7 @@ CREATE TABLE IF NOT EXISTS users (
     role           user_role NOT NULL DEFAULT 'student',
     is_verified    BOOLEAN NOT NULL DEFAULT false,
     email_verified BOOLEAN NOT NULL DEFAULT false,
+    referral_code  VARCHAR(12) UNIQUE,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
@@ -105,9 +107,10 @@ CREATE TABLE IF NOT EXISTS users (
 | `role` | user_role | NOT NULL, DEFAULT 'student' | Роль: student, teacher или admin |
 | `is_verified` | BOOLEAN | NOT NULL, DEFAULT false | Верификация преподавателя (admin only) |
 | `email_verified` | BOOLEAN | NOT NULL, DEFAULT false | Подтверждение email |
+| `referral_code` | VARCHAR(12) | UNIQUE | Реферальный код (REF-XXXXXXXX), генерируется при регистрации |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
 
-**Индексы:** PK (id) + UNIQUE (email).
+**Индексы:** PK (id) + UNIQUE (email) + UNIQUE (referral_code).
 
 **Миграции:**
 - `001_users.sql` — создание таблицы users
@@ -116,6 +119,7 @@ CREATE TABLE IF NOT EXISTS users (
 - `004_refresh_tokens.sql` — таблица refresh_tokens + индексы
 - `005_email_verification.sql` — email_verified column + email_verification_tokens table
 - `006_password_reset.sql` — password_reset_tokens table
+- `007_referrals.sql` — referral_code column в users + таблица referrals
 
 ### Table: `refresh_tokens`
 
@@ -178,6 +182,34 @@ CREATE TABLE IF NOT EXISTS password_reset_tokens (
 **Индексы:** PK (id) + UNIQUE (token_hash) + idx_password_reset_user_id.
 
 TTL: 1 час. Rate limit: 3 запроса в час на пользователя (silent ignore). После сброса пароля все refresh tokens отзываются.
+
+### Table: `referrals`
+
+```sql
+CREATE TABLE IF NOT EXISTS referrals (
+    id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    referrer_id   UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    referee_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    referral_code VARCHAR(12) NOT NULL,
+    status        VARCHAR(20) NOT NULL DEFAULT 'pending',
+    reward_type   VARCHAR(50),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    completed_at  TIMESTAMPTZ
+);
+```
+
+| Column | Type | Constraints | Описание |
+|--------|------|-------------|----------|
+| `id` | UUID | PK, auto | Уникальный идентификатор |
+| `referrer_id` | UUID | FK → users(id) CASCADE, NOT NULL | Пользователь, который пригласил |
+| `referee_id` | UUID | FK → users(id) CASCADE, NOT NULL | Приглашённый пользователь |
+| `referral_code` | VARCHAR(12) | NOT NULL | Реферальный код (REF-XXXXXXXX) |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | Статус: pending, completed |
+| `reward_type` | VARCHAR(50) | — | Тип награды (если выдана) |
+| `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+| `completed_at` | TIMESTAMPTZ | — | Дата завершения реферала |
+
+**Индексы:** PK (id) + idx_referrals_referrer_id + idx_referrals_referee_id.
 
 ---
 

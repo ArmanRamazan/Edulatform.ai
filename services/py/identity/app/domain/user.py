@@ -22,6 +22,7 @@ class User:
     is_verified: bool
     created_at: datetime
     email_verified: bool = False
+    referral_code: str | None = None
 
 
 class UserCreate(BaseModel):
