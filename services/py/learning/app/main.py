@@ -45,6 +45,7 @@ from app.services.study_group_service import StudyGroupService
 from app.services.certificate_service import CertificateService
 from app.services.trust_level_service import TrustLevelService
 from app.services.mission_service import MissionService
+from app.services.review_generator import ReviewGenerator
 from app.services.daily_service import DailyService
 from app.routes.quizzes import router as quizzes_router
 from app.routes.flashcards import router as flashcards_router
@@ -258,6 +259,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     trust_level_repo = TrustLevelRepository(_pool)
     _trust_level_service = TrustLevelService(trust_level_repo)
 
+    _review_generator = ReviewGenerator(flashcard_service=_flashcard_service)
+
     _http_client = httpx.AsyncClient(timeout=30.0)
     mission_repo = MissionRepository(_pool)
     _mission_service = MissionService(
@@ -265,6 +268,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         trust_level_service=_trust_level_service,
         http_client=_http_client,
         settings=app_settings,
+        review_generator=_review_generator,
     )
 
     _daily_service = DailyService(

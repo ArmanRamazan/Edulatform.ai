@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import httpx
+import structlog
 
 from common.errors import AppError, ForbiddenError, NotFoundError
 from app.domain.mission import Mission
 from app.repositories.mission_repo import MissionRepository
 from app.services.trust_level_service import TrustLevelService
+
+if TYPE_CHECKING:
+    from app.services.review_generator import ReviewGenerator
+
+logger = structlog.get_logger()
 
 
 class MissionService:
@@ -18,11 +25,13 @@ class MissionService:
         trust_level_service: TrustLevelService,
         http_client: httpx.AsyncClient,
         settings: object,
+        review_generator: ReviewGenerator | None = None,
     ) -> None:
         self._repo = mission_repo
         self._trust = trust_level_service
         self._http = http_client
         self._ai_url: str = settings.ai_service_url  # type: ignore[attr-defined]
+        self._review_generator = review_generator
 
     async def get_or_create_today(
         self, user_id: UUID, org_id: UUID, *, token: str,
@@ -107,6 +116,16 @@ class MissionService:
         )
 
         await self._trust.record_mission_completed(user_id, mission.organization_id)
+
+        if self._review_generator is not None:
+            try:
+                await self._review_generator.generate_from_mission(user_id, completed)
+            except Exception:
+                logger.warning(
+                    "review_generation_failed",
+                    mission_id=str(mission_id),
+                    user_id=str(user_id),
+                )
 
         return completed
 
