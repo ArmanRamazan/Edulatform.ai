@@ -179,17 +179,19 @@ apps/{app}/
 │   │   ├── badges/
 │   │   ├── org/                 #     Organization selector
 │   │   ├── settings/analytics/  #     Team analytics (admin: overview, heatmap, bottlenecks)
+│   │   ├── settings/billing/    #     Org subscription billing (Stripe integration)
 │   │   └── ...
 │   ├── layout.tsx               #   Root layout (fonts, providers)
 │   └── globals.css              #   Dark Knowledge theme CSS variables
 ├── components/                  #   Компоненты специфичные для этого app
-│   ├── ui/                      #     shadcn/ui components (15: button, card, badge, input, dialog, etc.)
+│   ├── ui/                      #     shadcn/ui components (16: button, card, badge, input, dialog, alert-dialog, etc.)
 │   ├── layout/                  #     Sidebar.tsx, TopBar.tsx, CommandPalette.tsx
 │   ├── dashboard/               #     DashboardGrid.tsx, BlockErrorBoundary.tsx
 │   │   └── blocks/              #     7 dashboard blocks (Greeting, Mission, TrustLevel, etc.)
 │   ├── search/                  #     SearchView.tsx, InternalResultsSection, ExternalResultsSection, RouteIndicator
 │   ├── mission/                 #     MissionSession.tsx, MissionComplete.tsx, PhaseIndicator.tsx (5-phase Socratic session)
 │   ├── admin/analytics/         #     TeamOverview, ConceptCoverage (heatmap), BottleneckReport
+│   ├── admin/billing/           #     BillingPage.tsx, PaymentForm.tsx (Stripe Elements)
 │   └── providers/               #     OrgProvider.tsx, Providers.tsx (QueryClient)
 ├── hooks/                       #   Custom React hooks (TanStack Query)
 │   ├── use-auth.ts              #     Login/register/logout (не server state)
@@ -203,6 +205,7 @@ apps/{app}/
 │   ├── use-gamification.ts      #     useMyXp, useMyXpHistory, useMyBadges, useMyStreak
 │   ├── use-coach.ts             #     useStartCoachSession, useSendCoachMessage, useEndCoachSession
 │   ├── use-analytics.ts         #     useTeamOverview, useConceptCoverage, useBottlenecks (org admin analytics)
+│   ├── use-billing.ts           #     useOrgSubscription, useCreateOrgSubscription, useCancelOrgSubscription
 │   └── ...
 ├── lib/                         #   API вызовы, утилиты, конфиг
 │   └── api.ts                   #     Typed API namespaces
