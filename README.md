@@ -1,102 +1,170 @@
-# EduPlatform — Learning Velocity Platform
+# KnowledgeOS — The Operating System for Engineering Knowledge
 
-**87% онлайн-курсов никогда не завершаются.** Мы это меняем.
+> Your company's code is the curriculum. AI builds the lessons.
 
-EduPlatform — не очередной видеохостинг с прогресс-баром. Это платформа, которая *ускоряет обучение* через AI-адаптацию, активное тестирование и научно обоснованные методы запоминания.
-
-## Проблема
-
-Индустрия онлайн-образования сломана. Completion rate курсов — **13%**. Студенты смотрят видео, не усваивают материал и бросают. Платформы зарабатывают на продаже контента, а не на результате обучения.
-
-## Решение
-
-**Learning Velocity Engine** — AI-слой поверх образовательного контента:
+**Every engineering team has the same problem:** documentation is outdated, onboarding takes months, and critical knowledge lives in one person's head. KnowledgeOS fixes this by turning your codebase and docs into a living, AI-powered knowledge graph that teaches itself.
 
 ```
-  ┌─────────────────────────────────────────────────┐
-  │       CONSUME          →       PRACTICE          │
-  │   Video / Text              Quiz / Active Recall │
-  │   AI Summary                AI-generated tasks   │
-  └────────────┬────────────────────────┬────────────┘
-               │                        │
-  ┌────────────▼────────────────────────▼────────────┐
-  │       REINFORCE         →       REFLECT          │
-  │   Spaced Repetition         Knowledge Graph      │
-  │   Flashcards (FSRS)         Concept Mastery      │
-  │   Socratic AI Tutor         Progress Analytics   │
-  └──────────────────────────────────────────────────┘
+      ┌──────────────────────────────────────────────────────────────┐
+      │                                                              │
+      │    Your Code + Docs                                          │
+      │         │                                                    │
+      │         ▼                                                    │
+      │    ┌─────────────┐     ┌──────────────┐    ┌────────────┐   │
+      │    │  RAG Engine  │────▶│  AI Strategist│───▶│  Knowledge │   │
+      │    │  (pgvector)  │     │  (Gemini)     │    │   Graph    │   │
+      │    └─────────────┘     └──────────────┘    └─────┬──────┘   │
+      │                                                   │          │
+      │         ┌─────────────────────────────────────────┘          │
+      │         ▼                                                    │
+      │    ┌──────────┐    ┌──────────────┐    ┌─────────────────┐  │
+      │    │ Designer │───▶│ Daily Mission │───▶│  Socratic Coach │  │
+      │    │ (builds)  │    │ (personalized)│    │  (teaches)      │  │
+      │    └──────────┘    └──────────────┘    └─────────────────┘  │
+      │                                                              │
+      │    Result: Engineer masters your stack in weeks, not months  │
+      └──────────────────────────────────────────────────────────────┘
 ```
 
-Каждый урок автоматически превращается в квизы, саммари и флешкарты. AI-тьютор помогает разобраться в сложных темах через сократический диалог. Knowledge graph отслеживает, что студент *действительно усвоил*, а не просто просмотрел.
+## The Problem
 
-## Ключевые метрики
+- **87% of engineering onboarding is passive** — reading docs, watching recordings, shadowing
+- **Average time to first meaningful commit: 3 months** at large companies
+- **Knowledge silos** — when senior engineers leave, knowledge walks out the door
+- Internal wikis are where documentation goes to die
 
-| Метрика | Индустрия | Наша цель |
-|---------|-----------|-----------|
-| Completion rate | 13% | **40%+** |
-| 7-day retention | ~30% | **60%+** |
-| Активное обучение | < 5% времени | **> 40% времени** |
+## How It Works
 
-## Архитектура
+**1. Ingest** — Connect your GitHub repos, upload docs, or paste markdown. RAG engine chunks, embeds, and extracts concepts automatically.
 
-Монорепа: **Python** (бизнес-логика, 7 микросервисов) + **Next.js** (frontend) + **Rust** (performance-critical, Phase 4).
+**2. Map** — AI builds a knowledge graph of your stack. Concepts, dependencies, difficulty levels — all visible in an interactive Obsidian-like graph.
 
-- **7 сервисов**: Identity, Course, Enrollment, Payment, Notification, AI, Learning
-- **777 unit-тестов**, нагрузочное тестирование через Locust
-- **105 endpoint**, **38 таблиц** в 6 БД
-- **157 RPS, p99 = 51ms** на текущей стадии
-- **AI**: Quiz generation, Summary, Socratic Tutor, Study Plan (Gemini Flash), FSRS spaced repetition
-- **Knowledge Graph**: concepts, prerequisites, concept mastery tracking
-- Prometheus + Grafana для observability
-- Clean Architecture, каждый сервис — своя PostgreSQL
+**3. Learn** — Tri-agent AI system creates personalized daily missions:
+- **Strategist** plans your learning path through the concept graph
+- **Designer** assembles missions from your actual code and docs
+- **Coach** teaches through Socratic dialogue — never gives answers, always asks the right questions
 
-## Быстрый старт
+**4. Grow** — Trust Level system (0-5) progressively unlocks access as engineers prove mastery. From documentation → staging → production → architecture decisions.
+
+## Why This Architecture
+
+```
+Python (8 services)          — business logic, AI orchestration, CRUD
+Rust (3 services, planned)   — API gateway, search, real-time messaging
+Next.js (App Router)         — Dark Knowledge UI (Obsidian-inspired)
+PostgreSQL (7 databases)     — one per service, full isolation
+pgvector                     — semantic search, RAG embeddings
+Redis                        — session cache, rate limiting, agent memory
+Gemini Flash                 — quiz generation, coaching, content design
+FSRS algorithm               — spaced repetition, scientifically optimal intervals
+```
+
+## Numbers
+
+| Metric | Value |
+|--------|-------|
+| Backend services | **8** (Identity, Course, Enrollment, Payment, Notification, AI, Learning, RAG) |
+| Unit tests | **945** |
+| API endpoints | **130+** |
+| Database tables | **45+** |
+| AI agents | **3** (Strategist, Designer, Coach) |
+| Trust levels | **6** (Observer → Expert) |
+| Data isolation | **Configurable per org** (Gemini or self-hosted LLM) |
+
+## Smart Search with Data Isolation
+
+Two search channels that never cross:
+
+```
+"How does our auth middleware work?"
+  → INTERNAL ONLY → RAG search → your company's code
+  → Results never leave your infrastructure
+
+"React Suspense best practices"
+  → EXTERNAL ONLY → Gemini web grounding → public internet
+  → Only query text sent, zero internal context
+
+"How we implemented caching and best practices"
+  → BOTH (parallel) → RAG + Web → results merged on frontend only
+  → Internal data and external queries in separate API calls
+```
+
+Configurable per organization: **Standard** (Gemini processes internal data under ToS) or **Strict** (self-hosted LLM, nothing leaves your infra).
+
+## MCP-Ready
+
+Every user-facing endpoint is designed for AI tool integration. Connect KnowledgeOS to Cursor, Claude Desktop, or your custom agent:
+
+```
+search_knowledge  — semantic search across your KB
+get_concept_graph — full knowledge graph with mastery
+start_mission     — begin today's learning session
+coach_chat        — Socratic dialogue with AI coach
+create_concept    — add to the knowledge graph
+```
+
+16 MCP tools. Full CRUD. JWT-authenticated. Trust level enforced.
+
+## Quick Start
 
 ```bash
-# Запуск бэкенда (Docker, hot reload)
+# Backend (all 8 services + databases)
 docker compose -f docker-compose.dev.yml up
 
-# Фронтенд
+# Frontend (Dark Knowledge UI)
 cd apps/buyer && pnpm install && pnpm dev
 
-# Тесты (618 тестов, 7 сервисов)
-uv sync --all-packages
-cd services/py/identity && uv run --package identity pytest tests/ -v
-cd services/py/course && uv run --package course pytest tests/ -v
-cd services/py/enrollment && uv run --package enrollment pytest tests/ -v
-cd services/py/payment && uv run --package payment pytest tests/ -v
+# Seed test data
+docker compose -f docker-compose.dev.yml --profile seed up seed
+
+# Run all 945 tests
+cd services/py/identity    && uv run --package identity pytest tests/ -v
+cd services/py/course      && uv run --package course pytest tests/ -v
+cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v
+cd services/py/payment     && uv run --package payment pytest tests/ -v
 cd services/py/notification && uv run --package notification pytest tests/ -v
-cd services/py/ai && uv run --package ai pytest tests/ -v
-cd services/py/learning && uv run --package learning pytest tests/ -v
+cd services/py/ai          && uv run --package ai pytest tests/ -v
+cd services/py/learning    && uv run --package learning pytest tests/ -v
+cd services/py/rag         && uv run --package rag pytest tests/ -v
 ```
 
 ## AI Orchestrator
 
-Автономный executor для реализации roadmap через Claude Code. Принимает YAML task files:
+Autonomous build system. Reads YAML task files, executes via Claude Code CLI, runs tests, commits. Multi-agent mode parallelizes independent tasks.
 
 ```bash
 cd tools/orchestrator
-./run.sh tasks/sprint-1-launch-blockers.yaml   # конкретный спринт
-./run.sh tasks/sprint-1-launch-blockers.yaml --dry-run  # preview задач
-./run.sh --resume                              # продолжить после паузы
-./run.sh --status                              # показать прогресс
+
+# Run a sprint (multi-agent, parallel where possible)
+./run.sh tasks/sprint-21-dark-knowledge-foundation.yaml --multi-agent
+
+# Full B2B pipeline (all sprints, auto-parallelized)
+./run-b2b.sh
+
+# Preview without executing
+./run-b2b.sh --dry-run
+
+# Resume after interruption
+./run-b2b.sh --resume
 ```
 
-## Документация
+## Documentation
 
-- [Technical Overview](docs/TECHNICAL-OVERVIEW.md) — стек, порты, структура, полный quickstart
-- [Product Vision](docs/goals/01-PRODUCT-VISION.md) — Learning Velocity Engine, core loop
-- [Roadmap](docs/goals/00-ROADMAP.md) — от 10K до 10M пользователей
-- [Architecture](docs/goals/02-ARCHITECTURE-PRINCIPLES.md) — ADR, принципы, технологии
+- [Design Document](docs/plans/2026-03-05-b2b-knowledge-platform-design.md) — Dark Knowledge theme, concept hub, MCP server
+- [Technical Overview](docs/TECHNICAL-OVERVIEW.md) — stack, ports, structure, quickstart
+- [AI Agent Standards](docs/goals/11-AI-AGENT-STANDARDS.md) — tri-agent system, data isolation, MCP readiness
+- [Architecture](docs/architecture/01-SYSTEM-OVERVIEW.md) — system diagram, service boundaries
 
-## Статус
+## Roadmap
 
-**Phase 3.2 — Monetization backend (завершён).** 7 сервисов, 95 endpoint, 599 тестов. AI-слой: quiz generation, summary, Socratic tutor, study plan. Learning Engine: квизы + FSRS flashcards + knowledge graph + gamification. Buyer App: 18 страниц (каталог, обучение, AI, геймификация, onboarding). Stripe backend: subscriptions, earnings, payouts, coupons, invoice PDF. Course bundles.
+| Phase | Focus | Status |
+|-------|-------|--------|
+| **Foundation** | 8 Python services, Clean Architecture, 945 tests | Done |
+| **Learning Intelligence** | AI agents, FSRS, knowledge graph, gamification | Done |
+| **B2B Pivot** | Dark Knowledge UI, org isolation, smart search, MCP | In Progress |
+| **Rust Performance** | API gateway, search service, WebSocket, embedding orchestrator | Planned |
+| **Scale** | 10M users, multi-region, self-hosted LLM option | Planned |
 
-| Стадия | Пользователи | Статус |
-|--------|-------------|--------|
-| **Phase 0 — Foundation** | до 10K | ✅ Готово |
-| **Phase 1 — Launch** | 10K → 100K | ✅ Готово |
-| **Phase 2 — Learning Intelligence** | 10K → 100K | 🟡 2.0–2.4 ✅, 2.5 частично |
-| **Phase 3 — Growth** | 100K → 1M | 🟡 3.1–3.2 backend ✅, frontend 🔴 |
-| **Phase 4 — Scale** | 1M → 10M | 🔴 Не начато |
+---
+
+Built with obsessive attention to architecture. Every service has its own database. Every endpoint is tested. Every AI interaction respects data boundaries. No shortcuts.
