@@ -1338,22 +1338,29 @@ Trust levels всех участников организации. Admin-only (r
 
 ---
 
-### Daily Summary (NEW — 1 endpoint)
+### Daily Summary (1 endpoint)
 
-#### GET /daily/me (NEW)
-Ежедневная сводка прогресса. Authenticated.
+#### GET /daily/me
+Unified daily session summary. Authenticated.
+
+**Query params:** `org_id` (required, UUID).
 
 **Response `200`:**
 ```json
 {
-  "date": "2026-03-05",
-  "mission_completed": true,
-  "xp_earned_today": 75,
-  "concepts_practiced": 3,
+  "mission": {
+    "id": "uuid",
+    "status": "pending",
+    "concept_name": "Authentication Middleware"
+  },
+  "trust_level": 2,
+  "due_flashcards": 5,
   "streak_days": 7,
-  "trust_level": 2
+  "greeting": "Good morning! You have a 7-day streak."
 }
 ```
+
+`mission` может быть `null` если миссия ещё не создана на сегодня.
 
 ---
 
