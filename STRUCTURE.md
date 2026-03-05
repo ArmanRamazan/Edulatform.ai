@@ -28,13 +28,13 @@ eduplatform/
 │   │   ├── identity/              #   Auth, JWT refresh tokens, roles, admin, email verification, forgot password
 │   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization, bundles, wishlist
 │   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion, recommendations
-│   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts, coupons, invoice PDF, refunds
+│   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts, coupons, invoice PDF, refunds, org subscriptions (seat-based B2B)
 │   │   ├── notification/          #   In-app уведомления, email (lifecycle events), direct messaging
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
 │   │   ├── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed, certificates, missions, trust levels
 │   │   └── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base, GitHub adapter
 │   └── rs/                        # Rust сервисы (performance-critical)
-│       ├── api-gateway/           #   Routing, auth check, rate limiting
+│       ├── api-gateway/           #   Axum :8080, health checks, config, error types (scaffolded)
 │       ├── search/                #   Поисковый proxy + ranking
 │       ├── video-processor/       #   Upload, transcode, stream
 │       └── payment-engine/        #   Транзакции, подписки, payouts

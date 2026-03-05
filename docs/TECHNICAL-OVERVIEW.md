@@ -95,7 +95,7 @@ Sprints 23-25. Rust-сервисы для performance-critical paths:
 
 | Сервис | Порт | Технологии | Назначение | Sprint |
 |--------|------|-----------|------------|--------|
-| API Gateway | 8080 | Axum, tower-http, jsonwebtoken | Единая точка входа, JWT, rate limiting, CORS | 23 |
+| API Gateway | 8080 | Axum, tower-http, thiserror, tracing | Единая точка входа, JWT, rate limiting, CORS | 23 (scaffolded) |
 | RAG Chunker | — (FFI) | pyo3, maturin | CPU-bound chunking из Python RAG | 24 |
 | Search Service | 8010 | Axum, tantivy | Full-text search, замена Meilisearch | 24 |
 | Embedding Orchestrator | 8009 | Axum, tokio, reqwest | Batch parallel embeddings | 25 |
@@ -144,7 +144,12 @@ cd services/py/learning    && uv run --package learning pytest tests/ -v     # 2
 cd services/py/rag         && uv run --package rag pytest tests/ -v          # 161 tests
 ```
 
-**Итого:** 1216 passed, 6 failing по 8 сервисам.
+**Итого (Python):** 1216 passed, 6 failing по 8 сервисам.
+
+**Rust:**
+```bash
+cd services/rs/api-gateway && cargo test && cargo clippy -- -D warnings  # 3 tests
+```
 
 ## Инфраструктура
 
