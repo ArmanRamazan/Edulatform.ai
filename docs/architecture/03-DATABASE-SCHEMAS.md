@@ -928,7 +928,7 @@ CREATE TABLE IF NOT EXISTS certificates (
 
 ---
 
-### Table: `missions` (NEW)
+### Table: `missions`
 
 ```sql
 CREATE TABLE IF NOT EXISTS missions (
@@ -936,18 +936,13 @@ CREATE TABLE IF NOT EXISTS missions (
     user_id           UUID NOT NULL,
     organization_id   UUID NOT NULL,
     concept_id        UUID,
-    title             VARCHAR(500) NOT NULL,
-    description       TEXT NOT NULL DEFAULT '',
-    mission_type      VARCHAR(50) NOT NULL DEFAULT 'general',
-    difficulty        VARCHAR(20) NOT NULL DEFAULT 'intermediate',
-    estimated_minutes INTEGER NOT NULL DEFAULT 15,
+    mission_type      VARCHAR(20) NOT NULL DEFAULT 'daily',
     status            VARCHAR(20) NOT NULL DEFAULT 'pending',
-    score             INTEGER,
-    xp_earned         INTEGER,
-    time_spent_minutes INTEGER,
+    blueprint         JSONB NOT NULL DEFAULT '{}',
+    score             FLOAT,
+    mastery_delta     FLOAT,
     started_at        TIMESTAMPTZ,
     completed_at      TIMESTAMPTZ,
-    mission_date      DATE NOT NULL DEFAULT CURRENT_DATE,
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
@@ -958,73 +953,69 @@ CREATE TABLE IF NOT EXISTS missions (
 | `user_id` | UUID | NOT NULL | Пользователь |
 | `organization_id` | UUID | NOT NULL | Организация |
 | `concept_id` | UUID | nullable | Привязанный концепт |
-| `title` | VARCHAR(500) | NOT NULL | Название миссии |
-| `description` | TEXT | NOT NULL, DEFAULT '' | Описание |
-| `mission_type` | VARCHAR(50) | NOT NULL, DEFAULT 'general' | Тип: code_review, debugging, implementation, quiz, general |
-| `difficulty` | VARCHAR(20) | NOT NULL, DEFAULT 'intermediate' | beginner, intermediate, advanced |
-| `estimated_minutes` | INTEGER | NOT NULL, DEFAULT 15 | Оценочное время |
+| `mission_type` | VARCHAR(20) | NOT NULL, DEFAULT 'daily' | Тип: daily, review, remedial |
 | `status` | VARCHAR(20) | NOT NULL, DEFAULT 'pending' | pending, in_progress, completed, skipped |
-| `score` | INTEGER | nullable | Оценка (0–100) |
-| `xp_earned` | INTEGER | nullable | Заработанный XP |
-| `time_spent_minutes` | INTEGER | nullable | Фактическое время |
+| `blueprint` | JSONB | NOT NULL, DEFAULT '{}' | Полные данные MissionBlueprint |
+| `score` | FLOAT | nullable | Оценка сессии (0.0–1.0) |
+| `mastery_delta` | FLOAT | nullable | Изменение mastery после миссии |
 | `started_at` | TIMESTAMPTZ | nullable | Время начала |
 | `completed_at` | TIMESTAMPTZ | nullable | Время завершения |
-| `mission_date` | DATE | NOT NULL, DEFAULT CURRENT_DATE | Дата миссии |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
 
-**Индексы:** PK (id) + idx_missions_user_org (user_id, organization_id) + idx_missions_date (user_id, mission_date) + idx_missions_status.
+**Индексы:** PK (id) + idx_missions_user (user_id) + idx_missions_user_date (user_id, created_at) + idx_missions_org (organization_id).
 
 ---
 
-### Table: `trust_levels` (NEW)
+### Table: `trust_levels`
 
 ```sql
 CREATE TABLE IF NOT EXISTS trust_levels (
-    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id             UUID NOT NULL,
-    organization_id     UUID NOT NULL,
-    level               INTEGER NOT NULL DEFAULT 0 CHECK (level BETWEEN 0 AND 5),
-    missions_completed  INTEGER NOT NULL DEFAULT 0,
-    concepts_mastered   INTEGER NOT NULL DEFAULT 0,
-    streak_days         INTEGER NOT NULL DEFAULT 0,
-    discussions_count   INTEGER NOT NULL DEFAULT 0,
-    updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    created_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(user_id, organization_id)
+    id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id                  UUID NOT NULL UNIQUE,
+    organization_id          UUID NOT NULL,
+    level                    INT NOT NULL DEFAULT 0,
+    total_missions_completed INT NOT NULL DEFAULT 0,
+    total_concepts_mastered  INT NOT NULL DEFAULT 0,
+    unlocked_areas           JSONB DEFAULT '[]',
+    level_up_at              TIMESTAMPTZ,
+    created_at               TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at               TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
 | Column | Type | Constraints | Описание |
 |--------|------|-------------|----------|
 | `id` | UUID | PK, auto | Уникальный идентификатор |
-| `user_id` | UUID | NOT NULL | Пользователь |
+| `user_id` | UUID | NOT NULL, UNIQUE | Пользователь |
 | `organization_id` | UUID | NOT NULL | Организация |
-| `level` | INTEGER | NOT NULL, DEFAULT 0, CHECK 0–5 | Trust level (0=Observer, 5=Expert) |
-| `missions_completed` | INTEGER | NOT NULL, DEFAULT 0 | Количество выполненных миссий |
-| `concepts_mastered` | INTEGER | NOT NULL, DEFAULT 0 | Количество освоенных концептов |
-| `streak_days` | INTEGER | NOT NULL, DEFAULT 0 | Текущий streak |
-| `discussions_count` | INTEGER | NOT NULL, DEFAULT 0 | Количество участий в дискуссиях |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата обновления |
+| `level` | INT | NOT NULL, DEFAULT 0 | Trust level (0=Newcomer, 5=Architect) |
+| `total_missions_completed` | INT | NOT NULL, DEFAULT 0 | Количество выполненных миссий |
+| `total_concepts_mastered` | INT | NOT NULL, DEFAULT 0 | Количество освоенных концептов |
+| `unlocked_areas` | JSONB | DEFAULT '[]' | Разблокированные области доступа |
+| `level_up_at` | TIMESTAMPTZ | nullable | Время последнего повышения уровня |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
+| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата обновления |
 
-**Индексы:** PK (id) + UNIQUE(user_id, organization_id) + idx_trust_org_id.
+**Индексы:** PK (id) + UNIQUE(user_id) + idx_trust_levels_user (user_id) + idx_trust_levels_org (organization_id).
 
-**Trust Level повышение:** автоматическое на основе missions_completed, concepts_mastered, streak_days, discussions_count.
+**Trust Level повышение:** детерминированное на основе LEVEL_THRESHOLDS (missions + concepts_mastered). Уровни: 0=Newcomer, 1=Explorer (5m/3c), 2=Contributor (15m/8c), 3=Builder (30m/15c), 4=Guardian (50m/25c), 5=Architect (80m/40c).
 
 **Миграции (Learning):**
 - `001_quizzes.sql` — quizzes, questions, quiz_attempts
 - `002_flashcards.sql` — flashcards, review_logs
 - `003_concepts.sql` — concepts, concept_prerequisites, concept_mastery
-- `004_streaks.sql` — streaks
-- `005_leaderboard.sql` — leaderboard_scores
-- `006_discussions.sql` — comments, comment_upvotes
-- `007_xp_badges.sql` — xp_ledger, badges
-- `008_pretests.sql` — pretests, pretest_answers
-- `009_activity_feed.sql` — activity_feed
-- `010_study_groups.sql` — study_groups, study_group_members
-- `011_certificates.sql` — certificates
-- `012_missions.sql` — таблица missions (NEW)
-- `013_trust_levels.sql` — таблица trust_levels (NEW)
+- `004_indexes.sql` — дополнительные индексы
+- `005_streaks.sql` — streaks
+- `006_leaderboard.sql` — leaderboard_scores
+- `007_discussions.sql` — comments, comment_upvotes
+- `008_xp_badges.sql` — xp_ledger, badges
+- `009_pretests.sql` — pretests, pretest_answers
+- `010_activity_feed.sql` — activity_feed
+- `011_study_groups.sql` — study_groups, study_group_members
+- `012_discussion_enhancements.sql` — расширения discussions
+- `013_certificates.sql` — certificates
+- `014_trust_levels.sql` — trust_levels (progressive level-up system)
+- `015_missions.sql` — missions (structured learning sessions)
 
 ---
 
