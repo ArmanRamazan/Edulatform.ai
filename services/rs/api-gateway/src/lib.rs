@@ -4,11 +4,14 @@ pub mod auth;
 pub mod config;
 pub mod error;
 pub mod middleware;
+pub mod proxy;
 
 use std::time::Duration;
 
 use axum::http::StatusCode;
-use axum::{routing::get, Json, Router};
+use axum::routing::{any, get};
+use axum::{Json, Router};
+use proxy::ProxyService;
 use serde_json::{json, Value};
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
@@ -36,6 +39,23 @@ pub fn create_router_with_secret(jwt_secret: String) -> Router {
     let router = Router::new()
         .route("/health/live", get(health_live))
         .route("/health/ready", get(health_ready));
+
+    middleware::apply_auth(router, jwt_secret)
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_secs(30),
+        ))
+        .layer(TraceLayer::new_for_http())
+}
+
+/// Create the application router with proxy routing to upstream services.
+///
+/// This is the production constructor with full proxy support.
+pub fn create_router_with_proxy(jwt_secret: String, proxy_service: ProxyService) -> Router {
+    let router = Router::new()
+        .route("/health/live", get(health_live))
+        .route("/health/ready", get(health_ready))
+        .fallback(any(proxy::proxy_handler).with_state(proxy_service));
 
     middleware::apply_auth(router, jwt_secret)
         .layer(TimeoutLayer::with_status_code(
