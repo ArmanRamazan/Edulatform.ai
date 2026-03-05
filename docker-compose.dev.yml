@@ -275,6 +275,28 @@ services:
       rag-db:
         condition: service_healthy
 
+  api-gateway:
+    build: services/rs/api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      GATEWAY_PORT: 8080
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-key-at-least-32-chars!!}
+      IDENTITY_URL: http://identity:8001
+      AI_URL: http://ai:8006
+      LEARNING_URL: http://learning:8007
+      RAG_URL: http://rag:8008
+      NOTIFICATION_URL: http://notification:8005
+      PAYMENT_URL: http://payment:8004
+      CORS_ORIGINS: http://localhost:3001,http://localhost:3000
+      RUST_LOG: api_gateway=debug,tower_http=debug
+    depends_on:
+      redis:
+        condition: service_healthy
+      identity:
+        condition: service_started
+
   seed:
     build:
       context: .

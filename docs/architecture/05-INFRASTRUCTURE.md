@@ -38,6 +38,7 @@ docker compose -f docker-compose.dev.yml up
 | ai | Dockerfile build | 8006 |
 | learning | Dockerfile build | 8007 |
 | rag | Dockerfile build | 8008 |
+| api-gateway | Rust multi-stage build | 8080 |
 | seed (profile) | Dockerfile build | — |
 
 ### Prod (`docker-compose.prod.yml`)
@@ -59,11 +60,20 @@ docker compose -f docker-compose.prod.yml up -d
 |-----------|-------|------|
 | prometheus | prom/prometheus | 9090 |
 | grafana | grafana/grafana | 3000 |
+| api-gateway | Rust multi-stage build | 8080 |
 | locust (profile) | Dockerfile build | 8089 |
 
 ---
 
 ## Dockerfiles
+
+### Rust (API Gateway)
+
+Multi-stage build: `rust:1.83-slim` (builder) → `debian:bookworm-slim` (runtime). Dependency caching via dummy `main.rs`. Runtime includes only the binary + `ca-certificates` + `curl` (for healthcheck).
+
+**Файл:** `services/rs/api-gateway/Dockerfile`
+
+### Python
 
 Все Python Dockerfiles используют одинаковый паттерн:
 
@@ -350,6 +360,12 @@ Locust UI: http://localhost:8089
 | redis | `redis-cli ping` | 5s | 3s | 5 |
 
 Все сервисы запускаются после `service_healthy` condition на своих БД.
+
+### API Gateway (Rust)
+
+| Container | Check | Interval | Timeout | Retries | Start Period |
+|-----------|-------|----------|---------|---------|--------------|
+| api-gateway | `curl -sf http://localhost:8080/health/live` | 10s | 5s | 5 | 10s |
 
 ### Application-level (все Python сервисы)
 
