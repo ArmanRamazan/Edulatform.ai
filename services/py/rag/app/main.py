@@ -24,9 +24,11 @@ from app.repositories.concept_store import ConceptStoreRepository
 from app.routes.ingestion_routes import create_ingestion_router
 from app.routes.search_routes import create_search_router
 from app.routes.concept_routes import create_concept_router
+from app.routes.knowledge_base_routes import create_knowledge_base_router
 from app.services.ingestion_service import IngestionService
 from app.services.search_service import SearchService
 from app.services.extraction_service import ExtractionService
+from app.services.knowledge_base_service import KnowledgeBaseService
 
 app_settings = Settings()
 
@@ -37,6 +39,7 @@ _ingestion_service: IngestionService | None = None
 _search_service: SearchService | None = None
 _extraction_service: ExtractionService | None = None
 _concept_store: ConceptStoreRepository | None = None
+_kb_service: KnowledgeBaseService | None = None
 
 
 def get_embedding_client() -> EmbeddingClient:
@@ -64,9 +67,14 @@ def get_concept_store() -> ConceptStoreRepository:
     return _concept_store
 
 
+def get_kb_service() -> KnowledgeBaseService:
+    assert _kb_service is not None
+    return _kb_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _http_client, _embedding_client, _ingestion_service, _search_service, _extraction_service, _concept_store
+    global _pool, _http_client, _embedding_client, _ingestion_service, _search_service, _extraction_service, _concept_store, _kb_service
 
     configure_logging(service_name="rag")
     logger = structlog.get_logger()
@@ -112,6 +120,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         search_repo=search_repo,
         embedding_client=_embedding_client,
     )
+    _kb_service = KnowledgeBaseService(
+        document_repo=doc_repo,
+        concept_store=_concept_store,
+        ingestion_service=_ingestion_service,
+        search_service=_search_service,
+    )
 
     logger.info("service_started", port=8008)
     yield
@@ -148,6 +162,13 @@ app.include_router(
     create_concept_router(
         get_extraction_service=get_extraction_service,
         get_concept_store=get_concept_store,
+        jwt_secret=app_settings.jwt_secret,
+        jwt_algorithm=app_settings.jwt_algorithm,
+    )
+)
+app.include_router(
+    create_knowledge_base_router(
+        get_service=get_kb_service,
         jwt_secret=app_settings.jwt_secret,
         jwt_algorithm=app_settings.jwt_algorithm,
     )

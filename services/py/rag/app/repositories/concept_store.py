@@ -41,12 +41,30 @@ class ConceptStoreRepository:
         async with self._pool.acquire() as conn:
             await conn.execute(sql, concept_id, related_concept_id, relationship_type)
 
+    async def count_by_org(self, org_id: UUID) -> int:
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT COUNT(*) FROM org_concepts WHERE organization_id = $1",
+                org_id,
+            )
+
     async def get_org_concepts(self, org_id: UUID) -> list[dict]:
         sql = """
             SELECT id, organization_id, name, description, source_document_id, created_at
             FROM org_concepts
             WHERE organization_id = $1
             ORDER BY name
+        """
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(sql, org_id)
+        return [dict(r) for r in rows]
+
+    async def get_relationships_by_org(self, org_id: UUID) -> list[dict]:
+        sql = """
+            SELECT cr.concept_id, cr.related_concept_id, cr.relationship_type
+            FROM concept_relationships cr
+            JOIN org_concepts oc ON cr.concept_id = oc.id
+            WHERE oc.organization_id = $1
         """
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(sql, org_id)

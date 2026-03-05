@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from uuid import UUID
 
 import asyncpg
@@ -96,6 +97,38 @@ class DocumentRepository:
                 offset,
             )
         return [self._row_to_document(r) for r in rows]
+
+    async def count_by_org(self, org_id: UUID) -> int:
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT COUNT(*) FROM documents WHERE organization_id = $1",
+                org_id,
+            )
+
+    async def count_chunks_by_org(self, org_id: UUID) -> int:
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                """
+                SELECT COUNT(*) FROM chunks c
+                JOIN documents d ON c.document_id = d.id
+                WHERE d.organization_id = $1
+                """,
+                org_id,
+            )
+
+    async def last_updated_by_org(self, org_id: UUID) -> datetime | None:
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT MAX(created_at) FROM documents WHERE organization_id = $1",
+                org_id,
+            )
+
+    async def delete_chunks_by_document(self, document_id: UUID) -> None:
+        async with self._pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM chunks WHERE document_id = $1",
+                document_id,
+            )
 
     async def delete_document(self, document_id: UUID) -> bool:
         async with self._pool.acquire() as conn:

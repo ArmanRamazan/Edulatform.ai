@@ -1557,47 +1557,106 @@ Readiness probe. Проверяет PostgreSQL (pgvector) pool.
 ### Knowledge Base Management (5 endpoints)
 
 #### GET /kb/{org_id}/stats
-Статистика knowledge base организации. Требует JWT + org membership.
+Статистика knowledge base организации. Требует JWT (любая роль).
 
 **Response `200`:**
 ```json
 {
-  "organization_id": "uuid",
   "total_documents": 150,
   "total_chunks": 3200,
   "total_concepts": 85,
-  "total_relationships": 120,
   "last_updated": "2026-03-05T00:00:00Z"
 }
 ```
 
+`last_updated` — `null` если документов нет.
+
 ---
 
 #### GET /kb/{org_id}/sources
-Список источников knowledge base. Требует JWT + org membership.
+Список документов-источников knowledge base. Требует JWT (любая роль). Возвращает до 100 документов.
+
+**Response `200`:**
+```json
+[
+  {
+    "id": "uuid",
+    "organization_id": "uuid",
+    "source_type": "text",
+    "source_path": "/docs/guide.md",
+    "title": "Authentication Guide",
+    "metadata": {},
+    "created_at": "2026-03-05T00:00:00Z"
+  }
+]
+```
 
 ---
 
 #### GET /kb/{org_id}/concepts
-Концепты knowledge base с relationships. Требует JWT + org membership.
+Граф концептов knowledge base (nodes + edges). Требует JWT (любая роль).
+
+**Response `200`:**
+```json
+{
+  "nodes": [
+    {"id": "uuid", "name": "Dependency Injection", "description": "A design pattern"}
+  ],
+  "edges": [
+    {"source": "uuid", "target": "uuid", "type": "related"}
+  ]
+}
+```
 
 ---
 
 #### POST /kb/{org_id}/search
-Поиск в knowledge base (alias для POST /search с org_id). Требует JWT + org membership.
+Семантический поиск в knowledge base. Требует JWT (любая роль).
+
+**Request:**
+```json
+{
+  "query": "How does auth work?",
+  "limit": 5
+}
+```
+
+`query` (required, min 1 char), `limit` (1–20, default 5).
+
+**Response `200`:**
+```json
+[
+  {
+    "chunk_id": "uuid",
+    "content": "...",
+    "similarity": 0.92,
+    "document_title": "Auth Guide",
+    "source_type": "text",
+    "source_path": "/docs/auth.md",
+    "metadata": {}
+  }
+]
+```
 
 ---
 
 #### POST /kb/{org_id}/refresh/{document_id}
-Переиндексация документа. Требует JWT + org admin.
+Переиндексация документа (удаление chunks, перечанкинг, переэмбеддинг). Требует JWT + admin.
 
-**Response `202`:**
+**Response `200`:**
 ```json
 {
-  "document_id": "uuid",
-  "status": "reindexing"
+  "id": "uuid",
+  "organization_id": "uuid",
+  "source_type": "text",
+  "source_path": "/docs/guide.md",
+  "title": "Authentication Guide",
+  "metadata": {},
+  "created_at": "2026-03-05T00:00:00Z"
 }
 ```
+
+**`404`:** Document not found.
 
 ---
 
