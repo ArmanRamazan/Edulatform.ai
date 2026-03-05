@@ -39,7 +39,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | Слой | Технология | Назначение |
 |------|-----------|------------|
 | Бизнес-логика | Python 3.12 / FastAPI | Clean Architecture, async |
-| Frontend | Next.js 15 / Tailwind CSS 4 | App Router, TanStack Query |
+| Frontend | Next.js 15 / Tailwind CSS 4 | App Router, TanStack Query, shadcn/ui (Dark Knowledge theme) |
 | БД | PostgreSQL 16 | Database-per-service |
 | Vector DB | PostgreSQL + pgvector | RAG embeddings, semantic search |
 | Кэш | Redis 7 | Cache, rate limiting, AI conversation memory |
