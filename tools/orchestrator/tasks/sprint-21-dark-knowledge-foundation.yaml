@@ -1,0 +1,391 @@
+phase: "sprint-21"
+description: "Dark Knowledge Foundation — shadcn/ui, dark theme, sidebar layout, dashboard rework, org selector"
+
+tasks:
+  - id: shadcn-dark-theme
+    title: "Install shadcn/ui and configure Dark Knowledge theme"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Set up shadcn/ui with the "Dark Knowledge" design system — dark theme, custom colors, fonts, animations.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15 App Router, Tailwind CSS 4.1, pnpm)
+      - Design document: docs/plans/2026-03-05-b2b-knowledge-platform-design.md
+      - Current state: default Tailwind, no design system, no shadcn, no theme
+      - Target: Obsidian/Linear/Raycast-inspired dark developer UI
+
+      WHAT TO BUILD:
+
+      1. Install shadcn/ui:
+         cd apps/buyer && pnpm dlx shadcn@latest init
+         - Style: New York
+         - Base color: Zinc (we'll override)
+         - CSS variables: yes
+
+      2. Install core shadcn components:
+         pnpm dlx shadcn@latest add button card badge input dialog dropdown-menu
+         pnpm dlx shadcn@latest add command separator tooltip avatar scroll-area
+         pnpm dlx shadcn@latest add sheet tabs skeleton progress
+
+      3. Install additional dependencies:
+         pnpm add next-themes framer-motion
+         pnpm add @next/font (if not present, use next/font)
+
+      4. Configure Dark Knowledge color palette in apps/buyer/app/globals.css:
+         Override CSS variables for shadcn:
+         :root (and .dark as default):
+           --background: 240 10% 3.9%     (#0a0a0f equivalent in HSL)
+           --foreground: 240 5% 90%        (#e2e2e8)
+           --card: 240 10% 7.8%            (#14141f)
+           --card-foreground: 240 5% 90%
+           --popover: 240 12% 11%          (#1a1a2e)
+           --popover-foreground: 240 5% 90%
+           --primary: 255 68% 67%          (#7c5cfc)
+           --primary-foreground: 0 0% 100%
+           --secondary: 240 10% 10%
+           --secondary-foreground: 240 5% 90%
+           --muted: 240 10% 15%
+           --muted-foreground: 240 5% 45%  (#6b6b80)
+           --accent: 255 68% 67%
+           --accent-foreground: 0 0% 100%
+           --destructive: 0 72% 71%        (#f87171)
+           --border: 240 10% 15%           (#1e1e2e)
+           --input: 240 10% 15%
+           --ring: 255 68% 67%
+           --success: 160 60% 52%          (#34d399)
+           --warning: 45 93% 56%           (#fbbf24)
+           --info: 199 89% 60%             (#38bdf8)
+
+      5. Configure fonts in apps/buyer/app/layout.tsx:
+         - Import Inter and JetBrains Mono via next/font/google
+         - Inter: weights 400, 500, 600, 700
+         - JetBrains Mono: weights 400, 500, 700
+         - Set CSS variables: --font-sans (Inter), --font-mono (JetBrains Mono)
+         - Apply font-sans to body
+
+      6. Install next-themes, add ThemeProvider to Providers.tsx:
+         - Default theme: "dark"
+         - Force dark for now (light mode later)
+
+      7. Update tailwind config (if needed) to extend with custom colors:
+         colors: {
+           success: "hsl(var(--success))",
+           warning: "hsl(var(--warning))",
+           info: "hsl(var(--info))",
+         }
+
+      8. Create apps/buyer/components/ui/README.md explaining the design system briefly.
+
+      9. Verify: all existing pages still render (may look different with new theme, that's OK).
+
+      RULES:
+      - Dark theme is DEFAULT and ONLY theme for now
+      - All shadcn components go to apps/buyer/components/ui/
+      - Keep existing components working (they'll be migrated later)
+      - Named exports only
+      - Do NOT refactor existing pages — only set up the foundation
+
+      COMMIT: feat(buyer): add shadcn/ui with Dark Knowledge theme and fonts
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: app-layout-sidebar
+    title: "Sidebar layout with navigation and command palette"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Replace the current Header-based navigation with a sidebar layout and add Cmd+K command palette.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui just installed, Dark Knowledge theme)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 2: Navigation
+      - Current: Header.tsx with horizontal nav (200+ lines)
+      - Target: collapsible sidebar (64px collapsed / 240px expanded) + top bar
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/components/layout/Sidebar.tsx ("use client"):
+         - Left sidebar, collapsible via toggle button
+         - Width: 240px expanded, 64px collapsed (icons only)
+         - Persist collapsed state in localStorage
+         - Navigation links with Lucide icons:
+           - Dashboard (LayoutDashboard)
+           - Graph (Network)
+           - Search (Search) + "Cmd+K" hint
+           - Missions (Target)
+           - Flashcards (BookOpen)
+           - Messages (MessageSquare)
+           - Notifications (Bell) + unread count badge
+           - separator
+           - Settings (Settings) — bottom
+         - Bottom section: user avatar + name + trust level badge
+         - Org logo + name at top
+         - Active link: left border 2px primary color + bg slightly lighter
+         - All colors from Dark Knowledge palette
+
+      2. apps/buyer/components/layout/TopBar.tsx ("use client"):
+         - Breadcrumbs (left)
+         - Cmd+K search trigger button (center)
+         - Notification bell + unread count (right)
+         - XP display + streak badge (right)
+         - Height: 48px
+         - Background: same as sidebar (card color)
+         - Bottom border: border color
+
+      3. apps/buyer/components/layout/CommandPalette.tsx ("use client"):
+         - Use shadcn CommandDialog (cmdk under the hood)
+         - Install: pnpm dlx shadcn@latest add command (if not done)
+         - Trigger: Cmd+K (Mac) / Ctrl+K (Windows)
+         - Groups: Navigation, Search (placeholder for now)
+         - Navigation items: Dashboard, Graph, Search, Missions, etc.
+         - Keyboard navigation
+         - Styled with Dark Knowledge elevated bg + blur overlay
+
+      4. Update apps/buyer/app/layout.tsx:
+         - Replace Header with new layout structure:
+           <div className="flex h-screen">
+             <Sidebar />
+             <div className="flex-1 flex flex-col overflow-hidden">
+               <TopBar />
+               <main className="flex-1 overflow-y-auto p-6">{children}</main>
+             </div>
+           </div>
+         - Keep Providers.tsx wrapping
+         - Remove old Footer (not needed in app layout)
+         - Landing page (/) should NOT use sidebar — use route group: (app) for sidebar, (marketing) for landing
+
+      5. Route groups:
+         - apps/buyer/app/(marketing)/ — landing page, login, register (NO sidebar)
+         - apps/buyer/app/(app)/ — dashboard, graph, search, missions, etc. (WITH sidebar)
+         - Move existing auth pages to (marketing)/
+         - Move dashboard, etc. to (app)/
+
+      6. Install Lucide: pnpm add lucide-react
+
+      RULES:
+      - Sidebar responsive: on mobile (< 768px) → overlay drawer via Sheet component
+      - Smooth transitions: width change animated 200ms
+      - Active route detected via usePathname()
+      - Named exports, use shadcn components where possible
+      - Old Header.tsx can remain but won't be used in (app) layout
+
+      COMMIT: feat(buyer): add sidebar layout with command palette and route groups
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [shadcn-dark-theme]
+
+  - id: dashboard-rework
+    title: "Endpoint-driven B2B dashboard with Dark Knowledge styling"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Rebuild the dashboard as endpoint-driven blocks — each block = one API call, independent loading/error.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge theme, sidebar layout)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 3.1: Dashboard
+      - Existing: apps/buyer/app/dashboard/ with DashboardContent.tsx, MissionCard.tsx, etc.
+      - Existing hooks: use-daily.ts, use-gamification.ts, use-concepts.ts
+      - API endpoints all exist on backend
+
+      WHAT TO BUILD:
+
+      1. Refactor apps/buyer/app/(app)/dashboard/page.tsx:
+         Server component wrapper, renders DashboardGrid client component.
+
+      2. apps/buyer/components/dashboard/DashboardGrid.tsx ("use client"):
+         Grid layout (CSS grid, responsive: 1 col mobile, 2 col tablet, 3 col desktop):
+         ```
+         [GreetingBlock    ] [MissionBlock      ] [TrustLevelBlock  ]
+         [FlashcardsBlock  ] [MasteryBlock      ] [ActivityBlock    ]
+         [TeamProgressBlock — full width, tech lead only             ]
+         ```
+         Each block wrapped in independent error boundary.
+
+      3. Block components (all in apps/buyer/components/dashboard/blocks/):
+
+         GreetingBlock.tsx:
+         - Hook: useDailySummary() → GET /daily/me
+         - Display: greeting text, streak count in JetBrains Mono (large), streak fire icon
+         - Skeleton: 2 lines pulse
+         - shadcn Card component with Dark Knowledge styling
+
+         MissionBlock.tsx:
+         - Hook: useDailySummary() (shared query key, TanStack deduplicates)
+         - Display: concept name, difficulty badge, estimated time
+         - Status: pending → "Start Mission" primary button with glow effect
+                   in_progress → "Continue" button
+                   completed → score with count-up animation (Framer Motion)
+         - shadcn Card + Badge + Button
+
+         TrustLevelBlock.tsx:
+         - Hook: useDailySummary()
+         - Display: level name, ring/arc progress chart (SVG), missions to next level
+         - Ring colors: mastery gradient from design doc
+         - "12/30 missions to Contributor" in muted text
+         - shadcn Card
+
+         FlashcardsBlock.tsx:
+         - Hook: useDueFlashcards() → GET /flashcards/due (just count)
+         - Display: due count in large JetBrains Mono, "Review cards" link
+         - If 0 due: "All caught up!" in success color
+
+         MasteryBlock.tsx:
+         - Hook: useCourseMastery() or GET /concepts/mastery (top 8)
+         - Display: horizontal bars, concept name + percentage
+         - Bar color: mastery gradient (gray → violet → blue → mint)
+         - shadcn Progress component customized
+
+         ActivityBlock.tsx:
+         - Hook: useActivity() → GET /activity/feed (limit 5)
+         - Display: list of recent activities with icon + description + relative time
+         - "View all" link to /feed
+
+         TeamProgressBlock.tsx:
+         - Hook: useTeamProgress() → GET /trust-level/org/{org_id}
+         - Display: team members with avatar, name, trust level badge
+         - Only visible to org owner/admin (check user role from useAuth)
+         - Full-width card spanning all columns
+
+      4. Count-up animation utility:
+         Use Framer Motion useSpring + useTransform for animated numbers.
+
+      5. Update existing hooks or create new ones as needed.
+         Reuse use-daily.ts, use-gamification.ts where possible.
+         Add any missing API calls to lib/api.ts.
+
+      RULES:
+      - Each block independently loads and handles errors
+      - Skeleton states using shadcn Skeleton component
+      - All text colors, backgrounds from CSS variables (not hardcoded hex)
+      - Numbers (XP, streak, due count) in font-mono
+      - Named exports
+      - Framer Motion for mount animations (fade + scale from 0.97, 300ms)
+
+      COMMIT: feat(buyer): rework dashboard with endpoint-driven blocks and Dark Knowledge theme
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [app-layout-sidebar]
+
+  - id: org-selector
+    title: "Organization selector with context provider"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build organization selection flow — user picks org after login, active org available app-wide.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge theme)
+      - API: Identity service:
+        GET /organizations/me → list of user's organizations
+        GET /organizations/{id} → org details
+      - Organization model exists in Identity service
+      - Sidebar shows org logo + name at top
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/lib/api.ts — add organizations namespace:
+         organizations: {
+           getMyOrgs: (token) => request<Organization[]>("GET", "/api/identity/organizations/me", ...)
+           getOrg: (token, id) => request<Organization>("GET", `/api/identity/organizations/${id}`, ...)
+           getMembers: (token, id) => request<OrgMember[]>("GET", `/api/identity/organizations/${id}/members`, ...)
+         }
+         Types: Organization { id, name, slug, logo_url, settings, is_active, created_at }
+                OrgMember { id, organization_id, user_id, role, joined_at }
+
+      2. apps/buyer/hooks/use-organizations.ts:
+         - useMyOrganizations(token) — list user's orgs
+         - useOrganization(token, orgId) — single org details
+         - useOrgMembers(token, orgId) — member list
+
+      3. apps/buyer/components/providers/OrgProvider.tsx ("use client"):
+         React Context providing:
+         - activeOrg: Organization | null
+         - setActiveOrg: (org) => void
+         - isLoading: boolean
+         Persist active org ID in localStorage.
+         On mount: read from localStorage, validate via API, redirect to /org/select if invalid.
+
+      4. apps/buyer/hooks/use-active-org.ts:
+         - useActiveOrg() — returns { activeOrg, setActiveOrg, isLoading } from context
+
+      5. apps/buyer/app/(app)/org/select/page.tsx:
+         Organization selection page:
+         - List of user's orgs as cards (logo, name, member count)
+         - Click card → set active org → redirect to /dashboard
+         - If only 1 org → auto-select and redirect
+         - Dark Knowledge styled cards with hover glow
+
+      6. apps/buyer/components/layout/OrgSwitcher.tsx ("use client"):
+         - Dropdown in Sidebar header (below org logo)
+         - shadcn DropdownMenu
+         - Shows current org name
+         - Click → list of user's orgs
+         - Switch → update context + invalidate all queries + redirect to /dashboard
+
+      7. Update apps/buyer/app/(app)/layout.tsx:
+         - Wrap children in OrgProvider
+         - If no active org → redirect to /org/select
+
+      8. Update Sidebar to show org info from useActiveOrg()
+
+      RULES:
+      - Org context available to all (app) routes
+      - All API calls that need org_id get it from useActiveOrg()
+      - Switch org invalidates all TanStack Query cache (queryClient.clear())
+      - Named exports
+      - No org = redirect, never show broken state
+
+      COMMIT: feat(buyer): add organization selector with app-wide org context
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [app-layout-sidebar]
+
+  - id: github-adapter
+    title: "GitHub repository indexing adapter"
+    scope: backend:rag
+    type: feat
+    prompt: |
+      Task: Build a GitHub adapter that fetches repository files and indexes them into the RAG service.
+
+      CONTEXT:
+      - RAG service: services/py/rag/ (port 8008, FastAPI, asyncpg, Clean Architecture)
+      - IngestionService exists: ingest(org_id, source_type, source_path, title, content)
+      - GitHub API: GET https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1
+      - File content: GET https://api.github.com/repos/{owner}/{repo}/contents/{path}?ref={branch}
+      - httpx for HTTP calls
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/adapters/github_adapter.py:
+         GitHubAdapter(http_client, github_token: str = ""):
+         - async list_files(owner, repo, branch="main", extensions=[".py",".ts",".md",".yaml"]) -> list[dict]
+           Fetch tree, filter by extensions and size < 100KB
+         - async get_file_content(owner, repo, path, branch="main") -> str
+           Fetch file, decode base64
+         - async index_repository(org_id, owner, repo, branch, extensions, ingestion_service) -> int
+           1. List files
+           2. For each file: get content, call ingestion_service.ingest
+           3. Batch 10 files at a time (rate limit safety)
+           4. Return count of indexed files
+
+      2. Add to config: github_token: str = ""
+
+      3. Routes: app/routes/github_routes.py
+         POST /sources/github — Auth required (admin). Body: {org_id, owner, repo, branch, extensions[]}
+         Returns {indexed_files_count}.
+
+      4. Tests:
+         - test_github_adapter.py: mock httpx responses (tree, file content)
+         - Test file filtering, base64 decoding, batch processing
+         - Test error on individual file doesn't stop batch
+
+      RULES:
+      - TDD mandatory
+      - Rate limit: max 10 concurrent requests, sleep 100ms between batches
+      - Skip binary files, files > 100KB
+      - GitHub token via env var (optional for public repos)
+      - Clean Architecture
+
+      COMMIT: feat(rag): add GitHub repository indexing adapter
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: []
