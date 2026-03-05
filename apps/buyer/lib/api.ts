@@ -5,6 +5,7 @@ const PAYMENT_URL = "/api/payment";
 const NOTIFICATION_URL = "/api/notification";
 const AI_URL = "/api/ai";
 const LEARNING_URL = "/api/learning";
+const RAG_URL = "/api/rag";
 
 export interface TokenResponse {
   access_token: string;
@@ -1502,6 +1503,47 @@ export const concepts = {
       method: "POST",
       headers: authHeaders(token),
       body: JSON.stringify({ prerequisite_id: prerequisiteId }),
+    });
+  },
+};
+
+export interface KbSearchResult {
+  chunk_id: string;
+  content: string;
+  similarity: number;
+  document_title: string | null;
+  source_type: string | null;
+  source_path: string | null;
+  metadata: Record<string, unknown> | null;
+}
+
+export interface ExternalSearchResult {
+  title: string;
+  url: string;
+  snippet: string;
+  domain: string;
+}
+
+export interface ExternalSearchResponse {
+  results: ExternalSearchResult[];
+}
+
+export const kb = {
+  search(token: string, orgId: string, query: string, limit: number = 5) {
+    return request<KbSearchResult[]>(`${RAG_URL}/kb/${orgId}/search`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ query, limit }),
+    });
+  },
+};
+
+export const externalSearch = {
+  search(token: string, query: string, limit: number = 5) {
+    return request<ExternalSearchResponse>(`${AI_URL}/ai/search/external`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ query, limit }),
     });
   },
 };

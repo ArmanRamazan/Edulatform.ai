@@ -31,6 +31,10 @@ const nextConfig: NextConfig = {
         source: "/api/learning/:path*",
         destination: "http://localhost:8007/:path*",
       },
+      {
+        source: "/api/rag/:path*",
+        destination: "http://localhost:8008/:path*",
+      },
     ];
   },
 };

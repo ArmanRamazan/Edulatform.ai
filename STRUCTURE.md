@@ -45,7 +45,8 @@ eduplatform/
 │   │   ├── app/(app)/             #     Authenticated: dashboard, courses, flashcards, org (sidebar)
 │   │   ├── components/ui/         #     shadcn/ui components (Dark Knowledge theme)
 │   │   ├── components/layout/     #     Sidebar, TopBar, CommandPalette
-│   │   └── components/dashboard/  #     Dashboard grid + 7 endpoint-driven blocks
+│   │   ├── components/dashboard/  #     Dashboard grid + 7 endpoint-driven blocks
+│   │   └── components/search/    #     Smart Search: SearchView, Internal/External results, RouteIndicator
 │   └── seller/                    #   Дашборд преподавателя (Client-side)
 │
 ├── packages/                      # Shared frontend пакеты
@@ -185,11 +186,13 @@ apps/{app}/
 │   ├── layout/                  #     Sidebar.tsx, TopBar.tsx, CommandPalette.tsx
 │   ├── dashboard/               #     DashboardGrid.tsx, BlockErrorBoundary.tsx
 │   │   └── blocks/              #     7 dashboard blocks (Greeting, Mission, TrustLevel, etc.)
+│   ├── search/                  #     SearchView.tsx, InternalResultsSection, ExternalResultsSection, RouteIndicator
 │   └── providers/               #     OrgProvider.tsx, Providers.tsx (QueryClient)
 ├── hooks/                       #   Custom React hooks (TanStack Query)
 │   ├── use-auth.ts              #     Login/register/logout (не server state)
 │   ├── use-active-org.ts        #     Active organization from context
 │   ├── use-organizations.ts     #     Organization API hooks
+│   ├── use-search.ts            #     useInternalSearch, useExternalSearch, classifyQuery (AI router)
 │   ├── use-courses.ts           #     useCourseList, useCourse, useCurriculum, useCategories
 │   ├── use-enrollments.ts       #     useMyEnrollments, useEnroll (mutation)
 │   ├── use-concepts.ts          #     useCourseGraph, useCourseMastery, useCreateConcept, useDeleteConcept
