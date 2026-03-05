@@ -492,43 +492,43 @@ Status: `purchased`, `redeemed`, `expired`. Expires 30 days after purchase.
 
 ---
 
-### Table: `org_subscriptions` (NEW)
+### Table: `org_subscriptions`
 
 ```sql
 CREATE TABLE IF NOT EXISTS org_subscriptions (
     id                     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    organization_id        UUID NOT NULL,
-    plan                   VARCHAR(50) NOT NULL,
-    seats                  INTEGER NOT NULL,
+    organization_id        UUID NOT NULL UNIQUE,
+    plan_tier              VARCHAR(20) NOT NULL DEFAULT 'pilot',
+    stripe_subscription_id VARCHAR(200),
+    stripe_customer_id     VARCHAR(200),
+    max_seats              INT NOT NULL DEFAULT 20,
+    current_seats          INT NOT NULL DEFAULT 0,
+    price_cents            INT NOT NULL,
     status                 VARCHAR(20) NOT NULL DEFAULT 'active',
-    billing_period         VARCHAR(10) NOT NULL DEFAULT 'monthly',
-    stripe_subscription_id VARCHAR(255),
-    stripe_customer_id     VARCHAR(255),
-    current_period_start   TIMESTAMPTZ NOT NULL,
-    current_period_end     TIMESTAMPTZ NOT NULL,
-    cancelled_at           TIMESTAMPTZ,
-    created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+    trial_ends_at          TIMESTAMPTZ,
+    current_period_start   TIMESTAMPTZ,
+    current_period_end     TIMESTAMPTZ,
+    created_at             TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 ```
 
 | Column | Type | Constraints | Описание |
 |--------|------|-------------|----------|
 | `id` | UUID | PK, auto | Уникальный идентификатор |
-| `organization_id` | UUID | NOT NULL | ID организации (из Identity) |
-| `plan` | VARCHAR(50) | NOT NULL | План: `team`, `enterprise` |
-| `seats` | INTEGER | NOT NULL | Количество мест |
-| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'active' | Статус: active, cancelled, past_due |
-| `billing_period` | VARCHAR(10) | NOT NULL, DEFAULT 'monthly' | monthly или yearly |
-| `stripe_subscription_id` | VARCHAR(255) | nullable | Stripe subscription ID |
-| `stripe_customer_id` | VARCHAR(255) | nullable | Stripe customer ID |
-| `current_period_start` | TIMESTAMPTZ | NOT NULL | Начало текущего периода |
-| `current_period_end` | TIMESTAMPTZ | NOT NULL | Конец текущего периода |
-| `cancelled_at` | TIMESTAMPTZ | nullable | Дата отмены |
+| `organization_id` | UUID | NOT NULL, UNIQUE | ID организации (из Identity) |
+| `plan_tier` | VARCHAR(20) | NOT NULL, DEFAULT 'pilot' | План: `pilot` ($1000/mo, 20 seats), `enterprise` ($10000/mo, 999 seats) |
+| `stripe_subscription_id` | VARCHAR(200) | nullable | Stripe subscription ID |
+| `stripe_customer_id` | VARCHAR(200) | nullable | Stripe customer ID |
+| `max_seats` | INT | NOT NULL, DEFAULT 20 | Максимум мест по плану |
+| `current_seats` | INT | NOT NULL, DEFAULT 0 | Текущее количество занятых мест |
+| `price_cents` | INT | NOT NULL | Цена в центах (100000 = $1000) |
+| `status` | VARCHAR(20) | NOT NULL, DEFAULT 'active' | Статус: active, canceled, past_due |
+| `trial_ends_at` | TIMESTAMPTZ | nullable | Окончание trial-периода |
+| `current_period_start` | TIMESTAMPTZ | nullable | Начало текущего периода |
+| `current_period_end` | TIMESTAMPTZ | nullable | Конец текущего периода |
 | `created_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата создания |
-| `updated_at` | TIMESTAMPTZ | NOT NULL, DEFAULT now() | Дата обновления |
 
-**Индексы:** PK (id) + idx_org_sub_org_id (organization_id) + idx_org_sub_status.
+**Индексы:** PK (id) + UNIQUE(organization_id) + idx_org_subscriptions_stripe_sub_id (stripe_subscription_id WHERE NOT NULL).
 
 **Миграции (Payment):**
 - `001_payments.sql` — таблица payments

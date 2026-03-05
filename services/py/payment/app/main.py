@@ -26,12 +26,16 @@ from app.repositories.refund_repo import RefundRepository
 from app.repositories.gift_repo import GiftRepository
 from app.adapters.invoice import InvoicePDFGenerator
 from app.services.gift_service import GiftService
+from app.services.org_subscription_service import OrgSubscriptionService
+from app.repositories.org_subscription_repo import OrgSubscriptionRepository
+from app.repositories.stripe_client import StripeClient
 from app.routes.payments import router as payments_router
 from app.routes.earnings import router as earnings_router
 from app.routes.coupons import router as coupons_router
 from app.routes.invoices import router as invoices_router
 from app.routes.refunds import router as refunds_router
 from app.routes.gifts import router as gifts_router
+from app.routes.org_subscriptions import router as org_subscriptions_router
 
 app_settings = Settings()
 
@@ -43,6 +47,8 @@ _coupon_service: CouponService | None = None
 _invoice_service: InvoiceService | None = None
 _refund_service: RefundService | None = None
 _gift_service: GiftService | None = None
+_org_subscription_service: OrgSubscriptionService | None = None
+_stripe_client: StripeClient | None = None
 
 
 def get_payment_service() -> PaymentService:
@@ -75,9 +81,19 @@ def get_gift_service() -> GiftService:
     return _gift_service
 
 
+def get_org_subscription_service() -> OrgSubscriptionService:
+    assert _org_subscription_service is not None
+    return _org_subscription_service
+
+
+def get_stripe_client() -> StripeClient:
+    assert _stripe_client is not None
+    return _stripe_client
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _payment_service, _earnings_service, _coupon_service, _invoice_service, _refund_service, _gift_service
+    global _pool, _redis, _payment_service, _earnings_service, _coupon_service, _invoice_service, _refund_service, _gift_service, _org_subscription_service, _stripe_client
 
     configure_logging(service_name="payment")
     logger = structlog.get_logger()
@@ -103,6 +119,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
             await conn.execute(f.read())
         with open("migrations/007_gifts.sql") as f:
             await conn.execute(f.read())
+        with open("migrations/008_org_subscriptions.sql") as f:
+            await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
 
@@ -120,6 +138,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _refund_service = RefundService(refund_repo=refund_repo, payment_repo=repo)
     gift_repo = GiftRepository(_pool)
     _gift_service = GiftService(gift_repo=gift_repo, payment_repo=repo)
+    org_sub_repo = OrgSubscriptionRepository(_pool)
+    _stripe_client = StripeClient(app_settings.stripe_secret_key)
+    _org_subscription_service = OrgSubscriptionService(
+        repo=org_sub_repo, stripe_client=_stripe_client,
+    )
     logger.info("service_started", port=8004)
     yield
     await _redis.aclose()
@@ -147,6 +170,7 @@ app.include_router(coupons_router)
 app.include_router(invoices_router)
 app.include_router(refunds_router)
 app.include_router(gifts_router)
+app.include_router(org_subscriptions_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
