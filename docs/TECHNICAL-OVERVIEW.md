@@ -200,7 +200,7 @@ docker compose -f docker-compose.prod.yml up -d
 | /graph | Knowledge Graph visualization | 🔴 Sprint 22 |
 | /graph/[conceptId] | Concept detail view | 🔴 Sprint 22 |
 | /search | Semantic search | 🔴 Sprint 22 |
-| /missions | Mission history & details | 🔴 Sprint 22 |
+| /missions/[id] | 5-phase Socratic mission session with coach chat | ✅ Built (Sprint 22) |
 | /admin | Team Analytics | 🔴 Sprint 26 |
 
 **Dark Knowledge Theme (Sprint 21):**

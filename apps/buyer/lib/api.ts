@@ -1371,6 +1371,29 @@ export interface DailySummary {
   greeting: string;
 }
 
+export type CoachPhase = "recap" | "reading" | "questions" | "code_case" | "wrap_up";
+
+export interface CoachStartResponse {
+  session_id: string;
+  greeting: string;
+  phase: CoachPhase;
+}
+
+export interface CoachChatResponse {
+  reply: string;
+  phase: CoachPhase;
+  progress: number;
+  hint?: string;
+}
+
+export interface CoachEndResponse {
+  summary: string;
+  score: number;
+  mastery_delta: number;
+  strengths: string[];
+  gaps: string[];
+}
+
 export interface MissionStartResponse {
   session_id: string;
   first_question: string;
@@ -1427,6 +1450,30 @@ export const missions = {
   getStreak(token: string) {
     return request<MissionStreakResponse>(`${AI_URL}/ai/missions/streak`, {
       headers: authHeaders(token),
+    });
+  },
+};
+
+export const coach = {
+  startSession(token: string, missionId: string) {
+    return request<CoachStartResponse>(`${AI_URL}/ai/coach/start`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ mission_id: missionId }),
+    });
+  },
+  sendMessage(token: string, sessionId: string, message: string) {
+    return request<CoachChatResponse>(`${AI_URL}/ai/coach/chat`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ session_id: sessionId, message }),
+    });
+  },
+  endSession(token: string, sessionId: string) {
+    return request<CoachEndResponse>(`${AI_URL}/ai/coach/end`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ session_id: sessionId }),
     });
   },
 };
