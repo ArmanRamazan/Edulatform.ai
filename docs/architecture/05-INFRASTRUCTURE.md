@@ -185,6 +185,21 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 | `CHUNK_SIZE` | `500` | Размер chunk в tokens |
 | `CHUNK_OVERLAP` | `50` | Overlap между chunks |
 
+### API Gateway (Rust) — NEW
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `GATEWAY_PORT` | `8080` | HTTP listen port |
+| `REDIS_URL` | `redis://localhost:6379` | Redis DSN |
+| `JWT_SECRET` | — (required) | Shared JWT secret |
+| `IDENTITY_URL` | `http://localhost:8001` | Identity service URL |
+| `AI_URL` | `http://localhost:8006` | AI service URL |
+| `LEARNING_URL` | `http://localhost:8007` | Learning service URL |
+| `RAG_URL` | `http://localhost:8008` | RAG service URL |
+| `NOTIFICATION_URL` | `http://localhost:8005` | Notification service URL |
+| `PAYMENT_URL` | `http://localhost:8004` | Payment service URL |
+| `RUST_LOG` | `info` | Tracing env filter |
+
 ### Payment-specific
 
 | Variable | Default | Описание |
