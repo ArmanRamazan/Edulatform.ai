@@ -27,6 +27,7 @@ from app.repositories.velocity_repo import VelocityRepository
 from app.repositories.activity_repo import ActivityRepository
 from app.repositories.study_group_repo import StudyGroupRepository
 from app.repositories.certificate_repo import CertificateRepository
+from app.repositories.trust_level_repo import TrustLevelRepository
 from app.services.quiz_service import QuizService
 from app.services.flashcard_service import FlashcardService
 from app.services.concept_service import ConceptService
@@ -40,6 +41,7 @@ from app.services.velocity_service import VelocityService
 from app.services.activity_service import ActivityService
 from app.services.study_group_service import StudyGroupService
 from app.services.certificate_service import CertificateService
+from app.services.trust_level_service import TrustLevelService
 from app.routes.quizzes import router as quizzes_router
 from app.routes.flashcards import router as flashcards_router
 from app.routes.concepts import router as concepts_router
@@ -53,6 +55,7 @@ from app.routes.velocity import router as velocity_router
 from app.routes.activity import router as activity_router
 from app.routes.study_groups import router as study_groups_router
 from app.routes.certificates import router as certificates_router
+from app.routes.trust_levels import router as trust_levels_router
 
 app_settings = Settings()
 
@@ -71,6 +74,7 @@ _velocity_service: VelocityService | None = None
 _activity_service: ActivityService | None = None
 _study_group_service: StudyGroupService | None = None
 _certificate_service: CertificateService | None = None
+_trust_level_service: TrustLevelService | None = None
 
 
 def get_quiz_service() -> QuizService:
@@ -138,9 +142,14 @@ def get_certificate_service() -> CertificateService:
     return _certificate_service
 
 
+def get_trust_level_service() -> TrustLevelService:
+    assert _trust_level_service is not None
+    return _trust_level_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service, _study_group_service, _certificate_service
+    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service, _study_group_service, _certificate_service, _trust_level_service
 
     configure_logging(service_name="learning")
     logger = structlog.get_logger()
@@ -177,6 +186,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         with open("migrations/012_discussion_enhancements.sql") as f:
             await conn.execute(f.read())
         with open("migrations/013_certificates.sql") as f:
+            await conn.execute(f.read())
+        with open("migrations/014_trust_levels.sql") as f:
             await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
@@ -223,6 +234,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     certificate_repo = CertificateRepository(_pool)
     _certificate_service = CertificateService(certificate_repo)
 
+    trust_level_repo = TrustLevelRepository(_pool)
+    _trust_level_service = TrustLevelService(trust_level_repo)
+
     logger.info("service_started", port=8007)
     yield
     await _redis.aclose()
@@ -257,6 +271,7 @@ app.include_router(velocity_router)
 app.include_router(activity_router)
 app.include_router(study_groups_router)
 app.include_router(certificates_router)
+app.include_router(trust_levels_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
