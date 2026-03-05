@@ -187,7 +187,7 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 
 ### API Gateway (Rust) — NEW
 
-Redis используется для sliding window rate limiting (INCR + EXPIRE). Fail-open при недоступности Redis.
+Reverse proxy routing to Python services based on URL prefix. JWT verification, Redis sliding window rate limiting (INCR + EXPIRE, fail-open). Connection pooling via reqwest, 30s timeout per upstream request.
 
 | Variable | Default | Описание |
 |----------|---------|----------|

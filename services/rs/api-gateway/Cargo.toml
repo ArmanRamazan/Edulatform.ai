@@ -16,6 +16,9 @@ thiserror = "2"
 dotenvy = "0.15"
 jsonwebtoken = "9"
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+hyper = "1"
 
 [dev-dependencies]
 http-body-util = "0.1"
+tokio-test = "0.4"

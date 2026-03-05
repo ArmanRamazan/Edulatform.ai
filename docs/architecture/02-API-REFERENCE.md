@@ -98,6 +98,37 @@ Headers: `Retry-After` (секунды до сброса).
 
 ---
 
+### Reverse Proxy Routing
+
+API Gateway маршрутизирует запросы к Python backend-сервисам на основе URL prefix. Неизвестные пути возвращают `404`.
+
+| Prefix | Upstream | Сервис |
+|--------|----------|--------|
+| `/auth`, `/me`, `/users`, `/organizations`, `/follow`, `/referral` | `:8001` | Identity |
+| `/payments`, `/subscriptions`, `/coupons`, `/earnings`, `/gifts`, `/org-subscriptions` | `:8004` | Payment |
+| `/notifications`, `/conversations`, `/messages`, `/streak-reminders`, `/flashcard-reminders` | `:8005` | Notification |
+| `/ai` | `:8006` | AI |
+| `/quizzes`, `/flashcards`, `/concepts`, `/missions`, `/trust-level`, `/daily`, `/streaks`, `/leaderboard`, `/discussions`, `/xp`, `/badges`, `/pretests`, `/velocity`, `/activity`, `/study-groups` | `:8007` | Learning |
+| `/kb`, `/sources`, `/upload`, `/templates` | `:8008` | RAG |
+
+**Поведение:**
+- Path и query params передаются upstream без изменений
+- Request body и headers форвардятся (кроме hop-by-hop)
+- `X-User-*` headers добавляются из JWT claims
+- Timeout: 30s per request
+- Connection pooling через reqwest Client
+- Логирование на DEBUG: method, path, upstream, duration_ms
+
+**Ошибки:**
+
+| Code | Причина |
+|------|---------|
+| 404 | Путь не соответствует ни одному prefix |
+| 502 | Upstream сервис недоступен |
+| 504 | Upstream timeout (30s) |
+
+---
+
 ## Identity Service (`:8001`)
 
 ### POST /register
