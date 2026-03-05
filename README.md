@@ -64,7 +64,7 @@ FSRS algorithm               — spaced repetition, scientifically optimal inter
 | Metric | Value |
 |--------|-------|
 | Backend services | **8** (Identity, Course, Enrollment, Payment, Notification, AI, Learning, RAG) |
-| Unit tests | **953** |
+| Unit tests | **1216** |
 | API endpoints | **130+** |
 | Database tables | **45+** |
 | AI agents | **3** (Strategist, Designer, Coach) |
@@ -117,7 +117,7 @@ cd apps/buyer && pnpm install && pnpm dev
 # Seed test data
 docker compose -f docker-compose.dev.yml --profile seed up seed
 
-# Run all 953 tests
+# Run all 1216 tests
 cd services/py/identity    && uv run --package identity pytest tests/ -v
 cd services/py/course      && uv run --package course pytest tests/ -v
 cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v
@@ -159,9 +159,9 @@ cd tools/orchestrator
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| **Foundation** | 8 Python services, Clean Architecture, 953 tests | Done |
+| **Foundation** | 8 Python services, Clean Architecture, 1216 tests | Done |
 | **Learning Intelligence** | AI agents, FSRS, knowledge graph, gamification | Done |
-| **B2B Pivot** | Dark Knowledge UI, org isolation, smart search, MCP | In Progress |
+| **B2B Pivot** | Dark Knowledge UI, org isolation, smart search, MCP | Sprint 21 ✅ · Sprint 22 next |
 | **Rust Performance** | API gateway, search service, WebSocket, embedding orchestrator | Planned |
 | **Scale** | 10M users, multi-region, self-hosted LLM option | Planned |
 

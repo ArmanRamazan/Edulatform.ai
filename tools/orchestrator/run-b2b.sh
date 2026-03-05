@@ -5,14 +5,16 @@
 # Uses --multi-agent mode for wave-based parallel execution within each sprint.
 #
 # Usage:
-#   ./run-b2b.sh                    # run all sprints
+#   ./run-b2b.sh                    # run remaining sprints (Phase 2-4)
 #   ./run-b2b.sh --dry-run          # preview only
-#   ./run-b2b.sh --phase 1          # run specific phase (1-4)
+#   ./run-b2b.sh --phase 2          # run specific phase (2-4)
 #   ./run-b2b.sh --resume           # resume from where it stopped
 #
-# Phases:
-#   Phase 1: Sprint 19 + 21 (parallel — backend + frontend foundation)
-#   Phase 2: Sprint 22 (knowledge platform UI, depends on phase 1)
+# Completed:
+#   Phase 1: Sprint 19 + 21 (DONE — mission engine + dark knowledge foundation)
+#
+# Remaining:
+#   Phase 2: Sprint 22 (knowledge platform UI)
 #   Phase 3: Sprint 23 + 26 (parallel — Rust gateway + B2B admin)
 #   Phase 4: Sprint 24 + 25 + 27 (Rust perf + MCP, depends on phase 3)
 #
@@ -35,7 +37,7 @@ for arg in "$@"; do
         --dry-run) DRY_RUN="--dry-run" ;;
         --phase)   shift; PHASE="$1" ;;
         --resume)  RESUME="--resume" ;;
-        [1-4])     PHASE="$arg" ;;
+        [2-4])     PHASE="$arg" ;;
     esac
 done
 
@@ -50,6 +52,8 @@ banner() {
     echo -e "${BLUE}  ╔══════════════════════════════════════════════╗${NC}"
     echo -e "${BLUE}  ║  B2B Knowledge Platform — Build Pipeline    ║${NC}"
     echo -e "${BLUE}  ║  Mode: multi-agent (wave-based parallel)    ║${NC}"
+    echo -e "${BLUE}  ║  Phase 1: DONE (Sprint 19 + 21)            ║${NC}"
+    echo -e "${BLUE}  ║  Remaining: Phase 2-4 (Sprint 22-27)       ║${NC}"
     echo -e "${BLUE}  ║  Stop: Ctrl+C                               ║${NC}"
     echo -e "${BLUE}  ╚══════════════════════════════════════════════╝${NC}"
     echo ""
@@ -98,25 +102,8 @@ fi
 
 banner
 
-# Phase 1: Sprint 19 (mission backend) + Sprint 21 (dark knowledge foundation)
-# Independent — run in parallel
-if [ -z "$PHASE" ] || [ "$PHASE" = "1" ]; then
-    echo -e "${BLUE}  ════════════════════════════════════════${NC}"
-    echo -e "${BLUE}  PHASE 1: Foundation (Sprint 19 + 21)${NC}"
-    echo -e "${BLUE}  Sprint 19: Mission Engine (backend)${NC}"
-    echo -e "${BLUE}  Sprint 21: Dark Knowledge Foundation (frontend + github adapter)${NC}"
-    echo -e "${BLUE}  Mode: PARALLEL${NC}"
-    echo -e "${BLUE}  ════════════════════════════════════════${NC}"
-
-    run_parallel \
-        "$TASKS/sprint-19-mission-engine.yaml" \
-        "$TASKS/sprint-21-dark-knowledge-foundation.yaml"
-
-    echo -e "${GREEN}  PHASE 1 COMPLETE${NC}"
-fi
-
 # Phase 2: Sprint 22 (knowledge platform UI)
-# Depends on Sprint 21 (shadcn + layout needed)
+# Depends on Sprint 21 (shadcn + layout — DONE)
 if [ -z "$PHASE" ] || [ "$PHASE" = "2" ]; then
     echo -e "${BLUE}  ════════════════════════════════════════${NC}"
     echo -e "${BLUE}  PHASE 2: Knowledge Platform (Sprint 22)${NC}"
@@ -154,7 +141,7 @@ if [ -z "$PHASE" ] || [ "$PHASE" = "4" ]; then
     echo -e "${BLUE}  Sprint 24: Rust RAG Performance${NC}"
     echo -e "${BLUE}  Sprint 25: Rust IO Performance${NC}"
     echo -e "${BLUE}  Sprint 27: MCP Server & Cleanup${NC}"
-    echo -e "${BLUE}  Mode: MIXED (24→25 sequential, 27 parallel)${NC}"
+    echo -e "${BLUE}  Mode: MIXED (24->25 sequential, 27 parallel)${NC}"
     echo -e "${BLUE}  ════════════════════════════════════════${NC}"
 
     # Run Sprint 27 in parallel with Sprint 24→25 chain

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import localFont from "next/font/local";
 import { Providers } from "@/components/Providers";
-import { Footer } from "@/components/Footer";
 import "./globals.css";
 
 const inter = localFont({
@@ -36,7 +35,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen font-sans antialiased">
         <Providers>
           {children}
-          <Footer />
         </Providers>
       </body>
     </html>
