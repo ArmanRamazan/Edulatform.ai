@@ -110,7 +110,7 @@ GitHub repo / Docs / Wiki
 ## Тесты
 
 ```bash
-cd services/py/identity    && uv run --package identity pytest tests/ -v     # 92 tests
+cd services/py/identity    && uv run --package identity pytest tests/ -v     # 156 tests
 cd services/py/course      && uv run --package course pytest tests/ -v       # 111 tests
 cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 28 tests
 cd services/py/payment     && uv run --package payment pytest tests/ -v      # 151 tests
