@@ -48,6 +48,7 @@ const NAV_ITEMS: CommandOption[] = [
 
 export function CommandPalette() {
   const [open, setOpen] = useState(false);
+  const [inputValue, setInputValue] = useState("");
   const router = useRouter();
 
   useEffect(() => {
@@ -63,14 +64,40 @@ export function CommandPalette() {
 
   function navigate(href: string) {
     setOpen(false);
+    setInputValue("");
     router.push(href);
   }
 
+  function searchFor(query: string) {
+    setOpen(false);
+    setInputValue("");
+    router.push(`/search?q=${encodeURIComponent(query)}`);
+  }
+
+  const trimmedInput = inputValue.trim();
+
   return (
-    <CommandDialog open={open} onOpenChange={setOpen} showCloseButton={false}>
-      <CommandInput placeholder="Type a command or search..." />
+    <CommandDialog open={open} onOpenChange={(v) => { setOpen(v); if (!v) setInputValue(""); }} showCloseButton={false}>
+      <CommandInput
+        placeholder="Type a command or search..."
+        value={inputValue}
+        onValueChange={setInputValue}
+      />
       <CommandList>
-        <CommandEmpty>No results found.</CommandEmpty>
+        <CommandEmpty>
+          {trimmedInput ? (
+            <button
+              type="button"
+              onClick={() => searchFor(trimmedInput)}
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-[#6b6b80] hover:text-[#e2e2e8]"
+            >
+              <Search className="h-4 w-4" />
+              Search for &ldquo;{trimmedInput}&rdquo;
+            </button>
+          ) : (
+            "No results found."
+          )}
+        </CommandEmpty>
         <CommandGroup heading="Navigation">
           {NAV_ITEMS.map((item) => (
             <CommandItem
@@ -83,6 +110,17 @@ export function CommandPalette() {
             </CommandItem>
           ))}
         </CommandGroup>
+        {trimmedInput && (
+          <CommandGroup heading="Search">
+            <CommandItem
+              onSelect={() => searchFor(trimmedInput)}
+              className="cursor-pointer"
+            >
+              <Search className="mr-2 h-4 w-4" />
+              Search for &ldquo;{trimmedInput}&rdquo;
+            </CommandItem>
+          </CommandGroup>
+        )}
       </CommandList>
     </CommandDialog>
   );
