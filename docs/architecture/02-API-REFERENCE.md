@@ -1280,48 +1280,66 @@ Streak миссий пользователя. Authenticated.
 
 ---
 
-### Trust Levels (NEW — 2 endpoints)
+### Trust Levels (2 endpoints)
 
-#### GET /trust-level/me (NEW)
+#### GET /trust-level/me
 Trust level текущего пользователя. Authenticated.
 
-**Query params:** `organization_id` (required).
+**Query params:** `org_id` (required, UUID).
 
 **Response `200`:**
 ```json
 {
+  "id": "uuid",
   "user_id": "uuid",
   "organization_id": "uuid",
   "level": 2,
   "level_name": "Contributor",
-  "progress_to_next": 0.65,
-  "criteria": {
-    "missions_completed": 15,
-    "concepts_mastered": 8,
-    "streak_days": 7,
-    "discussions_count": 5
+  "total_missions_completed": 20,
+  "total_concepts_mastered": 10,
+  "unlocked_areas": [],
+  "level_up_at": "2026-03-05T12:00:00Z",
+  "next_level": {
+    "level": 3,
+    "level_name": "Builder",
+    "missions_required": 30,
+    "concepts_required": 15,
+    "missions_remaining": 10,
+    "concepts_remaining": 5
   }
 }
 ```
 
+При level=5 (Architect), `next_level` = `null`.
+
 ---
 
-#### GET /trust-level/org/{org_id} (NEW)
-Trust levels всех участников организации. Authenticated + org admin.
+#### GET /trust-level/org/{org_id}
+Trust levels всех участников организации. Admin-only (role=admin).
+
+**Query params:** `limit` (default 50, max 200), `offset` (default 0).
 
 **Response `200`:**
 ```json
 {
-  "items": [
+  "levels": [
     {
+      "id": "uuid",
       "user_id": "uuid",
-      "name": "Ivan Petrov",
+      "organization_id": "uuid",
       "level": 3,
-      "level_name": "Practitioner"
+      "level_name": "Builder",
+      "total_missions_completed": 35,
+      "total_concepts_mastered": 18,
+      "unlocked_areas": [],
+      "level_up_at": "2026-03-05T12:00:00Z",
+      "next_level": { "..." }
     }
   ]
 }
 ```
+
+**Response `403`:** Non-admin role.
 
 ---
 
