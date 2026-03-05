@@ -203,6 +203,31 @@ class MissionDailyRequest(BaseModel):
     org_id: UUID
 
 
+class UnifiedSearchRequest(BaseModel):
+    query: str = Field(min_length=1, max_length=2000)
+    org_id: UUID
+    org_terms: list[str] = Field(default_factory=list)
+    limit: int = Field(default=5, ge=1, le=20)
+
+
+class InternalSearchResultResponse(BaseModel):
+    title: str
+    source_path: str
+    content: str
+
+
+class ExternalSearchResultResponse(BaseModel):
+    title: str
+    url: str
+    snippet: str
+
+
+class UnifiedSearchResponse(BaseModel):
+    route: str
+    internal_results: list[InternalSearchResultResponse]
+    external_results: list[ExternalSearchResultResponse]
+
+
 class ModerationRequest(BaseModel):
     content: str = Field(min_length=1, max_length=10000)
     content_type: str = Field(pattern=r"^(course_description|lesson_content|review_text)$")

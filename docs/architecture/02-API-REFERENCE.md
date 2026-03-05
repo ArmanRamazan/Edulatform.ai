@@ -1141,6 +1141,42 @@ Phases: `recap` → `read` → `check` → `practice` → `wrap-up`
 
 ---
 
+### POST /ai/search/unified
+
+Unified search — классифицирует запрос (internal/external/both) и выполняет параллельный поиск по RAG и/или LLM web grounding. Требует JWT. Потребляет 1 кредит.
+
+**Request:**
+```json
+{
+  "query": "how we use redis",
+  "org_id": "uuid",
+  "org_terms": ["PaymentEngine", "AuthService"],
+  "limit": 5
+}
+```
+
+- `org_terms` — optional, список терминов организации для улучшения классификации
+- `limit` — optional, default 5, max 20
+
+**Response `200`:**
+```json
+{
+  "route": "both",
+  "internal_results": [
+    {"title": "Redis Config", "source_path": "docs/redis.md", "content": "Our Redis setup..."}
+  ],
+  "external_results": [
+    {"title": "Redis Docs", "url": "https://redis.io", "snippet": "Redis is..."}
+  ]
+}
+```
+
+- `route` — `"internal"` | `"external"` | `"both"` — решение классификатора
+- `internal_results` — результаты из RAG (пустой если route = external)
+- `external_results` — результаты из LLM web grounding (пустой если route = internal)
+
+---
+
 ## Learning Engine (`:8007`)
 
 ### Quizzes (4 endpoints)

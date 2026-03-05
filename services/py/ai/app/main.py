@@ -26,10 +26,13 @@ from app.services.designer_service import DesignerService
 from app.services.coach_service import CoachService
 from app.services.orchestrator_service import AgentOrchestrator
 from app.services.llm_resolver import LLMResolver
+from app.services.query_router import QueryRouter
+from app.services.unified_search_service import UnifiedSearchService
 from app.routes.ai import router as ai_router
 from app.routes.coach_routes import router as coach_router
 from app.routes.orchestrator_routes import router as orchestrator_router
 from app.routes.llm_config_routes import router as llm_config_router
+from app.routes.search_routes import router as search_router
 
 app_settings = Settings()
 
@@ -44,6 +47,7 @@ _designer_service: DesignerService | None = None
 _coach_service: CoachService | None = None
 _orchestrator_service: AgentOrchestrator | None = None
 _llm_resolver: LLMResolver | None = None
+_unified_search_service: UnifiedSearchService | None = None
 _cache: AICache | None = None
 _http_client: httpx.AsyncClient | None = None
 
@@ -98,6 +102,11 @@ def get_llm_resolver() -> LLMResolver:
     return _llm_resolver
 
 
+def get_unified_search_service() -> UnifiedSearchService:
+    assert _unified_search_service is not None
+    return _unified_search_service
+
+
 def get_cache() -> AICache:
     assert _cache is not None
     return _cache
@@ -139,7 +148,7 @@ def _create_health_router() -> APIRouter:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _strategist_service, _designer_service, _coach_service, _orchestrator_service, _llm_resolver, _cache, _http_client
+    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _strategist_service, _designer_service, _coach_service, _orchestrator_service, _llm_resolver, _unified_search_service, _cache, _http_client
 
     configure_logging(service_name="ai")
     logger = structlog.get_logger()
@@ -170,6 +179,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         http_client=_http_client,
         settings=app_settings,
     )
+    _unified_search_service = UnifiedSearchService(
+        http_client=_http_client,
+        llm_client=llm,
+        query_router=QueryRouter(),
+        settings=app_settings,
+    )
 
     logger.info("service_started", port=8006)
     yield
@@ -197,6 +212,7 @@ app.include_router(ai_router)
 app.include_router(coach_router)
 app.include_router(orchestrator_router)
 app.include_router(llm_config_router)
+app.include_router(search_router)
 app.include_router(_create_health_router())
 
 Instrumentator().instrument(app).expose(app)
