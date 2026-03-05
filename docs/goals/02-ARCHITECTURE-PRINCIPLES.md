@@ -12,7 +12,7 @@
 ### P1. Python для бизнес-логики, Rust для performance-critical paths
 
 - **Python** — API, бизнес-логика, AI agent orchestration, RAG pipeline, Learning Engine
-- **Rust** — поисковый движок, real-time messaging (Phase Scale)
+- **Rust** — API Gateway, Search (tantivy), Embedding Orchestrator, WebSocket Gateway, RAG Chunker (pyo3 FFI). Sprints 23-25
 - **Решение о языке:** p99 < 50ms или > 10K RPS → Rust. Остальное → Python
 
 ### P2. Монорепа с четкими границами
@@ -115,6 +115,27 @@
 - **Контекст:** B2B context: прогресс = доступ к ресурсам компании, не gamification score. Прогрессия привязана к mastery, не к количеству активности
 - **Механика:** Mission completion + concept mastery → автоматическое повышение level
 
+### ADR-010: Axum API Gateway для централизованного auth и routing
+
+- [X] ✅ **Решение:** Rust/Axum API Gateway на порту 8080, единая точка входа
+- **Контекст:** JWT валидация дублируется в 6 Python сервисах. Next.js rewrites как прокси — дополнительный hop, нет rate limiting. При > 10K RPS Python сервисы становятся bottleneck на auth validation
+- **Преимущества:** Централизация JWT, rate limiting (Redis sliding window), CORS, request/response logging, circuit breaker. ~5-10ms overhead. 20K+ RPS на одном инстансе
+- **Миграция:** Постепенная — Gateway проксирует трафик параллельно с Next.js rewrites, переключение per-route
+- **Пересмотр:** При переходе на K8s — оценить Envoy/Istio vs custom gateway
+
+### ADR-011: pyo3 FFI для CPU-bound RAG operations
+
+- [X] ✅ **Решение:** Rust crate (libs/rs/rag-chunker/) через pyo3+maturin, вызов из Python RAG service
+- **Контекст:** Chunking — чистый CPU (regex split, overlap calculation, token counting). Python ~50x медленнее Rust на string processing. Отдельный сервис — overkill, достаточно FFI
+- **Преимущества:** 10-50x ускорение chunking, zero-copy где возможно, seamless integration с Python ecosystem
+- **Альтернативы:** Отдельный Rust сервис (лишний network hop), Cython (меньший выигрыш), C extension (хуже DX)
+
+### ADR-012: tantivy для full-text search вместо Meilisearch
+
+- [X] ✅ **Решение:** Rust/Axum + tantivy на порту 8010, замена внешней зависимости Meilisearch
+- **Контекст:** Meilisearch — внешняя зависимость, ограниченный контроль, 803ms p99 при нагрузке. tantivy — Rust-native FTS engine (аналог Lucene), <50ms p99, полный контроль над индексацией и scoring
+- **Пересмотр:** При > 100M документов — оценить Elasticsearch/OpenSearch
+
 ---
 
 ## Целевая архитектура
@@ -143,6 +164,27 @@
                      └──────────────┘
 
 Dormant: Course (:8002), Enrollment (:8003), Payment (:8004)
+```
+
+### Целевая архитектура (с Rust Performance Layer)
+
+```
+┌──────────────┐
+│   Frontend   │
+│  (Next.js)   │
+│   (:3001)    │
+└──────┬───────┘
+       │
+       ▼
+┌──────────────┐     ┌──────────────────────────────────────────────┐
+│  API Gateway │     │            RUST PERFORMANCE LAYER             │
+│  Axum :8080  │────▶│  Search :8010 (tantivy)                      │
+│  JWT, Rate   │     │  Embedding Orchestrator :8009 (tokio batch)   │
+│  Limit, CORS │     │  WS Gateway :8011 (real-time)                │
+└──────┬───────┘     │  RAG Chunker (pyo3 FFI, no port)             │
+       │             └──────────────────────────────────────────────┘
+       │
+       ├────────────▶ Python services (Identity, AI, Learning, RAG, etc.)
 ```
 
 ### Data flow для daily Mission

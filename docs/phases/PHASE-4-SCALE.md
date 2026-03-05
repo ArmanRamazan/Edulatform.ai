@@ -10,11 +10,27 @@
 
 ## Направления масштабирования
 
-### 1. Performance Layer (Rust)
+### 1. Performance Layer (Rust) — Sprints 23-25
 
-- API Gateway на Rust/Axum: auth, routing, rate limiting, request aggregation
-- Решение принимается при p99 > 50ms или > 10K RPS на Python сервисах
-- Protobuf contracts для gRPC между сервисами
+Конкретный план реализации, не абстрактные намерения:
+
+**Sprint 23: API Gateway**
+- Axum HTTP server на порту 8080
+- JWT verification (HS256, jsonwebtoken crate)
+- Redis-based rate limiting (sliding window)
+- Reverse proxy к Python сервисам
+- Health checks, graceful shutdown
+- ~2000 LOC, 10 задач
+
+**Sprint 24: RAG Performance**
+- RAG Chunker (pyo3 FFI): regex-based chunking, overlap, token counting
+- Search Service (tantivy): full-text search с BM25, замена Meilisearch
+- ~3000 LOC total
+
+**Sprint 25: IO Performance**
+- Embedding Orchestrator: batch parallel embeddings via tokio
+- WebSocket Gateway: real-time messaging для Coach chat
+- ~2500 LOC total
 
 ### 2. Event-Driven Architecture
 

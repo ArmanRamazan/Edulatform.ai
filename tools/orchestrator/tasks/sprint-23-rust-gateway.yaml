@@ -1,0 +1,421 @@
+phase: "sprint-23"
+description: "Rust API Gateway — centralized auth, rate limiting, reverse proxy via Axum"
+
+tasks:
+  - id: gateway-scaffold
+    title: "Axum gateway scaffold with health checks"
+    scope: backend:api-gateway
+    type: feat
+    prompt: |
+      Task: Scaffold the Rust API Gateway service using Axum framework.
+
+      CONTEXT:
+      - Directory: services/rs/api-gateway/ (currently empty stub with .gitkeep)
+      - Rust monorepo: no workspace yet, create standalone Cargo.toml
+      - Target port: 8080
+      - Stack: axum 0.8+, tokio, serde, serde_json, tower-http, tracing, tracing-subscriber
+
+      WHAT TO BUILD:
+
+      1. services/rs/api-gateway/Cargo.toml:
+         [package]
+         name = "api-gateway"
+         version = "0.1.0"
+         edition = "2021"
+
+         [dependencies]
+         axum = { version = "0.8", features = ["macros"] }
+         tokio = { version = "1", features = ["full"] }
+         serde = { version = "1", features = ["derive"] }
+         serde_json = "1"
+         tower = "0.5"
+         tower-http = { version = "0.6", features = ["cors", "trace", "timeout"] }
+         tracing = "0.1"
+         tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+         thiserror = "2"
+         dotenvy = "0.15"
+
+      2. services/rs/api-gateway/src/main.rs:
+         - Load config from env vars (GATEWAY_PORT, default 8080)
+         - Create Axum router with:
+           GET /health/live → 200 {"status": "ok"}
+           GET /health/ready → 200 {"status": "ready"} (check Redis connection)
+         - Tower layers: TraceLayer, TimeoutLayer (30s)
+         - Graceful shutdown on SIGTERM/SIGINT
+         - Tracing initialization (RUST_LOG env filter)
+
+      3. services/rs/api-gateway/src/config.rs:
+         pub struct Config {
+           pub port: u16,                    // GATEWAY_PORT, default 8080
+           pub redis_url: String,            // REDIS_URL, default redis://localhost:6379
+           pub jwt_secret: String,           // JWT_SECRET (required)
+           pub identity_url: String,         // IDENTITY_URL, default http://localhost:8001
+           pub ai_url: String,               // AI_URL, default http://localhost:8006
+           pub learning_url: String,         // LEARNING_URL, default http://localhost:8007
+           pub rag_url: String,              // RAG_URL, default http://localhost:8008
+           pub notification_url: String,     // NOTIFICATION_URL, default http://localhost:8005
+           pub payment_url: String,          // PAYMENT_URL, default http://localhost:8004
+         }
+         impl Config { pub fn from_env() -> Result<Self, ConfigError> }
+
+      4. services/rs/api-gateway/src/error.rs:
+         GatewayError enum: Config, Auth, RateLimit, Upstream, Timeout
+         impl IntoResponse for GatewayError
+
+      5. Tests:
+         - tests/health_test.rs: test health endpoints return 200
+         - Use axum::test helpers
+
+      RULES:
+      - #![deny(clippy::all)]
+      - All errors via thiserror
+      - Structured logging via tracing
+      - No unwrap() in production code (except in tests)
+
+      COMMIT: feat(api-gateway): scaffold Axum gateway with health checks and config
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on: []
+
+  - id: jwt-middleware
+    title: "JWT verification middleware"
+    scope: backend:api-gateway
+    type: feat
+    prompt: |
+      Task: Add JWT verification middleware to the API Gateway — validate tokens and extract claims before proxying.
+
+      CONTEXT:
+      - API Gateway: services/rs/api-gateway/ (Axum, scaffold done)
+      - JWT: HS256, shared secret (JWT_SECRET env var)
+      - Token format: { "sub": "user-uuid", "exp": timestamp, "role": "student|teacher|admin", "is_verified": bool, "email_verified": bool, "organization_id": "org-uuid" | null }
+      - Python services currently validate JWT themselves (PyJWT). Gateway will validate first, Python services can trust X-User-* headers.
+
+      WHAT TO BUILD:
+
+      1. Add dependency: jsonwebtoken = "9"
+
+      2. services/rs/api-gateway/src/auth.rs:
+         pub struct Claims {
+           pub sub: String,           // user_id (UUID as string)
+           pub exp: usize,
+           pub role: String,
+           pub is_verified: bool,
+           pub email_verified: bool,
+           pub organization_id: Option<String>,
+         }
+
+         pub fn verify_token(token: &str, secret: &str) -> Result<Claims, AuthError>
+         - Decode JWT with HS256 validation
+         - Check exp > now
+         - Return Claims
+
+      3. services/rs/api-gateway/src/middleware/auth_middleware.rs:
+         Tower middleware / Axum extractor:
+         - Extract "Authorization: Bearer <token>" header
+         - If no header on protected route → 401 Unauthorized
+         - Validate token via verify_token()
+         - Inject claims into request extensions
+         - Public routes (GET /health/*, POST /auth/register, POST /auth/login) skip auth
+
+      4. Route configuration:
+         - PUBLIC_ROUTES: ["/health/live", "/health/ready", "/auth/register", "/auth/login", "/auth/forgot-password"]
+         - All other routes require valid JWT
+
+      5. After validation, set headers for upstream Python services:
+         X-User-Id: claims.sub
+         X-User-Role: claims.role
+         X-User-Verified: claims.is_verified
+         X-Organization-Id: claims.organization_id (if present)
+
+      6. Tests:
+         - test valid JWT → passes, claims extracted
+         - test expired JWT → 401
+         - test invalid signature → 401
+         - test missing Authorization header on protected route → 401
+         - test public routes without auth → passes
+         - test X-User-* headers set correctly
+
+      RULES:
+      - #![deny(clippy::all)]
+      - No unwrap() in production code
+      - Constant-time comparison for signatures (handled by jsonwebtoken crate)
+      - Log auth failures at WARN level (but don't log the token itself!)
+
+      COMMIT: feat(api-gateway): add JWT verification middleware with claims extraction
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on: [gateway-scaffold]
+
+  - id: rate-limiting
+    title: "Redis-based rate limiting middleware"
+    scope: backend:api-gateway
+    type: feat
+    prompt: |
+      Task: Add Redis-based rate limiting to the API Gateway.
+
+      CONTEXT:
+      - API Gateway: services/rs/api-gateway/ (Axum, JWT middleware done)
+      - Redis at REDIS_URL (default redis://localhost:6379)
+      - Current Python rate limits: 100/min global, 10/min login, 5/min register
+      - Need: sliding window counter per IP per route group
+
+      WHAT TO BUILD:
+
+      1. Add dependencies: redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+
+      2. services/rs/api-gateway/src/middleware/rate_limit.rs:
+         RateLimiter struct:
+         - redis_pool: redis connection pool
+         - default_limit: 100 requests/minute
+         - route_limits: HashMap<String, RateConfig>
+
+         RateConfig { max_requests: u32, window_secs: u32 }
+
+         Route group limits:
+         - POST /auth/login → 10/min
+         - POST /auth/register → 5/min
+         - POST /ai/* → 30/min (AI endpoints are expensive)
+         - Default → 100/min
+
+         Algorithm: Redis INCR + EXPIRE (sliding window)
+         Key format: "rl:{ip}:{route_group}:{window_timestamp}"
+
+      3. Response headers:
+         X-RateLimit-Limit: max_requests
+         X-RateLimit-Remaining: remaining
+         X-RateLimit-Reset: reset timestamp
+         On limit exceeded: 429 Too Many Requests with Retry-After header
+
+      4. Tests:
+         - test under limit → passes with correct headers
+         - test at limit → 429 response
+         - test different route groups have different limits
+         - Use mock Redis or in-process Redis for tests
+
+      RULES:
+      - #![deny(clippy::all)]
+      - Redis connection failure → allow request (fail-open, not fail-closed)
+      - Log rate limit hits at INFO level
+      - IP extraction: X-Forwarded-For header first, then peer addr
+
+      COMMIT: feat(api-gateway): add Redis sliding window rate limiting
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on: [gateway-scaffold]
+
+  - id: reverse-proxy
+    title: "Reverse proxy to Python services"
+    scope: backend:api-gateway
+    type: feat
+    prompt: |
+      Task: Add reverse proxy routing from the Gateway to Python backend services.
+
+      CONTEXT:
+      - API Gateway: services/rs/api-gateway/ (Axum, JWT + rate limiting done)
+      - Python services:
+        Identity :8001 — /auth/*, /me, /users/*, /organizations/*, /follow/*
+        Payment :8004 — /payments/*, /subscriptions/*, /coupons/*, /earnings/*, /gifts/*, /org-subscriptions/*
+        Notification :8005 — /notifications/*, /conversations/*, /messages/*, /streak-reminders/*, /flashcard-reminders/*
+        AI :8006 — /ai/*
+        Learning :8007 — /quizzes/*, /flashcards/*, /concepts/*, /streaks/*, /leaderboard/*, /discussions/*, /xp/*, /badges/*, /pretests/*, /velocity/*, /activity/*, /study-groups/*, /missions/*, /trust-level/*, /daily/*
+        RAG :8008 — /kb/*, /sources/*, /upload/*, /templates/*
+      - Need: path-based routing with configurable upstream targets
+
+      WHAT TO BUILD:
+
+      1. Add dependencies: reqwest = { version = "0.12", features = ["json", "stream"] }, hyper = "1"
+
+      2. services/rs/api-gateway/src/proxy.rs:
+         pub struct ProxyService {
+           client: reqwest::Client,
+           routes: Vec<RouteRule>,
+         }
+
+         pub struct RouteRule {
+           prefix: String,         // e.g. "/auth"
+           upstream: String,       // e.g. "http://localhost:8001"
+           strip_prefix: bool,     // whether to strip the matched prefix
+         }
+
+         impl ProxyService:
+         - async fn proxy_request(&self, req: Request) -> Response
+           1. Match request path to RouteRule
+           2. Build upstream URL
+           3. Forward request with all headers + body
+           4. Add X-User-* headers from JWT claims (from request extensions)
+           5. Forward response back to client
+           6. Timeout: 30s per request
+           7. Retry: none (let client retry)
+
+      3. Route mapping (from config):
+         /auth/*          → Identity :8001
+         /me              → Identity :8001
+         /users/*         → Identity :8001
+         /organizations/* → Identity :8001
+         /follow/*        → Identity :8001
+         /referral/*      → Identity :8001
+         /payments/*      → Payment :8004
+         /subscriptions/* → Payment :8004
+         /coupons/*       → Payment :8004
+         /earnings/*      → Payment :8004
+         /gifts/*         → Payment :8004
+         /org-subscriptions/* → Payment :8004
+         /notifications/* → Notification :8005
+         /conversations/* → Notification :8005
+         /messages/*      → Notification :8005
+         /ai/*            → AI :8006
+         /quizzes/*       → Learning :8007
+         /flashcards/*    → Learning :8007
+         /concepts/*      → Learning :8007
+         /missions/*      → Learning :8007
+         /trust-level/*   → Learning :8007
+         /daily/*         → Learning :8007
+         /streaks/*       → Learning :8007
+         /leaderboard/*   → Learning :8007
+         /discussions/*   → Learning :8007
+         /xp/*            → Learning :8007
+         /badges/*        → Learning :8007
+         /pretests/*      → Learning :8007
+         /velocity/*      → Learning :8007
+         /activity/*      → Learning :8007
+         /study-groups/*  → Learning :8007
+         /kb/*            → RAG :8008
+         /sources/*       → RAG :8008
+         /upload/*        → RAG :8008
+         /templates/*     → RAG :8008
+
+      4. Fallback: unmatched routes → 404
+
+      5. Tests:
+         - test route matching → correct upstream selected
+         - test X-User-* headers forwarded
+         - test 404 for unmatched route
+         - Mock upstream server for integration tests
+
+      RULES:
+      - #![deny(clippy::all)]
+      - Preserve original request headers (except hop-by-hop)
+      - Stream request/response bodies (don't buffer entirely in memory)
+      - Log each proxied request at DEBUG level: method, path, upstream, duration_ms
+      - Connection pooling via reqwest Client (reuse connections)
+
+      COMMIT: feat(api-gateway): add reverse proxy routing to Python services
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on: [jwt-middleware, rate-limiting]
+
+  - id: gateway-cors-logging
+    title: "CORS middleware and structured request logging"
+    scope: backend:api-gateway
+    type: feat
+    prompt: |
+      Task: Add CORS configuration and structured request/response logging.
+
+      CONTEXT:
+      - API Gateway: services/rs/api-gateway/ (Axum, full proxy chain done)
+      - Current CORS in Python services: env-based allowed origins
+      - Need: centralized CORS at gateway level so Python services don't need it
+
+      WHAT TO BUILD:
+
+      1. services/rs/api-gateway/src/middleware/cors.rs:
+         - CORS config from env vars:
+           CORS_ORIGINS = "http://localhost:3001,http://localhost:3000" (comma-separated)
+           CORS_MAX_AGE = 3600
+         - Allow methods: GET, POST, PUT, PATCH, DELETE, OPTIONS
+         - Allow headers: Authorization, Content-Type, X-Request-Id
+         - Expose headers: X-RateLimit-Limit, X-RateLimit-Remaining, X-RateLimit-Reset
+         - Use tower-http CorsLayer
+
+      2. services/rs/api-gateway/src/middleware/request_logger.rs:
+         - Log every request: method, path, status, duration_ms, user_id (from claims), ip
+         - Format: JSON structured logging
+         - Log at INFO level for 2xx, WARN for 4xx, ERROR for 5xx
+         - Add X-Request-Id header (UUID v4) if not present
+         - Pass X-Request-Id to upstream services
+
+      3. Wire into main.rs as tower layers (order matters):
+         1. TraceLayer (outermost)
+         2. CorsLayer
+         3. RequestLogger (adds X-Request-Id)
+         4. RateLimiter
+         5. AuthMiddleware
+         6. ProxyService (innermost)
+
+      4. Tests:
+         - test CORS preflight returns correct headers
+         - test X-Request-Id generated if missing
+         - test X-Request-Id passed through if present
+
+      RULES:
+      - #![deny(clippy::all)]
+      - Never log request bodies (may contain PII)
+      - Never log Authorization header values
+      - JSON structured logs for machine parsing
+
+      COMMIT: feat(api-gateway): add CORS and structured request logging
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on: [reverse-proxy]
+
+  - id: gateway-docker
+    title: "Dockerfile and Docker Compose integration"
+    scope: backend:api-gateway
+    type: chore
+    prompt: |
+      Task: Add Dockerfile for the API Gateway and integrate into Docker Compose.
+
+      CONTEXT:
+      - API Gateway: services/rs/api-gateway/ (complete Axum service)
+      - Existing Docker setup: docker-compose.dev.yml, docker-compose.prod.yml
+      - Multi-stage Rust build to minimize image size
+
+      WHAT TO BUILD:
+
+      1. services/rs/api-gateway/Dockerfile:
+         # Build stage
+         FROM rust:1.83-slim AS builder
+         WORKDIR /app
+         COPY Cargo.toml Cargo.lock ./
+         # Create dummy main.rs to cache deps
+         RUN mkdir src && echo 'fn main() {}' > src/main.rs
+         RUN cargo build --release && rm -rf src
+         COPY src/ src/
+         RUN touch src/main.rs && cargo build --release
+
+         # Runtime stage
+         FROM debian:bookworm-slim
+         RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+         COPY --from=builder /app/target/release/api-gateway /usr/local/bin/
+         EXPOSE 8080
+         CMD ["api-gateway"]
+
+      2. Add to docker-compose.dev.yml:
+         api-gateway:
+           build: services/rs/api-gateway
+           ports: ["8080:8080"]
+           environment:
+             GATEWAY_PORT: 8080
+             REDIS_URL: redis://redis:6379
+             JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-key-at-least-32-chars!!}
+             IDENTITY_URL: http://identity:8001
+             AI_URL: http://ai:8006
+             LEARNING_URL: http://learning:8007
+             RAG_URL: http://rag:8008
+             NOTIFICATION_URL: http://notification:8005
+             PAYMENT_URL: http://payment:8004
+             CORS_ORIGINS: http://localhost:3001,http://localhost:3000
+             RUST_LOG: api_gateway=debug,tower_http=debug
+           depends_on: [redis, identity]
+
+      3. Update buyer app next.config.ts to optionally route through gateway:
+         If NEXT_PUBLIC_USE_GATEWAY=true, proxy to :8080 instead of individual services
+
+      4. Add .dockerignore:
+         target/
+         .git
+
+      RULES:
+      - Multi-stage build (builder + runtime)
+      - Minimal runtime image (no Rust toolchain)
+      - Cache cargo dependencies layer
+      - Health check in Docker: /health/live
+
+      COMMIT: chore(api-gateway): add Dockerfile and Docker Compose integration
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on: [gateway-cors-logging]
