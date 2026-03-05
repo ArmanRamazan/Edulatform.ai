@@ -152,12 +152,55 @@ extra_claims = {
 
 ---
 
+## API Gateway JWT Validation (Rust)
+
+API Gateway (Axum :8080) выполняет JWT верификацию **до** проксирования запроса в Python-сервисы. Это снимает нагрузку валидации с Python и обеспечивает единую точку контроля.
+
+### Middleware Flow
+
+```
+Client → API Gateway (Axum :8080)
+  │
+  ├─ Public route? (/health/*, /auth/register, /auth/login, /auth/forgot-password)
+  │   → Pass through without auth
+  │
+  ├─ No Authorization header?
+  │   → 401 Unauthorized
+  │
+  ├─ Bearer token → verify_token(token, JWT_SECRET)
+  │   ├─ Invalid signature → 401
+  │   ├─ Expired → 401
+  │   └─ Valid → extract Claims
+  │
+  └─ Set upstream headers:
+      X-User-Id: claims.sub
+      X-User-Role: claims.role
+      X-User-Verified: claims.is_verified
+      X-Organization-Id: claims.organization_id (if present)
+      → Proxy to Python service
+```
+
+### X-User-* Headers
+
+После успешной JWT верификации на gateway, Python-сервисы получают claims через заголовки:
+
+| Header | Source | Описание |
+|--------|--------|----------|
+| `X-User-Id` | `claims.sub` | UUID пользователя |
+| `X-User-Role` | `claims.role` | `student`, `teacher`, `admin` |
+| `X-User-Verified` | `claims.is_verified` | `true` / `false` |
+| `X-Organization-Id` | `claims.organization_id` | UUID организации (отсутствует если null) |
+
+Python-сервисы могут доверять этим заголовкам когда запросы идут через gateway. При прямом доступе к сервисам (dev-режим) — валидация JWT остаётся в Python.
+
+---
+
 ## Авторизация в сервисах
 
-Все сервисы **не обращаются к Identity Service**. Вся авторизация происходит через JWT claims:
+Все сервисы **не обращаются к Identity Service**. Вся авторизация происходит через JWT claims (напрямую или через X-User-* headers от gateway):
 
-1. Route layer извлекает `Authorization: Bearer <token>` из header
-2. Декодирует JWT тем же `JWT_SECRET` (env var)
+1. Route layer извлекает `Authorization: Bearer <token>` из header (или X-User-* headers через gateway)
+2. Декодирует JWT тем же `JWT_SECRET` (env var) — при прямом доступе
 3. Извлекает claims: `user_id` (sub), `role`, `is_verified`, `organization_id`
 4. Передаёт claims в service layer
 

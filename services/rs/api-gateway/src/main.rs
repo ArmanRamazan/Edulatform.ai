@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 
 use api_gateway::config::Config;
-use api_gateway::create_router;
+use api_gateway::create_router_with_secret;
 use tokio::net::TcpListener;
 use tracing_subscriber::EnvFilter;
 
@@ -13,7 +13,7 @@ async fn main() {
 
     let config = Config::from_env().expect("failed to load config");
 
-    let app = create_router();
+    let app = create_router_with_secret(config.jwt_secret.clone());
 
     let addr = format!("0.0.0.0:{}", config.port);
     tracing::info!("API Gateway listening on {}", addr);
