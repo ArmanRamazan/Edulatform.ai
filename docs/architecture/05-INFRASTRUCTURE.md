@@ -187,7 +187,7 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 
 ### API Gateway (Rust) — NEW
 
-Reverse proxy routing to Python services based on URL prefix. JWT verification, Redis sliding window rate limiting (INCR + EXPIRE, fail-open). Connection pooling via reqwest, 30s timeout per upstream request.
+Reverse proxy routing to Python services based on URL prefix. JWT verification, Redis sliding window rate limiting (INCR + EXPIRE, fail-open). CORS via tower-http CorsLayer (env-based origins). Structured JSON request logging (method, path, status, duration_ms, user_id, ip, request_id); generates X-Request-Id (UUID v4) if missing. Connection pooling via reqwest, 30s timeout per upstream request.
 
 | Variable | Default | Описание |
 |----------|---------|----------|
@@ -200,6 +200,8 @@ Reverse proxy routing to Python services based on URL prefix. JWT verification, 
 | `RAG_URL` | `http://localhost:8008` | RAG service URL |
 | `NOTIFICATION_URL` | `http://localhost:8005` | Notification service URL |
 | `PAYMENT_URL` | `http://localhost:8004` | Payment service URL |
+| `CORS_ORIGINS` | `http://localhost:3000,http://localhost:3001` | CORS allowed origins (comma-separated) |
+| `CORS_MAX_AGE` | `3600` | CORS preflight cache max age in seconds |
 | `RUST_LOG` | `info` | Tracing env filter |
 
 ### Payment-specific

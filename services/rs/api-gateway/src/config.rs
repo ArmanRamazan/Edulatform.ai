@@ -13,6 +13,8 @@ pub struct Config {
     pub rag_url: String,
     pub notification_url: String,
     pub payment_url: String,
+    pub cors_origins: Vec<String>,
+    pub cors_max_age: u64,
 }
 
 impl Config {
@@ -42,6 +44,16 @@ impl Config {
                 .unwrap_or_else(|_| "http://localhost:8005".into()),
             payment_url: env::var("PAYMENT_URL")
                 .unwrap_or_else(|_| "http://localhost:8004".into()),
+            cors_origins: env::var("CORS_ORIGINS")
+                .unwrap_or_else(|_| "http://localhost:3000,http://localhost:3001".into())
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect(),
+            cors_max_age: env::var("CORS_MAX_AGE")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(3600),
         })
     }
 }

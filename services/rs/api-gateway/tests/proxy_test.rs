@@ -381,6 +381,8 @@ fn default_routes_cover_all_services() {
         ai_url: "http://ai:8006".to_string(),
         learning_url: "http://learning:8007".to_string(),
         rag_url: "http://rag:8008".to_string(),
+        cors_origins: vec!["http://localhost:3000".to_string()],
+        cors_max_age: 3600,
     };
 
     let routes = api_gateway::proxy::default_routes(&config);
