@@ -143,3 +143,13 @@ class AICache:
             await self._redis.set(key, str(rating), ex=86400)
         except Exception:
             logger.warning("feedback_save_failed", session_id=session_id, message_index=message_index)
+
+    # --- LLM config per org ---
+
+    async def get_llm_config(self, org_id: str) -> str | None:
+        """Get cached LLM config for an organization."""
+        return await self._get(f"ai:llm_config:{org_id}")
+
+    async def set_llm_config(self, org_id: str, data: str, ttl: int = 300) -> None:
+        """Cache LLM config for an organization."""
+        await self._set(f"ai:llm_config:{org_id}", data, ttl)
