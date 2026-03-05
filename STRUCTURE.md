@@ -35,7 +35,7 @@ eduplatform/
 │   │   └── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base, GitHub adapter
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Axum :8080, JWT auth, rate limiting, reverse proxy, CORS, Dockerfile (multi-stage)
-│       ├── search/                #   Поисковый proxy + ranking
+│       ├── search/                #   Axum :8010, tantivy full-text search, BM25 scoring, org-scoped indexing
 │       ├── video-processor/       #   Upload, transcode, stream
 │       └── payment-engine/        #   Транзакции, подписки, payouts
 │
