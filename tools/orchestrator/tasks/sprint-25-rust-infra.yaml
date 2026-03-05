@@ -1,0 +1,345 @@
+phase: "sprint-25"
+description: "Rust IO Performance — Embedding Orchestrator (tokio batch) + WebSocket Gateway (real-time)"
+
+tasks:
+  - id: embedding-orchestrator-scaffold
+    title: "Embedding orchestrator service with batch processing"
+    scope: backend:embedding-orchestrator
+    type: feat
+    prompt: |
+      Task: Build a Rust service that orchestrates parallel embedding API calls for maximum throughput.
+
+      CONTEXT:
+      - New directory: services/rs/embedding-orchestrator/
+      - Port: 8009
+      - Purpose: Accept text chunks, call embedding API (Gemini/OpenAI) in parallel via tokio, return embeddings
+      - Currently Python RAG service calls embedding API sequentially or with asyncio (limited concurrency)
+      - Rust tokio can manage 100+ concurrent HTTP requests efficiently
+
+      WHAT TO BUILD:
+
+      1. services/rs/embedding-orchestrator/Cargo.toml:
+         [package]
+         name = "embedding-orchestrator"
+         version = "0.1.0"
+         edition = "2021"
+
+         [dependencies]
+         axum = { version = "0.8", features = ["macros"] }
+         tokio = { version = "1", features = ["full"] }
+         serde = { version = "1", features = ["derive"] }
+         serde_json = "1"
+         reqwest = { version = "0.12", features = ["json"] }
+         tower-http = { version = "0.6", features = ["cors", "trace", "timeout"] }
+         tracing = "0.1"
+         tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+         thiserror = "2"
+         uuid = { version = "1", features = ["v4", "serde"] }
+         dotenvy = "0.15"
+         futures = "0.3"
+
+      2. services/rs/embedding-orchestrator/src/config.rs:
+         Config:
+         - port: 8009
+         - embedding_api_url: String (Gemini/OpenAI endpoint)
+         - embedding_api_key: String
+         - embedding_model: String (default "text-embedding-004")
+         - max_concurrent_requests: usize (default 50)
+         - batch_size: usize (default 100)
+         - request_timeout_secs: u64 (default 30)
+
+      3. services/rs/embedding-orchestrator/src/embedder.rs:
+         EmbeddingService:
+         - client: reqwest::Client (connection pool)
+         - semaphore: Arc<Semaphore> (max_concurrent_requests)
+
+         async fn embed_single(text: &str) -> Result<Vec<f32>>
+         async fn embed_batch(texts: Vec<String>) -> Result<Vec<Vec<f32>>>
+           - Split into sub-batches of batch_size
+           - Use tokio::spawn + Semaphore for controlled parallelism
+           - Collect results in order
+           - Retry failed requests once with exponential backoff
+
+      4. services/rs/embedding-orchestrator/src/routes.rs:
+         POST /embed — Single text. Body: { text: String } → { embedding: Vec<f32> }
+         POST /embed/batch — Batch. Body: { texts: Vec<String> } → { embeddings: Vec<Vec<f32>>, failed: Vec<usize> }
+         GET /health/live → 200
+         GET /health/ready → check embedding API connectivity
+
+      5. services/rs/embedding-orchestrator/src/main.rs:
+         - Load config, create EmbeddingService
+         - Axum router with routes
+         - Graceful shutdown
+
+      6. Tests:
+         - test_embed_single: mock embedding API, verify response
+         - test_embed_batch: mock API, verify all embeddings returned in order
+         - test_concurrent_limit: verify semaphore limits concurrent requests
+         - test_retry_on_failure: verify retry logic
+         - test_partial_failure: some texts fail, others succeed, failed indices returned
+
+      RULES:
+      - #![deny(clippy::all)]
+      - Semaphore-based concurrency control (don't overwhelm API)
+      - Preserve input order in output
+      - Partial failures don't fail entire batch
+      - No unwrap() in production code
+
+      COMMIT: feat(embedding-orchestrator): batch parallel embedding service with tokio concurrency
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/embedding-orchestrator && cargo test && cargo clippy -- -D warnings"
+    depends_on: []
+
+  - id: embedding-rag-integration
+    title: "Connect embedding orchestrator to RAG pipeline"
+    scope: backend:rag
+    type: feat
+    prompt: |
+      Task: Update RAG service to use the Rust embedding orchestrator for batch embeddings.
+
+      CONTEXT:
+      - Embedding orchestrator: services/rs/embedding-orchestrator/ (port 8009)
+      - RAG service: services/py/rag/ (currently calls Gemini API directly)
+      - Switch: RAG → Embedding Orchestrator → Gemini API (orchestrator handles parallelism)
+
+      WHAT TO BUILD:
+
+      1. In RAG service config: EMBEDDING_SERVICE_URL = "http://localhost:8009"
+
+      2. Update embedding generation in RAG:
+         - Current: direct Gemini API calls from Python (asyncio)
+         - New: POST to embedding orchestrator /embed/batch
+         - Fallback: if orchestrator unavailable, fall back to direct API calls
+
+      3. Add adapter: app/adapters/embedding_client.py
+         EmbeddingClient(http_client, config):
+         - async embed_texts(texts: list[str]) -> list[list[float]]
+           Call POST /embed/batch on orchestrator
+         - async embed_single(text: str) -> list[float]
+           Call POST /embed on orchestrator
+         - Timeout: 60s for batch, 10s for single
+         - Retry: 1 retry on connection error
+
+      4. Update IngestionService to use EmbeddingClient instead of direct API calls
+
+      5. Add embedding-orchestrator to docker-compose.dev.yml:
+         embedding-orchestrator:
+           build: services/rs/embedding-orchestrator
+           ports: ["8009:8009"]
+           environment:
+             PORT: 8009
+             EMBEDDING_API_URL: ${GEMINI_EMBEDDING_URL}
+             EMBEDDING_API_KEY: ${GEMINI_API_KEY}
+             MAX_CONCURRENT_REQUESTS: 50
+             RUST_LOG: embedding_orchestrator=debug
+
+      6. Tests (Python):
+         - test embedding client calls orchestrator
+         - test fallback to direct API on orchestrator failure
+         - Existing RAG tests must pass
+
+      RULES:
+      - TDD for Python changes
+      - Graceful degradation — works without orchestrator
+      - No breaking changes
+
+      COMMIT: feat(rag): route embeddings through Rust orchestrator with fallback
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [embedding-orchestrator-scaffold]
+
+  - id: ws-gateway-scaffold
+    title: "WebSocket gateway for real-time messaging"
+    scope: backend:ws-gateway
+    type: feat
+    prompt: |
+      Task: Build a Rust WebSocket gateway for real-time communication (Coach chat, notifications).
+
+      CONTEXT:
+      - New directory: services/rs/ws-gateway/ (replace video-processor stub if needed)
+      - Port: 8011
+      - Purpose: WebSocket connections for real-time features
+      - Coach chat currently uses HTTP polling; this enables true real-time
+      - Notifications currently use polling; this enables push
+
+      WHAT TO BUILD:
+
+      1. services/rs/ws-gateway/Cargo.toml:
+         [package]
+         name = "ws-gateway"
+         version = "0.1.0"
+         edition = "2021"
+
+         [dependencies]
+         axum = { version = "0.8", features = ["macros", "ws"] }
+         tokio = { version = "1", features = ["full"] }
+         serde = { version = "1", features = ["derive"] }
+         serde_json = "1"
+         tower-http = { version = "0.6", features = ["cors", "trace"] }
+         tracing = "0.1"
+         tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+         thiserror = "2"
+         uuid = { version = "1", features = ["v4", "serde"] }
+         dashmap = "6"
+         jsonwebtoken = "9"
+         dotenvy = "0.15"
+         futures = "0.3"
+         tokio-stream = "0.1"
+
+      2. services/rs/ws-gateway/src/connection.rs:
+         ConnectionManager:
+         - connections: DashMap<UserId, Vec<WsConnection>>  (user can have multiple tabs)
+         - subscribe(user_id, ws_sender) -> ConnectionId
+         - unsubscribe(connection_id)
+         - send_to_user(user_id, message: WsMessage) -> Result<()>
+         - send_to_org(org_id, message: WsMessage) -> Result<()>  (broadcast to org members)
+         - connection_count() -> usize
+
+      3. services/rs/ws-gateway/src/messages.rs:
+         WsMessage enum (JSON serialized):
+         - CoachMessage { session_id, content, phase, hint? }
+         - Notification { id, type, title, body }
+         - TypingIndicator { session_id, is_typing: bool }
+         - Ping / Pong (keepalive)
+
+         IncomingMessage enum:
+         - ChatMessage { session_id, content }
+         - Subscribe { channels: Vec<String> }  // e.g. ["coach:session-123", "notifications"]
+         - Ping
+
+      4. services/rs/ws-gateway/src/routes.rs:
+         GET /ws — WebSocket upgrade. Query: ?token=JWT
+         - Validate JWT from query param (can't use headers in WS)
+         - Register connection
+         - Handle incoming messages
+         - Broadcast outgoing messages
+
+         POST /publish — Internal API (called by Python services)
+         Body: { target: "user:uuid" | "org:uuid", message: WsMessage }
+         - Python services call this to push real-time updates
+
+         GET /health/live → 200
+         GET /stats → { active_connections, users_online }
+
+      5. services/rs/ws-gateway/src/main.rs:
+         - Config: WS_PORT (8011), JWT_SECRET, MAX_CONNECTIONS (10000)
+         - Create ConnectionManager (Arc<ConnectionManager>)
+         - Axum router
+         - Periodic cleanup of dead connections (every 30s)
+         - Graceful shutdown: close all connections
+
+      6. Tests:
+         - test_ws_connect: establish WebSocket connection with valid JWT
+         - test_ws_invalid_jwt: reject connection with invalid token
+         - test_send_to_user: send message, verify received
+         - test_multiple_connections: user with 2 tabs, both receive
+         - test_disconnect_cleanup: dead connection removed from manager
+
+      RULES:
+      - #![deny(clippy::all)]
+      - DashMap for concurrent connection tracking (no global locks)
+      - Heartbeat: server sends Ping every 30s, disconnect on no Pong within 10s
+      - Max message size: 64KB
+      - JWT validated on connect (not on every message)
+      - No unwrap() in production code
+
+      COMMIT: feat(ws-gateway): WebSocket gateway with connection management and pub/sub
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/ws-gateway && cargo test && cargo clippy -- -D warnings"
+    depends_on: []
+
+  - id: ws-coach-integration
+    title: "Integrate WebSocket gateway with Coach chat"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Update AI service Coach agent to push real-time messages through WebSocket gateway.
+
+      CONTEXT:
+      - WebSocket gateway: services/rs/ws-gateway/ (port 8011)
+      - AI service: services/py/ai/ (port 8006, Coach agent)
+      - Current: Coach responds synchronously to POST /ai/coach/chat
+      - New: Coach also pushes responses via WS gateway for real-time feel
+
+      WHAT TO BUILD:
+
+      1. In AI service config: WS_GATEWAY_URL = "http://localhost:8011"
+
+      2. Add ws_client adapter: app/adapters/ws_client.py
+         WsPublisher(http_client, config):
+         - async publish_to_user(user_id: str, message: dict) -> None
+           POST to ws-gateway /publish { target: "user:{user_id}", message }
+         - Fire-and-forget: failure doesn't affect Coach response
+
+      3. Update Coach agent:
+         After generating response, also publish via WsPublisher:
+         - CoachMessage with session_id, content, phase
+         - TypingIndicator before generating response
+
+      4. Add ws-gateway to docker-compose.dev.yml:
+         ws-gateway:
+           build: services/rs/ws-gateway
+           ports: ["8011:8011"]
+           environment:
+             WS_PORT: 8011
+             JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-key-at-least-32-chars!!}
+             MAX_CONNECTIONS: 10000
+             RUST_LOG: ws_gateway=debug
+
+      5. Tests (Python):
+         - test WsPublisher calls gateway endpoint
+         - test Coach still works if gateway is down (graceful degradation)
+         - Existing Coach tests must pass
+
+      RULES:
+      - TDD for Python changes
+      - WebSocket is enhancement, not requirement — HTTP API still works
+      - No breaking changes to existing Coach API
+      - Fire-and-forget for WS publishing
+
+      COMMIT: feat(ai): integrate Coach chat with WebSocket gateway for real-time messaging
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: [ws-gateway-scaffold]
+
+  - id: ws-notification-integration
+    title: "Integrate WebSocket gateway with notifications"
+    scope: backend:notification
+    type: feat
+    prompt: |
+      Task: Update Notification service to push real-time notifications via WebSocket gateway.
+
+      CONTEXT:
+      - WebSocket gateway: services/rs/ws-gateway/ (port 8011)
+      - Notification service: services/py/notification/ (port 8005)
+      - Current: notifications stored in DB, fetched via GET /notifications/me
+      - New: also push via WS gateway for instant delivery
+
+      WHAT TO BUILD:
+
+      1. In Notification service config: WS_GATEWAY_URL = "http://localhost:8011"
+
+      2. Add ws_client adapter: app/adapters/ws_client.py
+         WsPublisher(http_client, config):
+         - async publish_notification(user_id: str, notification: dict) -> None
+           POST to ws-gateway /publish { target: "user:{user_id}", message: { type: "notification", ...notification } }
+         - Fire-and-forget
+
+      3. Update NotificationService:
+         After creating a notification in DB, also publish via WsPublisher:
+         - Notification data (id, type, title, body)
+
+      4. Update direct messaging:
+         After creating a message in DB, also publish via WsPublisher:
+         - Message data to recipient
+
+      5. Tests:
+         - test WsPublisher publishes on notification create
+         - test service works if gateway is down
+         - Existing notification tests must pass
+
+      RULES:
+      - TDD for Python changes
+      - WebSocket is enhancement — DB is still source of truth
+      - Fire-and-forget publishing
+      - No breaking changes
+
+      COMMIT: feat(notification): push real-time notifications via WebSocket gateway
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+    depends_on: [ws-gateway-scaffold]

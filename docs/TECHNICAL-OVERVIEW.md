@@ -4,7 +4,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 
 ## Архитектура
 
-Монорепа: Python (бизнес-логика, AI) + Next.js (frontend). Микросервисы с database-per-service. Пивот с B2C marketplace — Identity, AI, Learning, Notification сервисы переиспользуются, Course/Enrollment/Payment dormant.
+Монорепа: Python (бизнес-логика, AI) + Rust (performance-critical) + Next.js (frontend). Микросервисы с database-per-service. Пивот с B2C marketplace — Identity, AI, Learning, Notification сервисы переиспользуются, Course/Enrollment/Payment dormant. Rust Performance Layer (Sprints 23-25): API Gateway, Search, Embedding, WebSocket.
 
 ```
                       ┌─────────────┐
@@ -12,7 +12,14 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
                       │  Next.js    │
                       │   :3001     │
                       └──────┬──────┘
-                             │ /api proxy
+                             │
+                      ┌──────▼──────┐     ┌───────────────────────┐
+                      │ API Gateway │     │  RUST PERFORMANCE     │
+                      │ Axum :8080  │────▶│  Search :8010         │
+                      │ JWT, Rate   │     │  Embed :8009          │
+                      │ Limit, CORS │     │  WS :8011             │
+                      └──────┬──────┘     │  Chunker (pyo3 FFI)   │
+                             │            └───────────────────────┘
         ┌────────┬───────────┼───────────┬──────────┐
         │        │           │           │          │
    ┌────▼──┐ ┌──▼───┐ ┌────▼────┐ ┌───▼────┐ ┌───▼──┐
@@ -39,7 +46,10 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | AI / LLM | Gemini 2.0 Flash Lite | Tri-Agent System, quiz gen, tutor |
 | Embeddings | Gemini text-embedding-004 | Document + code embeddings для RAG |
 | Метрики | Prometheus + Grafana | RPS, latency, pool metrics |
-| Пакеты | uv (Python), pnpm (JS) | Монорепа workspace |
+| Performance Layer | Rust / Axum / Tokio | API Gateway, Search, Embedding, WebSocket |
+| Search Engine | tantivy | Full-text search (replaces Meilisearch) |
+| FFI Bridge | pyo3 + maturin | Rust chunker called from Python RAG |
+| Пакеты | uv (Python), pnpm (JS), cargo (Rust) | Монорепа workspace |
 
 ## Сервисы
 
@@ -52,7 +62,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | Notification | 8005 | 5437 | In-app, email, DMs | ✅ Active |
 | AI | 8006 | — (Redis) | Tri-Agent System, LLM routing | ✅ Active |
 | Learning | 8007 | 5438 | Quizzes, FSRS, knowledge graph, missions | ✅ Active |
-| RAG | 8008 | 5439 | Document ingestion, semantic search, concept extraction | ✅ Active |
+| RAG | 8008 | 5439 | Document ingestion, semantic search, concept extraction, KB management | ✅ Active |
 
 ## Tri-Agent System
 
@@ -78,6 +88,20 @@ GitHub repo / Docs / Wiki
 ```
 
 Хранение: PostgreSQL + pgvector (rag-db :5439). Scope: per-organization.
+
+## Rust Performance Layer
+
+Sprints 23-25. Rust-сервисы для performance-critical paths:
+
+| Сервис | Порт | Технологии | Назначение | Sprint |
+|--------|------|-----------|------------|--------|
+| API Gateway | 8080 | Axum, tower-http, jsonwebtoken | Единая точка входа, JWT, rate limiting, CORS | 23 |
+| RAG Chunker | — (FFI) | pyo3, maturin | CPU-bound chunking из Python RAG | 24 |
+| Search Service | 8010 | Axum, tantivy | Full-text search, замена Meilisearch | 24 |
+| Embedding Orchestrator | 8009 | Axum, tokio, reqwest | Batch parallel embeddings | 25 |
+| WebSocket Gateway | 8011 | Axum, tokio-tungstenite | Real-time Coach chat, notifications | 25 |
+
+Критерий: p99 < 50ms или > 10K RPS → Rust. IO-bound бизнес-логика → Python.
 
 ## Mission Engine
 
@@ -117,7 +141,7 @@ cd services/py/payment     && uv run --package payment pytest tests/ -v      # 1
 cd services/py/notification && uv run --package notification pytest tests/ -v # 57 tests
 cd services/py/ai          && uv run --package ai pytest tests/ -v           # 172 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 222 tests
-cd services/py/rag         && uv run --package rag pytest tests/ -v          # 115 tests
+cd services/py/rag         && uv run --package rag pytest tests/ -v          # 142 tests
 ```
 
 **Итого:** 948 тестов по 8 сервисам.
@@ -150,7 +174,11 @@ docker compose -f docker-compose.prod.yml up -d
 | Notification API | 8005 |
 | AI API | 8006 |
 | Learning API | 8007 |
-| RAG API (Sprint 17) | 8008 |
+| RAG API | 8008 |
+| API Gateway (Rust/Axum) | 8080 |
+| Embedding Orchestrator (Rust) | 8009 |
+| Search Service (Rust/tantivy) | 8010 |
+| WebSocket Gateway (Rust) | 8011 |
 | Buyer Frontend | 3001 |
 | Seller Frontend (dormant) | 3002 |
 | Grafana | 3000 |
@@ -184,8 +212,11 @@ docker compose -f docker-compose.prod.yml up -d
 | **Sprint 20** | Company Integration | 5 | 🔴 |
 | **Sprint 21** | Frontend Redesign | 5 | 🔴 |
 | **Sprint 22** | B2B Launch | 4 | 🔴 |
+| **Sprint 23** | Rust API Gateway | 5 | 🔴 |
+| **Sprint 24** | Rust RAG Performance | 5 | 🔴 |
+| **Sprint 25** | Rust IO Performance | 5 | 🔴 |
 
-**Итого:** 30 задач в 6 спринтах для B2B MVP.
+**Итого:** 30 задач B2B MVP + 15 задач Rust Performance Layer.
 
 ## Документация
 

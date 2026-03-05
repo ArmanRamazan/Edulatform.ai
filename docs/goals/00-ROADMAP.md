@@ -11,7 +11,7 @@
 ## Стадии развития продукта
 
 ```
-Foundation ✅ → Learning Intelligence ✅ → B2B Pivot (← мы здесь) → Scale
+Foundation ✅ → Learning Intelligence ✅ → B2B Pivot (← мы здесь) → Scale (Rust Sprints 23-25)
 ```
 
 | Стадия | Клиенты | Суть | Статус |
@@ -19,7 +19,7 @@ Foundation ✅ → Learning Intelligence ✅ → B2B Pivot (← мы здесь)
 | Foundation | — | Базовая платформа, auth, CRUD, 7 сервисов | ✅ Done |
 | Learning Intelligence | — | AI-тьютор, FSRS, knowledge graph, gamification | ✅ Done |
 | **B2B Pivot** | **1-50 компаний** | **RAG, Tri-Agent, Missions, Organizations** | **🔵 In Progress** |
-| Scale | 50+ компаний | K8s, horizontal scaling, multi-region | 🔴 Будущее |
+| **Scale** | **50+ компаний** | **Rust Performance Layer (Sprints 23-25), K8s, multi-region** | **🔴 Следующий** |
 
 ---
 
@@ -157,6 +157,54 @@ Foundation ✅ → Learning Intelligence ✅ → B2B Pivot (← мы здесь)
 
 ---
 
+### Sprint 23: Rust API Gateway
+
+> Зависимости: нет (параллельно со Sprint 19-22).
+
+| # | Задача | Описание |
+|---|--------|----------|
+| 23.1 | Gateway scaffold | Axum server, config, health checks |
+| 23.2 | JWT middleware | Token validation, claims extraction |
+| 23.3 | Rate limiting | Redis sliding window, per-route limits |
+| 23.4 | Reverse proxy | Route to Python services, timeout, retry |
+| 23.5 | CORS + logging | CORS middleware, structured request logging |
+
+**Результат:** единая точка входа с auth и rate limiting.
+
+---
+
+### Sprint 24: Rust RAG Performance
+
+> Зависимости: Sprint 17 (RAG service существует).
+
+| # | Задача | Описание |
+|---|--------|----------|
+| 24.1 | Chunker crate scaffold | pyo3 + maturin setup, Python bindings |
+| 24.2 | Chunking algorithms | Regex split, overlap, token counting |
+| 24.3 | RAG integration | Replace Python chunker with Rust FFI call |
+| 24.4 | Search service scaffold | Axum + tantivy, index management |
+| 24.5 | Search API | Full-text search endpoints, BM25 scoring |
+
+**Результат:** chunking 10-50x быстрее, search <50ms p99.
+
+---
+
+### Sprint 25: Rust IO Performance
+
+> Зависимости: Sprint 23 (gateway pattern).
+
+| # | Задача | Описание |
+|---|--------|----------|
+| 25.1 | Embedding orchestrator | Axum service, batch parallel HTTP calls |
+| 25.2 | Embedding API | Endpoints for single + batch embedding |
+| 25.3 | RAG integration | Replace Python embedding calls with Rust service |
+| 25.4 | WebSocket gateway | tokio-tungstenite, connection management |
+| 25.5 | WS integration | Coach chat + notification real-time channels |
+
+**Результат:** embedding throughput 10-40x, real-time messaging.
+
+---
+
 ## Dormant Services (B2C)
 
 Следующие сервисы сохранены, но не развиваются активно:
@@ -190,5 +238,8 @@ Pilot → Enterprise: начинаем с 1-5 компаний, доказыва
 | 20 | Company Integration | 5 | 17 | 🔴 |
 | 21 | Frontend Redesign | 5 | 18, 19 | 🔴 |
 | 22 | B2B Launch | 4 | 20, 21 | 🔴 |
+| **23** | **Rust API Gateway** | **5** | **— (параллельно)** | **🔴** |
+| **24** | **Rust RAG Performance** | **5** | **17** | **🔴** |
+| **25** | **Rust IO Performance** | **5** | **23** | **🔴** |
 
-**Total: 30 задач, 6 спринтов.**
+**Total: 45 задач, 9 спринтов (6 B2B MVP + 3 Rust Scale).**

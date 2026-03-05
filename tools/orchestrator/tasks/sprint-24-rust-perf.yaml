@@ -1,0 +1,339 @@
+phase: "sprint-24"
+description: "Rust RAG Performance — pyo3 chunker FFI + tantivy search service"
+
+tasks:
+  - id: chunker-crate-scaffold
+    title: "pyo3 chunker crate scaffold with Python bindings"
+    scope: backend:rag-chunker
+    type: feat
+    prompt: |
+      Task: Create a Rust crate that implements fast text chunking, exposed to Python via pyo3.
+
+      CONTEXT:
+      - New directory: libs/rs/rag-chunker/
+      - Purpose: Replace slow Python string processing for document chunking with Rust FFI
+      - pyo3 + maturin for Python bindings
+      - Called from: services/py/rag/ IngestionService
+
+      WHAT TO BUILD:
+
+      1. libs/rs/rag-chunker/Cargo.toml:
+         [package]
+         name = "rag-chunker"
+         version = "0.1.0"
+         edition = "2021"
+
+         [lib]
+         name = "rag_chunker"
+         crate-type = ["cdylib"]
+
+         [dependencies]
+         pyo3 = { version = "0.23", features = ["extension-module"] }
+         regex = "1"
+         unicode-segmentation = "1"
+
+      2. libs/rs/rag-chunker/pyproject.toml:
+         [build-system]
+         requires = ["maturin>=1.0,<2.0"]
+         build-backend = "maturin"
+
+         [project]
+         name = "rag-chunker"
+         requires-python = ">=3.12"
+
+         [tool.maturin]
+         features = ["pyo3/extension-module"]
+
+      3. libs/rs/rag-chunker/src/lib.rs:
+         Use pyo3 to expose Python module "rag_chunker" with functions:
+
+         #[pyfunction]
+         fn chunk_text(text: &str, chunk_size: usize, overlap: usize) -> Vec<String>
+         - Split text into chunks of approximately chunk_size tokens
+         - Overlap between consecutive chunks
+         - Split on paragraph boundaries first, then sentence boundaries
+         - Never split mid-word
+
+         #[pyfunction]
+         fn chunk_code(code: &str, chunk_size: usize, overlap: usize, language: &str) -> Vec<String>
+         - Split code into chunks respecting function/class boundaries
+         - For Python: split on "def " and "class " boundaries
+         - For TypeScript/JavaScript: split on "function ", "class ", "export "
+         - For Rust: split on "fn ", "impl ", "struct ", "enum "
+         - Fallback: line-based splitting
+
+         #[pyfunction]
+         fn count_tokens(text: &str) -> usize
+         - Approximate token count (words + punctuation)
+         - Fast estimation, not exact tokenizer
+
+         #[pymodule]
+         fn rag_chunker(m: &Bound<'_, PyModule>) -> PyResult<()>
+
+      4. libs/rs/rag-chunker/src/chunking.rs:
+         Internal chunking implementation:
+         - paragraph_split(text) -> Vec<&str>
+         - sentence_split(text) -> Vec<&str>
+         - merge_to_chunks(segments: &[&str], chunk_size: usize, overlap: usize) -> Vec<String>
+
+      5. Tests (Rust-side):
+         - test_chunk_text_basic: simple text splits correctly
+         - test_chunk_text_overlap: overlap produces overlapping chunks
+         - test_chunk_code_python: Python code splits on function boundaries
+         - test_count_tokens: token counting approximation
+         - test_empty_input: empty string returns empty vec
+         - test_small_text: text smaller than chunk_size returns single chunk
+
+      RULES:
+      - #![deny(clippy::all)]
+      - Zero-copy where possible (return owned Strings to Python)
+      - No unwrap() in library code
+      - Comprehensive error handling with Python exceptions
+
+      COMMIT: feat(rag-chunker): scaffold pyo3 chunker crate with text and code chunking
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/libs/rs/rag-chunker && cargo test && cargo clippy -- -D warnings"
+    depends_on: []
+
+  - id: chunker-advanced
+    title: "Advanced chunking: markdown sections, AST-aware splitting"
+    scope: backend:rag-chunker
+    type: feat
+    prompt: |
+      Task: Add markdown-aware and AST-aware chunking to the Rust chunker crate.
+
+      CONTEXT:
+      - Crate: libs/rs/rag-chunker/ (basic chunking done)
+      - RAG ingests: .md files, .py files, .ts/.js files, .yaml/.json files
+      - Need: smarter splitting that respects document structure
+
+      WHAT TO BUILD:
+
+      1. libs/rs/rag-chunker/src/markdown.rs:
+         #[pyfunction]
+         fn chunk_markdown(md: &str, chunk_size: usize, overlap: usize) -> Vec<MarkdownChunk>
+
+         MarkdownChunk { text: String, heading: Option<String>, level: u8 }
+
+         - Split on headings (# ## ### etc.)
+         - Each chunk includes its heading context
+         - If section > chunk_size, split on paragraphs within section
+         - Preserve code blocks (```...```) as atomic units
+
+      2. libs/rs/rag-chunker/src/metadata.rs:
+         #[pyfunction]
+         fn extract_chunk_metadata(chunk: &str, source_path: &str) -> ChunkMetadata
+
+         ChunkMetadata {
+           token_count: usize,
+           language: Option<String>,    // detected from source_path extension
+           has_code_block: bool,
+           heading_context: Option<String>,
+           line_start: usize,
+           line_end: usize,
+         }
+
+      3. Benchmarks (optional but good):
+         - benches/chunking_bench.rs: benchmark chunk_text on 100KB document
+         - Compare with estimated Python speed
+
+      4. Tests:
+         - test_chunk_markdown: headings preserved, sections split correctly
+         - test_markdown_code_blocks: code blocks not split
+         - test_extract_metadata: correct language detection, token count
+         - test_large_document: 100KB doc chunks without panic
+
+      RULES:
+      - #![deny(clippy::all)]
+      - No external parser for markdown (regex is sufficient for heading detection)
+      - Handle malformed markdown gracefully (don't panic)
+
+      COMMIT: feat(rag-chunker): add markdown-aware and metadata-enriched chunking
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/libs/rs/rag-chunker && cargo test && cargo clippy -- -D warnings"
+    depends_on: [chunker-crate-scaffold]
+
+  - id: chunker-rag-integration
+    title: "Integrate Rust chunker into Python RAG service"
+    scope: backend:rag
+    type: feat
+    prompt: |
+      Task: Replace Python chunking in the RAG service with calls to the Rust rag-chunker FFI crate.
+
+      CONTEXT:
+      - RAG service: services/py/rag/
+      - Rust crate: libs/rs/rag-chunker/ (pyo3, maturin)
+      - Current chunking: likely in IngestionService or similar
+      - Build: maturin develop in libs/rs/rag-chunker/ installs into current venv
+
+      WHAT TO BUILD:
+
+      1. Add rag-chunker to RAG service dependencies:
+         In services/py/rag/pyproject.toml, add:
+         rag-chunker = { path = "../../libs/rs/rag-chunker" }
+         (maturin will handle build)
+
+      2. Update the chunking logic in RAG service:
+         - Import: from rag_chunker import chunk_text, chunk_code, chunk_markdown, count_tokens
+         - Replace Python string-based chunking with Rust FFI calls
+         - Fallback: if import fails (rag_chunker not built), use Python chunking
+         - Log which chunker is being used (Rust FFI vs Python fallback)
+
+      3. Add try/except ImportError for graceful degradation:
+         ```python
+         try:
+             from rag_chunker import chunk_text, chunk_code, chunk_markdown
+             RUST_CHUNKER = True
+         except ImportError:
+             RUST_CHUNKER = False
+             # Use existing Python implementation as fallback
+         ```
+
+      4. Tests:
+         - Test chunking works (whether Rust or Python fallback)
+         - Test that chunk output format is consistent
+
+      RULES:
+      - TDD mandatory
+      - Graceful degradation — Python fallback if Rust crate not built
+      - No breaking changes to existing RAG API
+      - Existing tests must still pass
+
+      COMMIT: feat(rag): integrate Rust chunker FFI with Python fallback
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [chunker-advanced]
+
+  - id: search-service-scaffold
+    title: "tantivy search service scaffold"
+    scope: backend:search
+    type: feat
+    prompt: |
+      Task: Build a full-text search service using Axum + tantivy.
+
+      CONTEXT:
+      - Directory: services/rs/search/ (currently empty stub)
+      - Port: 8010
+      - Purpose: Full-text search across documents, code, concepts
+      - tantivy = Rust-native Lucene equivalent, BM25 scoring
+      - Will be called by RAG service and API Gateway
+
+      WHAT TO BUILD:
+
+      1. services/rs/search/Cargo.toml:
+         [package]
+         name = "search-service"
+         version = "0.1.0"
+         edition = "2021"
+
+         [dependencies]
+         axum = { version = "0.8", features = ["macros"] }
+         tokio = { version = "1", features = ["full"] }
+         serde = { version = "1", features = ["derive"] }
+         serde_json = "1"
+         tantivy = "0.22"
+         tower-http = { version = "0.6", features = ["cors", "trace"] }
+         tracing = "0.1"
+         tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+         thiserror = "2"
+         uuid = { version = "1", features = ["v4", "serde"] }
+         dotenvy = "0.15"
+
+      2. services/rs/search/src/main.rs:
+         - Config: SEARCH_PORT (8010), INDEX_PATH (./data/index)
+         - Health endpoints
+         - Graceful shutdown
+
+      3. services/rs/search/src/index.rs:
+         SearchIndex struct:
+         - Schema: id (text, stored), org_id (text, indexed), title (text, stored+indexed), body (text, indexed), source_type (text, facet), source_path (text, stored), created_at (date)
+         - create_or_open(path) -> SearchIndex
+         - add_document(doc: SearchDocument) -> Result<()>
+         - add_documents_batch(docs: Vec<SearchDocument>) -> Result<usize>
+         - commit() -> Result<()>
+         - delete_by_org(org_id: &str) -> Result<()>
+
+      4. services/rs/search/src/search.rs:
+         - search(query: &str, org_id: &str, limit: usize, offset: usize) -> SearchResults
+           BM25 scoring, filter by org_id
+         - SearchResult { id, title, snippet, score, source_type, source_path }
+         - Snippet: highlight matching terms in body
+
+      5. services/rs/search/src/routes.rs:
+         POST /index — Index a document. Body: { org_id, id, title, body, source_type, source_path }
+         POST /index/batch — Index multiple documents. Body: { documents: [...] }
+         POST /search — Search. Body: { query, org_id, limit?, offset? }
+         DELETE /index/{org_id} — Delete all documents for an org
+         GET /health/live → 200
+
+      6. Tests:
+         - test_index_and_search: index doc, search for it, find it
+         - test_org_isolation: search only returns docs from matching org_id
+         - test_batch_index: batch indexing works
+         - test_empty_query: returns empty results, not error
+         - test_delete_org: removes all docs for org
+
+      RULES:
+      - #![deny(clippy::all)]
+      - tantivy index on disk (configurable path)
+      - Thread-safe: tantivy handles concurrent reads/writes
+      - No unwrap() in production code
+
+      COMMIT: feat(search): scaffold tantivy-based full-text search service
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/search && cargo test && cargo clippy -- -D warnings"
+    depends_on: []
+
+  - id: search-rag-integration
+    title: "Connect search service to RAG pipeline"
+    scope: backend:search
+    type: feat
+    prompt: |
+      Task: Integrate the tantivy search service with the RAG ingestion pipeline.
+
+      CONTEXT:
+      - Search service: services/rs/search/ (Axum + tantivy, port 8010)
+      - RAG service: services/py/rag/ (Python, port 8008)
+      - When RAG ingests documents, it should also index them in search service
+      - RAG's semantic search (pgvector) complements full-text search (tantivy)
+
+      WHAT TO BUILD:
+
+      1. In RAG service (services/py/rag/), add search service client:
+         - Config: SEARCH_SERVICE_URL = "http://localhost:8010"
+         - After document ingestion: POST to search service /index with document data
+         - After batch ingestion: POST to /index/batch
+         - On document deletion: DELETE /index/{org_id} or individual delete
+
+      2. Add hybrid search endpoint to RAG:
+         POST /kb/{org_id}/hybrid-search
+         Body: { query, limit, semantic_weight: 0.7, fulltext_weight: 0.3 }
+         - Call both pgvector semantic search AND tantivy full-text search
+         - Merge results: weighted score = semantic_weight * cosine_sim + fulltext_weight * bm25_norm
+         - Deduplicate by document_id
+         - Return merged, re-ranked results
+
+      3. Add search service Dockerfile:
+         Multi-stage Rust build (same pattern as api-gateway)
+         EXPOSE 8010
+         Volume mount for index data
+
+      4. Add to docker-compose.dev.yml:
+         search:
+           build: services/rs/search
+           ports: ["8010:8010"]
+           environment:
+             SEARCH_PORT: 8010
+             INDEX_PATH: /data/index
+             RUST_LOG: search_service=debug
+           volumes:
+             - search-data:/data/index
+
+      5. Tests:
+         - RAG test: mock search service, verify index call after ingestion
+         - Hybrid search test: mock both backends, verify weighted merge
+
+      RULES:
+      - TDD for Python changes
+      - Search service failure doesn't break RAG ingestion (fire-and-forget with logging)
+      - Hybrid search is optional enhancement (semantic search still works alone)
+
+      COMMIT: feat(search): integrate tantivy search with RAG pipeline and hybrid search
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [search-service-scaffold, chunker-rag-integration]

@@ -149,6 +149,37 @@ PostgreSQL с 32GB RAM справится без проблем.
 
 ---
 
+## Rust Performance Layer
+
+### Компоненты
+
+| Сервис | Порт | Технологии | Назначение | Sprint |
+|--------|------|-----------|------------|--------|
+| API Gateway | 8080 | Axum, tower-http, jsonwebtoken | Единая точка входа, JWT, rate limiting, CORS | 23 |
+| RAG Chunker | — (FFI) | pyo3, maturin | CPU-bound chunking, вызов из Python | 24 |
+| Search Service | 8010 | Axum, tantivy | Full-text search, замена Meilisearch | 24 |
+| Embedding Orchestrator | 8009 | Axum, tokio, reqwest | Batch embedding с массовой параллельностью | 25 |
+| WebSocket Gateway | 8011 | Axum, tokio-tungstenite | Real-time Coach chat, notifications | 25 |
+
+### Порядок реализации
+
+1. **API Gateway** (Sprint 23) — максимальный ROI, убирает дублирование auth
+2. **Chunker FFI + Search** (Sprint 24) — CPU-bound ускорение + поиск
+3. **Embedding + WebSocket** (Sprint 25) — IO concurrency + real-time
+
+### Критерии решения Rust vs Python
+
+| Критерий | Rust | Python |
+|----------|------|--------|
+| p99 < 50ms requirement | ✅ | ❌ |
+| > 10K RPS | ✅ | ❌ |
+| CPU-bound (string processing, parsing) | ✅ | ❌ |
+| IO-bound (database, LLM API) | ❌ overkill | ✅ |
+| Business logic, CRUD | ❌ overkill | ✅ |
+| AI agent orchestration | ❌ | ✅ |
+
+---
+
 ## TODO: Infrastructure
 
 ### Pilot (Sprint 17-22)
