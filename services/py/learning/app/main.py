@@ -45,6 +45,7 @@ from app.services.study_group_service import StudyGroupService
 from app.services.certificate_service import CertificateService
 from app.services.trust_level_service import TrustLevelService
 from app.services.mission_service import MissionService
+from app.services.daily_service import DailyService
 from app.routes.quizzes import router as quizzes_router
 from app.routes.flashcards import router as flashcards_router
 from app.routes.concepts import router as concepts_router
@@ -61,6 +62,7 @@ from app.routes.certificates import router as certificates_router
 from app.routes.internal_certificates import router as internal_certificates_router
 from app.routes.trust_levels import router as trust_levels_router
 from app.routes.missions import router as missions_router
+from app.routes.daily_routes import router as daily_router
 
 app_settings = Settings()
 
@@ -81,6 +83,7 @@ _study_group_service: StudyGroupService | None = None
 _certificate_service: CertificateService | None = None
 _trust_level_service: TrustLevelService | None = None
 _mission_service: MissionService | None = None
+_daily_service: DailyService | None = None
 
 
 def get_quiz_service() -> QuizService:
@@ -158,9 +161,14 @@ def get_mission_service() -> MissionService:
     return _mission_service
 
 
+def get_daily_service() -> DailyService:
+    assert _daily_service is not None
+    return _daily_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service, _study_group_service, _certificate_service, _trust_level_service, _mission_service
+    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service, _study_group_service, _certificate_service, _trust_level_service, _mission_service, _daily_service
 
     configure_logging(service_name="learning")
     logger = structlog.get_logger()
@@ -259,6 +267,13 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         settings=app_settings,
     )
 
+    _daily_service = DailyService(
+        mission_service=_mission_service,
+        trust_level_service=_trust_level_service,
+        flashcard_service=_flashcard_service,
+        streak_service=_streak_service,
+    )
+
     logger.info("service_started", port=8007)
     yield
     await _http_client.aclose()
@@ -297,6 +312,7 @@ app.include_router(certificates_router)
 app.include_router(internal_certificates_router)
 app.include_router(trust_levels_router)
 app.include_router(missions_router)
+app.include_router(daily_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
