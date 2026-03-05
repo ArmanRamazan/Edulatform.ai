@@ -310,8 +310,7 @@ CREATE TABLE IF NOT EXISTS org_members (
 - `007_referrals.sql` — referral_code column в users + таблица referrals
 - `008_add_is_public.sql` — is_public column для управления видимостью профиля
 - `009_follows.sql` — таблица follows
-- `010_organizations.sql` — таблица organizations (NEW)
-- `011_org_members.sql` — таблица org_members (NEW)
+- `010_organizations.sql` — таблицы organizations + org_members + индексы (NEW)
 
 ---
 
