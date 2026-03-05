@@ -127,7 +127,7 @@ Sprints 23-25. Rust-сервисы для performance-critical paths:
 | enrollment-db | 5435 | Enrollment (dormant) | enrollments, lesson_progress |
 | payment-db | 5436 | Payment (dormant) | payments, subscription_plans, user_subscriptions, teacher_earnings, payouts, coupons, refunds, gifts |
 | notification-db | 5437 | Notification | notifications, conversations, messages |
-| learning-db | 5438 | Learning | quizzes, questions, quiz_attempts, flashcards, review_logs, concepts, concept_edges, concept_mastery, streaks, leaderboard_entries, discussions, xp_events, badges, user_badges, pretests, pretest_answers, activity_events, study_groups, study_group_members, trust_levels |
+| learning-db | 5438 | Learning | quizzes, questions, quiz_attempts, flashcards, review_logs, concepts, concept_edges, concept_mastery, streaks, leaderboard_entries, discussions, xp_events, badges, user_badges, pretests, pretest_answers, activity_events, study_groups, study_group_members, certificates, trust_levels, missions |
 | rag-db | 5439 | RAG | documents, chunks (pgvector embeddings) |
 | Redis | 6379 | All | Cache, rate limiting, AI memory, session |
 
@@ -140,11 +140,11 @@ cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 2
 cd services/py/payment     && uv run --package payment pytest tests/ -v      # 151 tests
 cd services/py/notification && uv run --package notification pytest tests/ -v # 57 tests
 cd services/py/ai          && uv run --package ai pytest tests/ -v           # 172 tests
-cd services/py/learning    && uv run --package learning pytest tests/ -v     # 222 tests
+cd services/py/learning    && uv run --package learning pytest tests/ -v     # 257 tests
 cd services/py/rag         && uv run --package rag pytest tests/ -v          # 142 tests
 ```
 
-**Итого:** 948 тестов по 8 сервисам.
+**Итого:** 983 тестов по 8 сервисам.
 
 ## Инфраструктура
 
