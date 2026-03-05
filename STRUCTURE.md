@@ -30,7 +30,7 @@ eduplatform/
 │   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion, recommendations
 │   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts, coupons, invoice PDF, refunds, org subscriptions (seat-based B2B)
 │   │   ├── notification/          #   In-app уведомления, email (lifecycle events), direct messaging
-│   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
+│   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache, configurable LLM provider per org (Gemini/self-hosted)
 │   │   ├── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed, certificates, missions, trust levels
 │   │   └── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base, GitHub adapter
 │   └── rs/                        # Rust сервисы (performance-critical)

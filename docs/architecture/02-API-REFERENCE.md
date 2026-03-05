@@ -1972,17 +1972,17 @@ FSRS-based smart reminders через Learning Service. Admin-only.
 
 ---
 
-### POST /org-subscriptions (NEW)
+### POST /org-subscriptions
 
-Создание подписки организации. Требует JWT + org owner/admin.
+Создание подписки организации. Требует JWT с `organization_id` claim.
 
 **Request:**
 ```json
 {
-  "organization_id": "uuid",
-  "plan": "team",          // "team" | "enterprise"
-  "seats": 25,
-  "billing_period": "monthly"
+  "plan_tier": "pilot",           // "pilot" ($1000/mo, 20 seats) | "enterprise" ($10000/mo, 999 seats)
+  "payment_method_id": "pm_xxx",
+  "org_email": "org@example.com",
+  "org_name": "Test Org"
 }
 ```
 
@@ -1991,40 +1991,56 @@ FSRS-based smart reminders через Learning Service. Admin-only.
 {
   "id": "uuid",
   "organization_id": "uuid",
-  "plan": "team",
-  "seats": 25,
+  "plan_tier": "pilot",
+  "max_seats": 20,
+  "current_seats": 0,
+  "price_cents": 100000,
   "status": "active",
-  "current_period_start": "2026-03-05T00:00:00Z",
-  "current_period_end": "2026-04-05T00:00:00Z"
+  "trial_ends_at": null,
+  "current_period_start": "2026-03-06T00:00:00Z",
+  "current_period_end": "2026-04-06T00:00:00Z",
+  "created_at": "2026-03-06T00:00:00Z"
 }
 ```
 
----
-
-### GET /org-subscriptions/{org_id} (NEW)
-
-Информация о подписке организации. Требует JWT + org membership.
+**Errors:** `409` (org already has subscription), `422` (invalid plan tier), `403` (no organization in JWT).
 
 ---
 
-### POST /org-subscriptions/{org_id}/cancel (NEW)
+### GET /org-subscriptions/{org_id}
 
-Отмена подписки организации. Требует JWT + org owner.
+Информация о подписке организации. Требует JWT + organization_id match.
+
+**Response `200`:** Same schema as POST response.
+
+**Errors:** `403` (wrong org), `404` (no subscription found).
+
+---
+
+### POST /org-subscriptions/{org_id}/cancel
+
+Отмена подписки организации. Требует JWT + organization_id match. Отменяет в Stripe немедленно.
 
 **Response `200`:**
 ```json
 {
   "id": "uuid",
-  "status": "cancelled",
-  "cancels_at": "2026-04-05T00:00:00Z"
+  "organization_id": "uuid",
+  "plan_tier": "pilot",
+  "status": "canceled",
+  ...
 }
 ```
 
+**Errors:** `403` (wrong org), `404` (not found), `400` (already canceled).
+
 ---
 
-### POST /webhooks/stripe-org (NEW)
+### POST /webhooks/stripe-org
 
 Webhook для Stripe events связанных с org subscriptions. Публичный (verification via Stripe signature).
+
+Handled events: `invoice.paid` (→ active), `invoice.payment_failed` (→ past_due), `customer.subscription.deleted` (→ canceled). Unknown subscriptions silently ignored (idempotent).
 
 ---
 

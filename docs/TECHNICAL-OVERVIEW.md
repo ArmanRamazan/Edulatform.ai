@@ -137,14 +137,14 @@ Sprints 23-25. Rust-сервисы для performance-critical paths:
 cd services/py/identity    && uv run --package identity pytest tests/ -v     # 156 tests
 cd services/py/course      && uv run --package course pytest tests/ -v       # 129 tests
 cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 39 tests (+3 failing)
-cd services/py/payment     && uv run --package payment pytest tests/ -v      # 151 tests
+cd services/py/payment     && uv run --package payment pytest tests/ -v      # 181 tests
 cd services/py/notification && uv run --package notification pytest tests/ -v # 136 tests (+3 failing)
 cd services/py/ai          && uv run --package ai pytest tests/ -v           # 172 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 272 tests
 cd services/py/rag         && uv run --package rag pytest tests/ -v          # 161 tests
 ```
 
-**Итого (Python):** 1216 passed, 6 failing по 8 сервисам.
+**Итого (Python):** 1246 passed, 6 failing по 8 сервисам.
 
 **Rust:**
 ```bash
