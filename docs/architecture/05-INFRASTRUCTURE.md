@@ -187,10 +187,12 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 
 ### API Gateway (Rust) — NEW
 
+Redis используется для sliding window rate limiting (INCR + EXPIRE). Fail-open при недоступности Redis.
+
 | Variable | Default | Описание |
 |----------|---------|----------|
 | `GATEWAY_PORT` | `8080` | HTTP listen port |
-| `REDIS_URL` | `redis://localhost:6379` | Redis DSN |
+| `REDIS_URL` | `redis://localhost:6379` | Redis DSN (rate limiting) |
 | `JWT_SECRET` | — (required) | Shared JWT secret |
 | `IDENTITY_URL` | `http://localhost:8001` | Identity service URL |
 | `AI_URL` | `http://localhost:8006` | AI service URL |
