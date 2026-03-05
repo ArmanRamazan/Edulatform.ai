@@ -10,6 +10,7 @@ from app.domain.mission import Mission
 from app.repositories.mission_repo import MissionRepository
 from app.services.trust_level_service import TrustLevelService
 from app.services.mission_service import MissionService
+from app.services.review_generator import ReviewGenerator
 
 
 @pytest.fixture
@@ -45,12 +46,18 @@ def settings():
 
 
 @pytest.fixture
-def mission_service(mock_mission_repo, mock_trust_service, mock_http_client, settings):
+def mock_review_generator():
+    return AsyncMock(spec=ReviewGenerator)
+
+
+@pytest.fixture
+def mission_service(mock_mission_repo, mock_trust_service, mock_http_client, mock_review_generator, settings):
     return MissionService(
         mission_repo=mock_mission_repo,
         trust_level_service=mock_trust_service,
         http_client=mock_http_client,
         settings=settings,
+        review_generator=mock_review_generator,
     )
 
 
@@ -254,6 +261,55 @@ class TestCompleteMission:
             await mission_service.complete_mission(
                 mission.id, user_id, "sess", token="tok",
             )
+
+    async def test_calls_review_generator_after_completion(
+        self, mission_service, mock_mission_repo, mock_http_client,
+        mock_trust_service, mock_review_generator, user_id, org_id,
+    ):
+        mission = _make_mission(user_id, org_id, status="in_progress")
+        mock_mission_repo.get_by_id.return_value = mission
+
+        session_result = {"score": 0.9, "mastery_delta": 0.15}
+        mock_response = MagicMock()
+        mock_response.json.return_value = session_result
+        mock_http_client.post.return_value = mock_response
+
+        completed = _make_mission(user_id, org_id, status="completed", score=0.9)
+        mock_mission_repo.update_status.return_value = completed
+
+        mock_review_generator.generate_from_mission.return_value = [uuid4(), uuid4()]
+
+        result = await mission_service.complete_mission(
+            mission.id, user_id, "sess", token="tok",
+        )
+
+        assert result.status == "completed"
+        mock_review_generator.generate_from_mission.assert_awaited_once_with(
+            user_id, completed,
+        )
+
+    async def test_review_generator_failure_does_not_break_completion(
+        self, mission_service, mock_mission_repo, mock_http_client,
+        mock_trust_service, mock_review_generator, user_id, org_id,
+    ):
+        mission = _make_mission(user_id, org_id, status="in_progress")
+        mock_mission_repo.get_by_id.return_value = mission
+
+        session_result = {"score": 0.7, "mastery_delta": 0.05}
+        mock_response = MagicMock()
+        mock_response.json.return_value = session_result
+        mock_http_client.post.return_value = mock_response
+
+        completed = _make_mission(user_id, org_id, status="completed", score=0.7)
+        mock_mission_repo.update_status.return_value = completed
+
+        mock_review_generator.generate_from_mission.side_effect = Exception("DB down")
+
+        result = await mission_service.complete_mission(
+            mission.id, user_id, "sess", token="tok",
+        )
+
+        assert result.status == "completed"
 
 
 # --- get_my_missions ---
