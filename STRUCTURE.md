@@ -41,6 +41,8 @@ eduplatform/
 │
 ├── apps/                          # Frontend приложения (Next.js)
 │   ├── buyer/                     #   Студенческий сайт (SSR/SSG/Client)
+│   │   ├── components/ui/         #     shadcn/ui components (Dark Knowledge theme)
+│   │   └── app/fonts/             #     Local font files (Inter, JetBrains Mono)
 │   └── seller/                    #   Дашборд преподавателя (Client-side)
 │
 ├── packages/                      # Shared frontend пакеты
