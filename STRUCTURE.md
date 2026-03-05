@@ -187,6 +187,7 @@ apps/{app}/
 │   ├── dashboard/               #     DashboardGrid.tsx, BlockErrorBoundary.tsx
 │   │   └── blocks/              #     7 dashboard blocks (Greeting, Mission, TrustLevel, etc.)
 │   ├── search/                  #     SearchView.tsx, InternalResultsSection, ExternalResultsSection, RouteIndicator
+│   ├── mission/                 #     MissionSession.tsx, MissionComplete.tsx, PhaseIndicator.tsx (5-phase Socratic session)
 │   └── providers/               #     OrgProvider.tsx, Providers.tsx (QueryClient)
 ├── hooks/                       #   Custom React hooks (TanStack Query)
 │   ├── use-auth.ts              #     Login/register/logout (не server state)
@@ -198,6 +199,7 @@ apps/{app}/
 │   ├── use-concepts.ts          #     useCourseGraph, useCourseMastery, useCreateConcept, useDeleteConcept
 │   ├── use-flashcards.ts        #     useDueCards, useDueCount, useReviewCard, useCreateFlashcard
 │   ├── use-gamification.ts      #     useMyXp, useMyXpHistory, useMyBadges, useMyStreak
+│   ├── use-coach.ts             #     useStartCoachSession, useSendCoachMessage, useEndCoachSession
 │   └── ...
 ├── lib/                         #   API вызовы, утилиты, конфиг
 │   └── api.ts                   #     Typed API namespaces
