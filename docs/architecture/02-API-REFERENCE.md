@@ -1188,12 +1188,12 @@ Activity types: `quiz_completed`, `flashcard_reviewed`, `badge_earned`, `streak_
 
 ---
 
-### Missions (NEW — 5 endpoints)
+### Missions (5 endpoints)
 
-#### GET /missions/today (NEW)
-Сегодняшняя миссия пользователя. Authenticated.
+#### GET /missions/today
+Сегодняшняя миссия пользователя (get-or-create). Вызывает AI Service для генерации blueprint если миссии на сегодня нет. Authenticated.
 
-**Query params:** `organization_id` (required).
+**Query params:** `org_id` (required, UUID).
 
 **Response `200`:**
 ```json
@@ -1201,38 +1201,36 @@ Activity types: `quiz_completed`, `flashcard_reviewed`, `badge_earned`, `streak_
   "id": "uuid",
   "user_id": "uuid",
   "organization_id": "uuid",
-  "concept_id": "uuid",
-  "title": "Review Authentication Middleware",
+  "concept_id": "uuid | null",
+  "mission_type": "daily",
   "status": "pending",
-  "estimated_minutes": 15,
+  "blueprint": {"topic": "...", "questions": [...]},
+  "score": null,
+  "mastery_delta": null,
+  "started_at": null,
+  "completed_at": null,
   "created_at": "2026-03-05T08:00:00Z"
 }
 ```
 
 ---
 
-#### POST /missions/{id}/start (NEW)
-Начало выполнения миссии. Меняет статус на `in_progress`. Authenticated.
+#### POST /missions/{id}/start
+Начало выполнения миссии. Меняет статус на `in_progress`, устанавливает `started_at`. Authenticated (owner only).
 
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "status": "in_progress",
-  "started_at": "2026-03-05T09:00:00Z"
-}
-```
+**Response `200`:** Same as GET /missions/today with `status: "in_progress"`.
+
+**Errors:** `404` — not found, `403` — not owner, `400` — already started.
 
 ---
 
-#### POST /missions/{id}/complete (NEW)
-Завершение миссии. Authenticated.
+#### POST /missions/{id}/complete
+Завершение миссии. Вызывает AI Coach для оценки session. Обновляет trust level. Authenticated (owner only).
 
 **Request:**
 ```json
 {
-  "score": 85,
-  "time_spent_minutes": 12
+  "session_id": "coach-session-uuid"
 }
 ```
 
@@ -1241,40 +1239,37 @@ Activity types: `quiz_completed`, `flashcard_reviewed`, `badge_earned`, `streak_
 {
   "id": "uuid",
   "status": "completed",
-  "score": 85,
-  "xp_earned": 50,
-  "mastery_delta": 0.15,
+  "score": 0.85,
+  "mastery_delta": 0.1,
   "completed_at": "2026-03-05T09:12:00Z"
 }
 ```
 
+**Errors:** `404` — not found, `403` — not owner, `400` — not in_progress, `502` — AI service error.
+
 ---
 
-#### GET /missions/me (NEW)
+#### GET /missions/me
 История миссий пользователя. Authenticated.
 
-**Query params:** `organization_id` (required), `limit` (default 20), `offset` (default 0), `status` (optional filter).
+**Query params:** `limit` (default 20, max 100), `offset` (default 0).
 
 **Response `200`:**
 ```json
 {
-  "items": [...],
-  "total": 42
+  "missions": [...]
 }
 ```
 
 ---
 
-#### GET /missions/streak (NEW)
+#### GET /missions/streak
 Streak миссий пользователя. Authenticated.
 
 **Response `200`:**
 ```json
 {
-  "current_streak": 7,
-  "longest_streak": 15,
-  "total_missions_completed": 42,
-  "last_mission_date": "2026-03-05"
+  "current_streak": 7
 }
 ```
 

@@ -13,6 +13,7 @@ from common.errors import register_error_handlers
 from common.health import create_health_router
 from common.logging import configure_logging
 from common.rate_limit import RateLimitMiddleware
+import httpx
 from app.config import Settings
 from app.repositories.quiz_repo import QuizRepository
 from app.repositories.flashcard_repo import FlashcardRepository
@@ -28,6 +29,7 @@ from app.repositories.activity_repo import ActivityRepository
 from app.repositories.study_group_repo import StudyGroupRepository
 from app.repositories.certificate_repo import CertificateRepository
 from app.repositories.trust_level_repo import TrustLevelRepository
+from app.repositories.mission_repo import MissionRepository
 from app.services.quiz_service import QuizService
 from app.services.flashcard_service import FlashcardService
 from app.services.concept_service import ConceptService
@@ -42,6 +44,7 @@ from app.services.activity_service import ActivityService
 from app.services.study_group_service import StudyGroupService
 from app.services.certificate_service import CertificateService
 from app.services.trust_level_service import TrustLevelService
+from app.services.mission_service import MissionService
 from app.routes.quizzes import router as quizzes_router
 from app.routes.flashcards import router as flashcards_router
 from app.routes.concepts import router as concepts_router
@@ -56,6 +59,7 @@ from app.routes.activity import router as activity_router
 from app.routes.study_groups import router as study_groups_router
 from app.routes.certificates import router as certificates_router
 from app.routes.trust_levels import router as trust_levels_router
+from app.routes.missions import router as missions_router
 
 app_settings = Settings()
 
@@ -75,6 +79,7 @@ _activity_service: ActivityService | None = None
 _study_group_service: StudyGroupService | None = None
 _certificate_service: CertificateService | None = None
 _trust_level_service: TrustLevelService | None = None
+_mission_service: MissionService | None = None
 
 
 def get_quiz_service() -> QuizService:
@@ -147,9 +152,14 @@ def get_trust_level_service() -> TrustLevelService:
     return _trust_level_service
 
 
+def get_mission_service() -> MissionService:
+    assert _mission_service is not None
+    return _mission_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service, _study_group_service, _certificate_service, _trust_level_service
+    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service, _study_group_service, _certificate_service, _trust_level_service, _mission_service
 
     configure_logging(service_name="learning")
     logger = structlog.get_logger()
@@ -188,6 +198,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         with open("migrations/013_certificates.sql") as f:
             await conn.execute(f.read())
         with open("migrations/014_trust_levels.sql") as f:
+            await conn.execute(f.read())
+        with open("migrations/015_missions.sql") as f:
             await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
@@ -237,8 +249,18 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     trust_level_repo = TrustLevelRepository(_pool)
     _trust_level_service = TrustLevelService(trust_level_repo)
 
+    _http_client = httpx.AsyncClient(timeout=30.0)
+    mission_repo = MissionRepository(_pool)
+    _mission_service = MissionService(
+        mission_repo=mission_repo,
+        trust_level_service=_trust_level_service,
+        http_client=_http_client,
+        settings=app_settings,
+    )
+
     logger.info("service_started", port=8007)
     yield
+    await _http_client.aclose()
     await _redis.aclose()
     await _pool.close()
 
@@ -272,6 +294,7 @@ app.include_router(activity_router)
 app.include_router(study_groups_router)
 app.include_router(certificates_router)
 app.include_router(trust_levels_router)
+app.include_router(missions_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
 
 
