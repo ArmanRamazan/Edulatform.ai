@@ -1594,3 +1594,47 @@ export const externalSearch = {
     });
   },
 };
+
+export interface OrgSubscription {
+  id: string;
+  organization_id: string;
+  plan_tier: "pilot" | "enterprise";
+  max_seats: number;
+  current_seats: number;
+  price_cents: number;
+  status: "active" | "canceled" | "past_due";
+  trial_ends_at: string | null;
+  current_period_start: string | null;
+  current_period_end: string | null;
+  created_at: string;
+}
+
+export const orgBilling = {
+  getSubscription(token: string, orgId: string) {
+    return request<OrgSubscription>(
+      `${PAYMENT_URL}/org-subscriptions/${orgId}`,
+      { headers: authHeaders(token) },
+    );
+  },
+  createSubscription(
+    token: string,
+    data: {
+      plan_tier: string;
+      payment_method_id: string;
+      org_email: string;
+      org_name: string;
+    },
+  ) {
+    return request<OrgSubscription>(`${PAYMENT_URL}/org-subscriptions`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  cancelSubscription(token: string, orgId: string) {
+    return request<OrgSubscription>(
+      `${PAYMENT_URL}/org-subscriptions/${orgId}/cancel`,
+      { method: "POST", headers: authHeaders(token) },
+    );
+  },
+};
