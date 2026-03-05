@@ -1,74 +1,7 @@
 phase: "sprint-19"
-description: "Mission Engine + Trust Levels — 15-min sessions, trust-based progression"
+description: "Mission Engine — service, daily session, review integration (models already done)"
 
 tasks:
-  - id: mission-model
-    title: "Mission domain model, migration, repository"
-    scope: backend:learning
-    type: feat
-    prompt: |
-      Task: Create the Mission domain model in the Learning service — a 15-minute structured learning session.
-
-      CONTEXT:
-      - Learning service: services/py/learning/ (FastAPI, asyncpg, Clean Architecture)
-      - Learning DB: learning-db (port 5438). Existing tables: quizzes, flashcards, concepts, streaks, etc.
-      - Existing patterns: app/domain/, app/repositories/, app/services/, app/routes/
-      - Migration numbering: check migrations/ for the next available number
-
-      WHAT TO BUILD:
-      TDD — write tests first, then implement.
-
-      1. Migration: missions table
-         CREATE TABLE IF NOT EXISTS missions (
-           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-           user_id UUID NOT NULL,
-           organization_id UUID NOT NULL,
-           concept_id UUID,
-           mission_type VARCHAR(20) NOT NULL DEFAULT 'daily',  -- daily, review, remedial
-           status VARCHAR(20) NOT NULL DEFAULT 'pending',  -- pending, in_progress, completed, skipped
-           blueprint JSONB NOT NULL DEFAULT '{}',  -- full MissionBlueprint data
-           score FLOAT,
-           mastery_delta FLOAT,
-           started_at TIMESTAMPTZ,
-           completed_at TIMESTAMPTZ,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-         );
-         CREATE INDEX idx_missions_user ON missions(user_id);
-         CREATE INDEX idx_missions_user_date ON missions(user_id, created_at);
-         CREATE INDEX idx_missions_org ON missions(organization_id);
-
-      2. Domain: app/domain/mission.py
-         @dataclass(frozen=True) Mission:
-           id, user_id, organization_id, concept_id, mission_type, status,
-           blueprint (dict), score (float|None), mastery_delta (float|None),
-           started_at, completed_at, created_at
-
-      3. Repository: app/repositories/mission_repository.py
-         MissionRepository(pool):
-         - create(user_id, org_id, concept_id, mission_type, blueprint) -> Mission
-         - get_by_id(mission_id) -> Mission | None
-         - get_by_user(user_id, limit=20, offset=0) -> list[Mission]
-         - get_today(user_id) -> Mission | None
-           WHERE user_id = $1 AND created_at::date = CURRENT_DATE AND status != 'skipped'
-         - update_status(mission_id, status, score?, mastery_delta?, started_at?, completed_at?) -> Mission
-         - get_streak(user_id) -> int
-           Count consecutive days with completed missions
-
-      4. Tests:
-         - test_mission_repository.py: mock pool, test all methods
-         - Verify SQL is parameterized, correct columns
-
-      RULES:
-      - TDD mandatory
-      - Frozen dataclass for domain entity
-      - Parameterized SQL ($1, $2, ...)
-      - Blueprint stored as JSONB (flexible schema for mission content)
-      - Follow existing Learning service patterns exactly
-
-      COMMIT: feat(learning): add mission domain model, migration, and repository
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
-    depends_on: []
-
   - id: mission-service
     title: "Mission service: create, start, complete missions"
     scope: backend:learning
@@ -77,8 +10,16 @@ tasks:
       Task: Build the Mission service and routes in the Learning service.
 
       CONTEXT:
-      - Learning service: services/py/learning/
-      - MissionRepository just created (create, get_by_id, get_today, update_status, get_streak)
+      - Learning service: services/py/learning/ (FastAPI, asyncpg, Clean Architecture)
+      - ALREADY EXISTS (do NOT recreate):
+        - app/domain/mission.py — Mission dataclass
+        - app/repositories/mission_repo.py — MissionRepository with create, get_by_id, get_today, update_status, get_streak, get_by_user
+        - migrations/015_missions.sql — missions table
+        - app/domain/trust_level.py — TrustLevel dataclass, LEVEL_THRESHOLDS, LEVEL_NAMES
+        - app/repositories/trust_level_repo.py — TrustLevelRepository
+        - app/services/trust_level_service.py — TrustLevelService
+        - app/routes/trust_level_routes.py — Trust Level routes
+        - migrations/014_trust_levels.sql — trust_levels table
       - AI service (8006) orchestrator: GET /ai/mission/daily returns MissionBlueprint
       - AI service coach: POST /ai/coach/start, POST /ai/coach/end returns SessionResult
 
@@ -86,10 +27,10 @@ tasks:
       TDD — write tests first, then implement.
 
       1. app/services/mission_service.py:
-         MissionService(mission_repo, http_client, settings):
+         MissionService(mission_repo, trust_level_service, http_client, settings):
 
          async get_or_create_today(user_id, org_id) -> Mission:
-           1. Check if today's mission exists (get_today)
+           1. Check if today's mission exists (mission_repo.get_today)
            2. If exists, return it
            3. If not, call AI service: GET {ai_url}/ai/mission/daily?org_id={org_id}
               Headers: pass JWT token for auth
@@ -103,7 +44,7 @@ tasks:
            1. Call AI coach: POST {ai_url}/ai/coach/end {session_id}
            2. Get SessionResult (score, mastery_delta)
            3. Update mission: status=completed, score, mastery_delta, completed_at
-           4. Update streak
+           4. Call trust_level_service.record_mission_completed(user_id, org_id)
            5. Return completed mission
 
          async get_my_missions(user_id, limit, offset) -> list[Mission]
@@ -116,7 +57,7 @@ tasks:
          GET /missions/me — Auth required. Query: limit, offset. History.
          GET /missions/streak — Auth required. Returns {current_streak, best_streak}.
 
-      3. Register router in app/main.py
+      3. Register router in app/main.py (check existing routers, add missions)
 
       4. Add to config: ai_service_url: str = "http://localhost:8006"
 
@@ -127,92 +68,11 @@ tasks:
       RULES:
       - TDD mandatory
       - Clean Architecture: routes → services → domain ← repositories
+      - DO NOT modify existing files (mission.py, mission_repo.py, trust_level_*)
       - Inter-service calls wrapped in try/except
       - One mission per day per user (get_or_create pattern)
 
       COMMIT: feat(learning): add mission service with daily session management
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
-    depends_on: [mission-model]
-
-  - id: trust-level-model
-    title: "Trust Level system: progressive access unlocking"
-    scope: backend:learning
-    type: feat
-    prompt: |
-      Task: Build the Trust Level system — progressive level-up that replaces XP for B2B onboarding.
-
-      CONTEXT:
-      - Learning service: services/py/learning/
-      - Existing XP system: xp_events table, XP_REWARDS dict, XP routes
-      - Trust Levels: 0-5, each unlocks access to company resources
-      - Level-up based on completed missions and mastery thresholds
-
-      WHAT TO BUILD:
-      TDD — write tests first, then implement.
-
-      1. Migration:
-         CREATE TABLE IF NOT EXISTS trust_levels (
-           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-           user_id UUID NOT NULL UNIQUE,
-           organization_id UUID NOT NULL,
-           level INT NOT NULL DEFAULT 0,
-           total_missions_completed INT NOT NULL DEFAULT 0,
-           total_concepts_mastered INT NOT NULL DEFAULT 0,
-           unlocked_areas JSONB DEFAULT '[]',
-           level_up_at TIMESTAMPTZ,
-           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-           updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-         );
-         CREATE INDEX idx_trust_levels_user ON trust_levels(user_id);
-         CREATE INDEX idx_trust_levels_org ON trust_levels(organization_id);
-
-      2. Domain: app/domain/trust_level.py
-         LEVEL_THRESHOLDS = {
-           1: {"missions": 5, "concepts_mastered": 3},   # Explorer
-           2: {"missions": 15, "concepts_mastered": 8},   # Contributor
-           3: {"missions": 30, "concepts_mastered": 15},  # Builder
-           4: {"missions": 50, "concepts_mastered": 25},  # Guardian
-           5: {"missions": 80, "concepts_mastered": 40},  # Architect
-         }
-         LEVEL_NAMES = {0: "Newcomer", 1: "Explorer", 2: "Contributor", 3: "Builder", 4: "Guardian", 5: "Architect"}
-
-         @dataclass(frozen=True) TrustLevel: id, user_id, organization_id, level, total_missions_completed, total_concepts_mastered, unlocked_areas, level_up_at, created_at
-
-      3. Repository: app/repositories/trust_level_repository.py
-         TrustLevelRepository(pool):
-         - get_or_create(user_id, org_id) -> TrustLevel
-         - increment_missions(user_id) -> TrustLevel
-         - increment_concepts(user_id) -> TrustLevel
-         - update_level(user_id, new_level, unlocked_areas) -> TrustLevel
-         - get_by_org(org_id, limit, offset) -> list[TrustLevel]  (for admin dashboard)
-
-      4. Service: app/services/trust_level_service.py
-         TrustLevelService(repo):
-         - get_my_level(user_id, org_id) -> TrustLevel
-         - record_mission_completed(user_id, org_id) -> TrustLevel
-           Increment missions, check threshold, level up if met.
-         - record_concept_mastered(user_id, org_id) -> TrustLevel
-           Increment concepts, check threshold, level up if met.
-         - check_level_up(trust_level) -> int | None
-           Compare totals against LEVEL_THRESHOLDS, return new level or None.
-
-      5. Routes: app/routes/trust_level_routes.py
-         GET /trust-level/me — Auth required. Returns current trust level + progress to next.
-         GET /trust-level/org/{org_id} — Admin only. Returns team levels.
-
-      6. Hook into mission completion: when mission completes, call record_mission_completed.
-
-      7. Tests:
-         - test_trust_level_service.py: test level-up logic, thresholds, edge cases
-         - test_trust_level_routes.py: mock service, verify endpoints
-
-      RULES:
-      - TDD mandatory
-      - Frozen dataclass for domain entity
-      - Level-up is deterministic (based on thresholds, not AI)
-      - Do NOT modify existing XP system — Trust Levels exist alongside it
-
-      COMMIT: feat(learning): add Trust Level system with progressive unlocking
     test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
     depends_on: []
 
@@ -225,10 +85,12 @@ tasks:
 
       CONTEXT:
       - Learning service: services/py/learning/
-      - MissionService: get_or_create_today, get_streak
-      - TrustLevelService: get_my_level
-      - Flashcard system: get_due_cards (FSRS)
-      - Existing streak tracking
+      - ALREADY EXISTS:
+        - MissionRepository: get_today, get_streak
+        - TrustLevelService: get_my_level
+        - FlashcardRepository: has method to count due cards
+        - StreakService: streak tracking
+      - MissionService (just created): get_or_create_today, get_streak
 
       WHAT TO BUILD:
       TDD — write tests first, then implement.
@@ -237,9 +99,9 @@ tasks:
          DailyService(mission_service, trust_level_service, flashcard_service, streak_service):
 
          async get_daily_summary(user_id, org_id) -> DailySummary:
-           Parallel fetch:
-           - today's mission
-           - trust level
+           Parallel fetch via asyncio.gather:
+           - today's mission (mission_service.get_or_create_today)
+           - trust level (trust_level_service.get_my_level)
            - due flashcards count
            - current streak
            Return DailySummary
@@ -252,12 +114,15 @@ tasks:
            streak_days: int
            greeting: str  # "Привет! День 12. Сегодня разберём CI/CD вашей компании."
 
-      3. Routes:
+      3. app/routes/daily_routes.py:
          GET /daily/me — Auth required. Returns DailySummary.
          This is THE main endpoint the frontend calls on app load.
 
-      4. Tests:
+      4. Register router in app/main.py
+
+      5. Tests:
          - test_daily_service.py: mock all sub-services, verify aggregation
+         - test_daily_routes.py: mock service, verify endpoint
 
       RULES:
       - TDD mandatory
@@ -267,7 +132,7 @@ tasks:
 
       COMMIT: feat(learning): add unified daily session summary endpoint
     test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
-    depends_on: [mission-service, trust-level-model]
+    depends_on: [mission-service]
 
   - id: mission-review-integration
     title: "Connect completed missions to spaced repetition"
@@ -278,8 +143,10 @@ tasks:
 
       CONTEXT:
       - Learning service: services/py/learning/
-      - FlashcardService: create_card(student_id, role, course_id, concept, answer, source_type, source_id)
-      - FSRS algorithm schedules reviews
+      - ALREADY EXISTS:
+        - FlashcardService/Repository: create_card(student_id, role, course_id, concept, answer, source_type, source_id)
+        - FSRS algorithm schedules reviews
+        - MissionService (just created): complete_mission flow
       - Mission has: blueprint with reading_content, check_questions, code_case
       - After completion, key concepts should become flashcards for future recap
 
@@ -300,11 +167,7 @@ tasks:
       2. Hook into MissionService.complete_mission:
          After scoring, call review_generator.generate_from_mission (fire-and-forget, log errors)
 
-      3. Update DesignerService recap_questions:
-         When designer builds recap, fetch user's due flashcards from Learning Service
-         and use their content as recap material (instead of generic questions).
-
-      4. Tests:
+      3. Tests:
          - test_review_generator.py: mock flashcard service, verify cards created from mission
          - Test that 3 check_questions + 1 code_case = 4 flashcards
 

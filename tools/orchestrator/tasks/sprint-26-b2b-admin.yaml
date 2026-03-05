@@ -1,0 +1,290 @@
+phase: "sprint-26"
+description: "B2B Admin & Billing — admin dashboard, team analytics, org subscriptions, LLM config"
+
+tasks:
+  - id: admin-dashboard
+    title: "Organization admin dashboard with Dark Knowledge theme"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build the admin dashboard for org owners — manage team, knowledge base, templates, settings.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge theme, sidebar layout)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md
+      - APIs (all exist):
+        Identity: GET /organizations/{id}/members, POST /organizations/{id}/members, DELETE /organizations/{id}/members/{user_id}
+        Learning: GET /trust-level/org/{org_id}
+        RAG: GET /kb/{org_id}/stats, GET /kb/{org_id}/sources, POST /sources/github, POST /upload/markdown, POST /upload/bulk
+        RAG: GET /templates?org_id, POST /templates, POST /templates/{id}/stages, etc.
+      - Admin = org member with role "owner" or "admin"
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/app/(app)/settings/page.tsx:
+         Server wrapper. Admin-only route (check role, redirect non-admins).
+
+      2. apps/buyer/components/admin/AdminDashboard.tsx ("use client"):
+         shadcn Tabs component with 4 tabs:
+         - Team | Knowledge Base | Templates | Settings
+
+      3. TeamTab.tsx:
+         - Table (shadcn Table): name, email, role, trust level badge, missions completed, last active
+         - "Invite Member" button → Dialog with email + role select
+         - Remove member button with confirmation Dialog
+         - Sort by trust level / activity
+
+      4. KnowledgeBaseTab.tsx:
+         - Stats cards (shadcn Card): total docs, chunks, concepts — from GET /kb/{org_id}/stats
+         - Source list: type badges (github=violet, markdown=info)
+         - "Add GitHub Repo" → Dialog with form: owner, repo, branch, extensions
+         - "Upload Documents" → file upload area (drag & drop)
+         - Refresh button per source
+
+      5. TemplatesTab.tsx:
+         - List onboarding templates
+         - Create: Dialog with name + description
+         - Edit stages: ordered list, add/remove, trust_level_required per stage
+         - Set default template toggle
+
+      6. SettingsTab.tsx:
+         - Org name, logo
+         - Danger zone: deactivate org (with confirmation)
+         - Link to billing (/settings/billing)
+
+      7. apps/buyer/hooks/use-admin.ts:
+         Hooks for all admin operations (mutations with cache invalidation).
+
+      8. apps/buyer/lib/api.ts — add admin/templates namespaces.
+
+      RULES:
+      - Admin check at layout level
+      - File upload via FormData with progress indicator
+      - Confirmation Dialogs for destructive actions
+      - All shadcn components, Dark Knowledge styling
+      - Named exports
+      - Responsive tables with horizontal scroll on mobile
+
+      COMMIT: feat(buyer): add organization admin dashboard with team and KB management
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: team-analytics
+    title: "Team progress analytics for admins"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build analytics views — team progress, concept coverage heatmap, bottleneck identification.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge)
+      - APIs:
+        Learning: GET /trust-level/org/{org_id} → [{user_id, level, missions, concepts}]
+        RAG: GET /kb/{org_id}/concepts → {nodes, edges}
+      - Recharts already installed in project
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/app/(app)/settings/analytics/page.tsx
+
+      2. apps/buyer/components/admin/analytics/TeamOverview.tsx:
+         - Summary cards: total members, avg trust level, active today, completion rate
+         - Trust level distribution bar chart (Recharts BarChart, Dark Knowledge colors)
+
+      3. apps/buyer/components/admin/analytics/ConceptCoverage.tsx:
+         - Heatmap: concepts (rows) x team members (columns)
+         - Cell colors: mastered=#34d399, learning=#7c5cfc, not started=#3f3f46
+         - Identifies knowledge gaps: concepts where >50% team is weak
+         - Dynamic import (heavy rendering)
+
+      4. apps/buyer/components/admin/analytics/BottleneckReport.tsx:
+         - List of concepts where majority of team is stuck
+         - "Add more documentation about X" recommendation
+         - Link to concept hub for each bottleneck
+
+      5. apps/buyer/hooks/use-analytics.ts
+
+      RULES:
+      - Recharts with Dark Knowledge theme (dark bg, light text, accent colors)
+      - Dynamic import for chart components
+      - Data aggregation in hooks
+      - Print-friendly layout (white bg override for print)
+      - Named exports
+
+      COMMIT: feat(buyer): add team analytics with concept coverage heatmap
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [admin-dashboard]
+
+  - id: b2b-pricing
+    title: "B2B organization subscription with seat-based pricing"
+    scope: backend:payment
+    type: feat
+    prompt: |
+      Task: Add B2B subscription plans for organizations — pilot, enterprise tiers with per-seat pricing.
+
+      CONTEXT:
+      - Payment service: services/py/payment/ (FastAPI, asyncpg, Clean Architecture)
+      - Existing: subscription_plans, user_subscriptions, StripeClient adapter
+      - Need: organization-level subscriptions
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. Migration:
+         CREATE TABLE IF NOT EXISTS org_subscriptions (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           organization_id UUID NOT NULL UNIQUE,
+           plan_tier VARCHAR(20) NOT NULL DEFAULT 'pilot',
+           stripe_subscription_id VARCHAR(200),
+           stripe_customer_id VARCHAR(200),
+           max_seats INT NOT NULL DEFAULT 20,
+           current_seats INT NOT NULL DEFAULT 0,
+           price_cents INT NOT NULL,
+           status VARCHAR(20) NOT NULL DEFAULT 'active',
+           trial_ends_at TIMESTAMPTZ,
+           current_period_start TIMESTAMPTZ,
+           current_period_end TIMESTAMPTZ,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+         );
+
+      2. Domain: OrgSubscription dataclass, PLAN_TIERS config
+         pilot: max 20 seats, $1000/mo
+         enterprise: max 999 seats, $10000/mo
+
+      3. Repository: OrgSubscriptionRepository — create, get_by_org, update_seats, update_status, cancel
+
+      4. Service: OrgSubscriptionService(repo, stripe_client):
+         - create_subscription, check_seat_limit, add_seat, remove_seat, cancel_subscription
+         - handle_webhook (invoice.paid, invoice.payment_failed, customer.subscription.deleted)
+
+      5. Routes:
+         POST /org-subscriptions — create
+         GET /org-subscriptions/{org_id} — get status
+         POST /org-subscriptions/{org_id}/cancel — cancel
+         POST /webhooks/stripe-org — Stripe webhook
+
+      6. Tests: full service + route tests, mock Stripe
+
+      RULES:
+      - TDD mandatory
+      - Seat limit enforced on member add
+      - Webhook idempotency (check event ID)
+      - Clean Architecture
+
+      COMMIT: feat(payment): add B2B organization subscription with seat-based pricing
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/payment && uv run --package payment pytest tests/ -v"
+    depends_on: []
+
+  - id: billing-page
+    title: "Billing page with Stripe integration"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build billing management for org admins — view plan, upgrade, cancel, payment method.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge)
+      - API: Payment service: GET/POST /org-subscriptions endpoints (just built)
+      - Stripe Elements for payment form
+
+      WHAT TO BUILD:
+
+      1. Install: cd apps/buyer && pnpm add @stripe/stripe-js @stripe/react-stripe-js
+
+      2. apps/buyer/app/(app)/settings/billing/page.tsx
+
+      3. BillingPage.tsx:
+         - Current plan card: tier, price, seats used/max, next billing date
+         - Plan comparison: Pilot vs Enterprise (shadcn Cards side by side)
+         - "Upgrade" / "Cancel Plan" buttons with confirmation
+         - Dark Knowledge styling throughout
+
+      4. PaymentForm.tsx:
+         - Stripe Elements CardElement
+         - Dark theme for Stripe Elements (match Dark Knowledge)
+         - Loading state during processing
+
+      5. Hooks: use-billing.ts + API namespace in api.ts
+
+      RULES:
+      - NEXT_PUBLIC_STRIPE_KEY env var
+      - Dynamic import for Stripe Elements
+      - Confirmation dialog before cancel
+      - Named exports, shadcn components
+
+      COMMIT: feat(buyer): add billing page with Stripe subscription management
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [b2b-pricing, admin-dashboard]
+
+  - id: llm-provider-config
+    title: "Configurable LLM provider per organization"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Add per-org LLM provider configuration — organizations choose between Gemini (standard) and self-hosted (strict isolation).
+
+      CONTEXT:
+      - AI service: services/py/ai/ (port 8006, Gemini Flash via httpx)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 5-6
+      - Current: all orgs use Gemini. Need: configurable per org.
+      - Identity service has organizations table with settings JSONB column
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/domain/llm_config.py:
+         @dataclass(frozen=True)
+         LLMConfig:
+           internal_provider: str  # "gemini" | "self_hosted"
+           internal_model_url: str | None
+           external_provider: str  # always "gemini" for now
+           embedding_provider: str  # "gemini" | "self_hosted"
+           data_isolation: str  # "strict" | "standard"
+
+      2. app/services/llm_provider.py:
+         Abstract base:
+         class LLMProvider(ABC):
+           async def complete(self, prompt: str, system: str = "") -> str: ...
+
+         class GeminiProvider(LLMProvider):
+           (refactor from existing gemini_client usage)
+
+         class SelfHostedProvider(LLMProvider):
+           Uses httpx to call OpenAI-compatible API at internal_model_url
+           Compatible with vLLM, Ollama, text-generation-inference
+
+      3. app/services/llm_resolver.py:
+         LLMResolver(settings):
+         - resolve(org_id: str, purpose: str) -> LLMProvider
+           purpose: "internal" | "external"
+           Reads org settings (cache in Redis, TTL 5min)
+           Returns appropriate provider
+
+      4. Routes: app/routes/llm_config_routes.py:
+         GET /ai/config/llm/{org_id} — Auth required (admin). Returns current LLM config.
+         PUT /ai/config/llm/{org_id} — Auth required (admin). Updates config.
+         POST /ai/config/llm/{org_id}/test — Auth required (admin). Tests connection to self-hosted model.
+
+      5. Refactor existing services (StrategistService, DesignerService, CoachService):
+         Replace direct gemini_client calls with llm_resolver.resolve(org_id, "internal")
+         External search always uses llm_resolver.resolve(org_id, "external")
+
+      6. Frontend: settings/llm page in admin dashboard (SettingsTab):
+         - Toggle: Standard (Gemini) / Strict (Self-hosted)
+         - If strict: URL input for self-hosted model
+         - Test connection button
+         - Warning: "Strict mode requires a running self-hosted LLM"
+
+      7. Tests: mock providers, test resolver logic, test config endpoints
+
+      RULES:
+      - TDD mandatory
+      - Default: standard (Gemini) — no breaking change for existing orgs
+      - Self-hosted provider uses OpenAI-compatible API format
+      - Config cached in Redis (avoid DB hit per LLM call)
+      - Strict mode validation: if data_isolation=strict, internal_provider must be self_hosted
+      - Clean Architecture
+
+      COMMIT: feat(ai): add configurable LLM provider per organization with data isolation
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: []

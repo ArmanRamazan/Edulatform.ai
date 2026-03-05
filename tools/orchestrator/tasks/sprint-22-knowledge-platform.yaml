@@ -1,0 +1,383 @@
+phase: "sprint-22"
+description: "Knowledge Platform UI — graph visualization, concept hub, smart search, mission session"
+
+tasks:
+  - id: knowledge-graph
+    title: "Interactive knowledge graph with React Flow"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build the knowledge graph page — interactive visualization of org concepts with mastery overlay.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge theme, sidebar layout)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 3.2: Knowledge Graph
+      - API: RAG service GET /kb/{org_id}/concepts → {nodes: [{id, name, description}], edges: [{source, target, type}]}
+      - API: Learning service GET /concepts/mastery → mastery levels per concept
+      - Existing hook: use-concepts.ts has some concept queries
+
+      WHAT TO BUILD:
+
+      1. Install React Flow:
+         cd apps/buyer && pnpm add @xyflow/react
+
+      2. apps/buyer/lib/api.ts — add kb namespace:
+         kb: {
+           getStats: (token, orgId) => GET /api/rag/kb/{org_id}/stats
+           getConcepts: (token, orgId) => GET /api/rag/kb/{org_id}/concepts
+           search: (token, orgId, query, limit) => POST /api/rag/kb/{org_id}/search
+         }
+
+      3. apps/buyer/hooks/use-knowledge-base.ts:
+         - useConceptGraph(orgId) — fetches graph + merges mastery data
+         - useKBStats(orgId) — knowledge base stats
+         - useKBSearch(orgId) — mutation for semantic search
+
+      4. apps/buyer/app/(app)/graph/page.tsx:
+         Server wrapper, renders GraphView client component.
+
+      5. apps/buyer/components/graph/GraphView.tsx ("use client"):
+         - React Flow canvas, full width, height: calc(100vh - topbar)
+         - Custom node component: ConceptNode
+         - Dark background (#0a0a0f)
+         - Controls: zoom, fit view, fullscreen, layout toggle (floating top-right)
+         - Minimap (bottom-right, semi-transparent)
+         - On node click: navigate to /graph/[conceptId]
+         - On node hover: show tooltip with name + mastery + connection count
+
+      6. apps/buyer/components/graph/ConceptNode.tsx:
+         Custom React Flow node:
+         - Circle 32-48px (size by connection count)
+         - Color by mastery state:
+           not_started: #3f3f46 (muted)
+           learning: #7c5cfc (primary) + CSS pulse animation
+           mastered: #34d399 (success) + subtle glow (box-shadow)
+         - Label below: concept name, Inter 12px, secondary color
+         - On hover: scale 1.1, show connection edges brighter
+
+      7. apps/buyer/components/graph/GraphSidebar.tsx ("use client"):
+         - Right panel, 320px, collapsible
+         - On node select: show concept preview (name, mastery bar, source count, mission count)
+         - "View Hub" and "Start Mission" action buttons
+         - Search input: filter/highlight nodes in graph
+
+      8. Dynamic import for React Flow:
+         const GraphView = dynamic(() => import("@/components/graph/GraphView"), { ssr: false })
+
+      RULES:
+      - React Flow with custom nodes (not canvas from scratch)
+      - Dynamic import (heavy library, keep initial bundle small)
+      - Graph layout: force-directed via React Flow's built-in or dagre
+      - All colors from CSS variables where possible
+      - Named exports
+      - Loading: skeleton with pulsing placeholder
+
+      COMMIT: feat(buyer): add interactive knowledge graph with React Flow and mastery overlay
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: concept-hub
+    title: "Concept hub aggregator page"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build the concept hub — when user clicks a graph node, they see an aggregator page with all related data.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge, React Flow graph)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 3.3: Concept Hub
+      - APIs (all exist):
+        POST /kb/{org_id}/search (query=concept_name) → internal sources
+        GET /missions/me?concept_id=X → missions for concept
+        GET /trust-level/org/{org_id} → team mastery (admin only)
+        GET /discussions?concept_id=X → discussions
+        GET /kb/{org_id}/concepts → graph (for related concepts mini-graph)
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/app/(app)/graph/[conceptId]/page.tsx:
+         Server wrapper, fetches concept data, renders ConceptHub.
+
+      2. apps/buyer/components/graph/ConceptHub.tsx ("use client"):
+         Layout — vertical stack of independent blocks (each block = shadcn Card):
+
+         ConceptHeader:
+         - Breadcrumb: Graph > [Category] > [Concept Name]
+         - Title (h1) + description
+         - Large mastery ring (SVG arc, gradient fill from design doc)
+         - Prerequisite pills (clickable → navigate to their hub)
+         - Dependent pills ("Unlocks: X, Y, Z")
+
+         InternalSourcesBlock:
+         - Hook: useKBSearch(orgId, conceptName)
+         - Cards: doc title, type badge (code/doc/config — shadcn Badge), snippet preview, file path
+         - Click → link to original source
+         - Badge colors: code=violet, doc=info, config=warning
+
+         MissionsBlock:
+         - Hook: useMissionHistory with concept_id filter
+         - Completed missions: score + date
+         - Available missions: difficulty badge + "Start" button
+         - Empty state: "No missions yet for this concept"
+
+         TeamMasteryBlock:
+         - Hook: useTeamProgress (admin only)
+         - Show only members' mastery for THIS concept
+         - Avatar + name + mastery bar
+         - Hidden for non-admin users
+
+         DiscussionsBlock:
+         - Hook: useDiscussions(conceptId) — existing discussions hook
+         - Threaded comments, reply button
+         - "Start discussion" input at top
+
+         RelatedGraphBlock:
+         - Mini React Flow graph (200px height) showing 1-hop neighbors
+         - Click neighbor → navigate to its hub
+         - Same node styling as main graph
+
+      3. All blocks have:
+         - Independent loading (shadcn Skeleton)
+         - Independent error handling
+         - Collapse/expand toggle (saved in localStorage per block)
+
+      RULES:
+      - Each block fetches independently (no waterfall)
+      - External sources block is a PLACEHOLDER for now (smart search not built yet)
+      - shadcn components: Card, Badge, Progress, Skeleton, Button, Avatar
+      - All colors from CSS variables
+      - Named exports
+      - Framer Motion: blocks fade in on mount (stagger 100ms)
+
+      COMMIT: feat(buyer): add concept hub aggregator with independent data blocks
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [knowledge-graph]
+
+  - id: external-search-endpoint
+    title: "External web search endpoint in AI service"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Add a web search endpoint to the AI service — searches the internet via Gemini grounding, returns results with source URLs.
+
+      CONTEXT:
+      - AI service: services/py/ai/ (port 8006, FastAPI, Gemini Flash via httpx)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 4: Smart Search
+      - Gemini supports "grounding" with Google Search — returns web results with citations
+      - This endpoint handles EXTERNAL queries only. No internal data in the prompt.
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/domain/search.py:
+         @dataclass(frozen=True)
+         ExternalSearchResult:
+           title: str
+           url: str
+           snippet: str
+           source_domain: str
+           relevance: float
+
+      2. app/services/external_search_service.py:
+         ExternalSearchService(gemini_client, settings):
+
+         async search(query: str, limit: int = 5) -> list[ExternalSearchResult]:
+           1. Send query to Gemini with grounding enabled:
+              POST to Gemini API with:
+              - contents: [{"parts": [{"text": query}]}]
+              - tools: [{"google_search_retrieval": {"dynamic_retrieval_config": {"mode": "MODE_DYNAMIC"}}}]
+           2. Parse grounding metadata from response
+           3. Extract: title, url, snippet from grounding chunks
+           4. Return list of ExternalSearchResult
+           5. If Gemini grounding unavailable, fallback: return LLM summary with note "no sources"
+
+      3. app/routes/search_routes.py:
+         POST /ai/search/external — Auth required.
+         Body: {query: str, limit: int = 5}
+         Returns: {results: list[ExternalSearchResult], query: str, source: "web"}
+
+      4. Register in main.py
+
+      5. Tests:
+         - test_external_search_service.py: mock Gemini responses with grounding metadata
+         - Test parsing of grounding chunks into ExternalSearchResult
+         - Test fallback when grounding unavailable
+         - test_search_routes.py: mock service
+
+      IMPORTANT: This endpoint receives ONLY the user's query text.
+      NO internal data, NO RAG chunks, NO org context in the prompt.
+      This is the external search half of the data isolation architecture.
+
+      RULES:
+      - TDD mandatory
+      - Clean Architecture: routes → services → domain
+      - No internal data in any request to Gemini for this endpoint
+      - Credit system: 1 credit per search (reuse existing credit check)
+      - Rate limit: 10 searches per minute per user
+
+      COMMIT: feat(ai): add external web search endpoint with Gemini grounding
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: []
+
+  - id: smart-search-ui
+    title: "Smart search page with AI router and Cmd+K integration"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Build the search page with AI query routing — internal (RAG) and external (web) results displayed separately.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge, Cmd+K palette exists)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 3.4: Smart Search
+      - APIs:
+        POST /api/rag/kb/{org_id}/search → internal results (RAG)
+        POST /api/ai/ai/search/external → external results (web, just built)
+      - Command palette (CommandPalette.tsx) already exists from layout task
+      - Concept names available from graph for suggestions
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/lib/api.ts — add to existing:
+         externalSearch: {
+           search: (token, query, limit) => POST /api/ai/ai/search/external {query, limit}
+         }
+
+      2. apps/buyer/hooks/use-search.ts:
+         - useSmartSearch() — manages search state:
+           - classifyQuery(query) → "internal" | "external" | "both"
+             Rule-based MVP classifier:
+             Internal signals: "наш", "наша", "у нас", "internal", company-specific terms
+             External signals: library names (react, python, docker), "how to", "best practice"
+             Default: "both"
+           - useInternalSearch(orgId, query) → mutation calling kb.search
+           - useExternalSearch(query) → mutation calling externalSearch.search
+           - Parallel execution when "both"
+
+      3. apps/buyer/app/(app)/search/page.tsx:
+         Server wrapper, renders SearchView.
+
+      4. apps/buyer/components/search/SearchView.tsx ("use client"):
+         Layout:
+         - Full-width search input at top (large, autofocus)
+         - Concept name suggestions as user types (from cached graph data)
+         - Route indicator: pill showing "Internal + External" / "Internal only" / "External only"
+         - Two result sections side by side (or stacked on mobile):
+
+         InternalResultsSection:
+         - Header: "From your knowledge base" + violet dot
+         - Cards: source type icon, title, snippet, file path
+         - Click → opens source (link or in-app)
+         - shadcn Card components
+
+         ExternalResultsSection:
+         - Header: "From the web" + info (sky) dot
+         - Cards: title, domain favicon, snippet, URL
+         - Click → opens in new tab
+         - "Save to KB" action button on each card (imports as document, placeholder for now)
+
+      5. Update CommandPalette.tsx:
+         - Add "Search" group
+         - Typing in palette with no matching command → "Search for '{query}'" option
+         - Select → navigate to /search?q={query}
+
+      6. Keyboard shortcut: "/" on any page focuses search (if not in input already)
+
+      RULES:
+      - Internal and external searches are SEPARATE API calls (data isolation)
+      - Never send internal context to external search
+      - Debounce search input: 300ms
+      - Loading states per section (one can load while other shows results)
+      - Empty state: "Start typing to search across your knowledge base and the web"
+      - Named exports, shadcn components
+
+      COMMIT: feat(buyer): add smart search with AI routing and data isolation
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [external-search-endpoint, knowledge-graph]
+
+  - id: mission-session-redesign
+    title: "Mission session page with Dark Knowledge coach chat"
+    scope: frontend:buyer
+    type: feat
+    prompt: |
+      Task: Redesign the mission/lesson experience as a 5-phase Socratic session with Dark Knowledge styling.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, shadcn/ui, Dark Knowledge theme)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 3.5: Active Mission
+      - APIs (all exist):
+        POST /ai/coach/start {mission_id} → {session_id, greeting, phase: "recap"}
+        POST /ai/coach/chat {session_id, message} → {reply, phase, progress, hint?}
+        POST /ai/coach/end {session_id} → {summary, score, mastery_delta}
+        POST /missions/{id}/start → start mission
+        POST /missions/{id}/complete {session_id} → complete mission
+      - Existing: TutorDrawer.tsx, use-tutor.ts — reuse patterns, not components
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/lib/api.ts — add/update coach namespace:
+         coach: {
+           startSession: (token, missionId) => POST /api/ai/ai/coach/start {mission_id}
+           sendMessage: (token, sessionId, message) => POST /api/ai/ai/coach/chat {session_id, message}
+           endSession: (token, sessionId) => POST /api/ai/ai/coach/end {session_id}
+         }
+
+      2. apps/buyer/hooks/use-coach.ts:
+         - useCoachSession() — state: sessionId, phase, messages[], isTyping
+         - useStartSession(missionId) — mutation: start + set sessionId
+         - useSendMessage() — mutation: send + append response + update phase
+         - useEndSession() — mutation: end + get results
+
+      3. apps/buyer/app/(app)/missions/[id]/page.tsx:
+         Server wrapper. Renders MissionSession.
+
+      4. apps/buyer/components/mission/MissionSession.tsx ("use client"):
+         Two-panel layout:
+
+         Left panel (60%): ContentArea
+         - Phase-dependent content:
+           recap: Key points from blueprint, recap questions
+           reading: RAG source snippets with source links (from blueprint)
+           questions: Interactive MCQ cards (shadcn Card + Radio)
+           code_case: Code display (syntax highlighted) + answer input
+           wrap_up: Summary, mastery delta, "Back to Dashboard"
+         - Phase content from mission blueprint (loaded on mount)
+
+         Right panel (40%): CoachChat
+         - Chat message list (scrollable)
+         - Coach messages: left, with bot avatar, card bg
+         - User messages: right, primary bg
+         - Code blocks in messages: Dark Knowledge code style (JetBrains Mono, elevated bg)
+         - Typing indicator: 3 dots pulse animation
+         - Input: text area + send button
+         - "I'm stuck" → sends hint request
+
+      5. apps/buyer/components/mission/PhaseIndicator.tsx:
+         - Horizontal stepper: 5 dots with labels
+         - Current: primary color + scale 1.2
+         - Completed: success color + check
+         - Upcoming: muted color
+         - Animated transitions between phases
+
+      6. apps/buyer/components/mission/MissionComplete.tsx:
+         - Score: large number with count-up animation
+         - Mastery delta: "+0.15" in success color
+         - Strengths / gaps lists
+         - "Back to Dashboard" button
+         - Confetti-like subtle animation on high score (> 0.8)
+
+      7. Auto-scroll chat to latest message.
+         Disable input while coach "typing".
+         Session timer in header (elapsed time).
+
+      RULES:
+      - Streaming feel: show typing indicator immediately on send
+      - Phase transitions driven by coach response (phase field)
+      - All chat state in React (not persisted to server beyond API calls)
+      - Dynamic import for code syntax highlighting
+      - shadcn: Card, Button, Input, Badge, Progress, Avatar, Skeleton
+      - Named exports
+      - Responsive: on mobile, panels stack vertically
+
+      COMMIT: feat(buyer): add mission session with 5-phase coach chat and Dark Knowledge theme
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [concept-hub]

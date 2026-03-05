@@ -1,0 +1,293 @@
+phase: "sprint-27"
+description: "MCP Server & Cleanup — MCP protocol server, AI query router, B2C page removal"
+
+tasks:
+  - id: ai-query-router
+    title: "AI query router service for smart search classification"
+    scope: backend:ai
+    type: feat
+    prompt: |
+      Task: Build a query classification service that routes search queries to internal (RAG), external (web), or both.
+
+      CONTEXT:
+      - AI service: services/py/ai/ (port 8006)
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 4
+      - External search endpoint already exists: POST /ai/search/external
+      - RAG search exists: POST /kb/{org_id}/search
+      - Need: a classifier that decides where to route + a unified search endpoint
+
+      WHAT TO BUILD:
+      TDD — write tests first, then implement.
+
+      1. app/services/query_router.py:
+         QueryRouter:
+
+         def classify(query: str, org_terms: list[str] = []) -> str:
+           Returns: "internal" | "external" | "both"
+
+           Rule-based classifier (MVP):
+           Internal signals (score +1 each):
+           - Contains org-specific terms (from org_terms list)
+           - Contains "our", "we", "internal", "company" (Russian equivalents too)
+           - Contains file paths or code patterns
+           - Matches known concept names
+
+           External signals (score +1 each):
+           - Contains library/framework names (react, python, docker, kubernetes, etc.)
+           - Contains "how to", "best practice", "tutorial", "documentation"
+           - Contains URLs or domain names
+
+           Scoring:
+           - internal_score > 0 and external_score == 0 → "internal"
+           - external_score > 0 and internal_score == 0 → "external"
+           - both > 0 or both == 0 → "both"
+
+      2. app/services/unified_search_service.py:
+         UnifiedSearchService(rag_client, external_search_service, query_router):
+
+         async search(query, org_id, org_terms=[], limit=5) -> UnifiedSearchResult:
+           1. route = query_router.classify(query, org_terms)
+           2. Based on route, parallel fetch:
+              internal: call RAG service POST /kb/{org_id}/search (via httpx)
+              external: call external_search_service.search(query)
+           3. Return { route, internal_results, external_results }
+
+      3. app/domain/unified_search.py:
+         @dataclass UnifiedSearchResult:
+           route: str  # "internal" | "external" | "both"
+           internal_results: list[InternalSearchResult]
+           external_results: list[ExternalSearchResult]
+
+      4. Routes:
+         POST /ai/search/unified — Auth required.
+         Body: {query, org_id, limit}
+         Returns UnifiedSearchResult.
+         This replaces separate internal+external calls from frontend.
+
+      5. Tests:
+         - test_query_router.py: test classification logic with various queries
+         - test_unified_search_service.py: mock both search backends
+         - Test parallel execution
+         - Test isolation: internal results never contain external data and vice versa
+
+      RULES:
+      - TDD mandatory
+      - Query router is pure function (no I/O, easily testable)
+      - Internal and external are SEPARATE API calls (never combined in one prompt)
+      - Org terms fetched from concept names (cached, from RAG /kb/{org_id}/concepts)
+      - 1 credit per unified search
+      - Clean Architecture
+
+      COMMIT: feat(ai): add query router and unified search endpoint
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: []
+
+  - id: mcp-server-scaffold
+    title: "MCP server scaffold with JWT auth"
+    scope: backend:mcp
+    type: feat
+    prompt: |
+      Task: Create an MCP (Model Context Protocol) server that wraps platform APIs for AI tool integration (Cursor, Claude Desktop, etc.).
+
+      CONTEXT:
+      - Design: docs/plans/2026-03-05-b2b-knowledge-platform-design.md — Section 5
+      - MCP spec: JSON-RPC 2.0 over stdio or HTTP+SSE
+      - Server provides tools (functions) and resources (data) to AI clients
+      - Auth: user provides JWT token as config, server uses it for all API calls
+
+      WHAT TO BUILD:
+
+      1. Create new service: services/py/mcp/
+         - pyproject.toml (dependencies: mcp, httpx, pydantic-settings)
+         - app/main.py — MCP server entry point
+         - app/config.py — settings (api_base_url, jwt_token from env)
+
+      2. app/client.py — PlatformClient:
+         Thin wrapper around httpx that calls platform APIs with JWT auth.
+         Methods map to API endpoints:
+         - search_knowledge(org_id, query) → POST /kb/{org_id}/search
+         - search_external(query) → POST /ai/search/external
+         - search_unified(org_id, query) → POST /ai/search/unified
+         - get_concept_graph(org_id) → GET /kb/{org_id}/concepts
+         - get_concept(concept_id) → GET /concepts/{concept_id}
+         - get_mastery() → GET /concepts/mastery
+         - get_daily_summary() → GET /daily/me
+         - get_flashcards_due() → GET /flashcards/due
+         - start_mission(org_id) → GET /ai/mission/daily?org_id={org_id}
+         - complete_mission(session_id, concept_id, org_id) → POST /ai/mission/complete
+         - coach_chat(session_id, message) → POST /ai/coach/chat
+         - review_flashcard(card_id, rating) → POST /flashcards/review
+         - create_document(org_id, title, content) → POST /documents
+         - create_concept(org_id, name, description) → POST /concepts
+         - update_concept(concept_id, name, description) → PUT /concepts/{concept_id}
+         - delete_concept(concept_id) → DELETE /concepts/{concept_id}
+         - add_prerequisite(concept_id, prerequisite_id) → POST /concepts/prerequisite
+
+      3. app/tools.py — MCP tool definitions:
+         Each tool maps to a PlatformClient method.
+         Tools have: name, description, inputSchema (JSON Schema), handler function.
+
+         Read tools:
+         - search_knowledge: "Search your organization's knowledge base"
+         - search_web: "Search the internet for technical information"
+         - smart_search: "AI-routed search across internal KB and web"
+         - get_concept_graph: "Get the full concept graph for your organization"
+         - get_concept: "Get details about a specific concept"
+         - get_mastery: "Get your mastery levels across all concepts"
+         - get_daily_summary: "Get today's learning summary"
+         - get_flashcards_due: "Get flashcards due for review"
+
+         Action tools:
+         - start_mission: "Start today's learning mission"
+         - complete_mission: "Complete a mission session"
+         - coach_chat: "Send a message to the AI coach"
+         - review_flashcard: "Review a flashcard with difficulty rating"
+
+         Write tools:
+         - create_document: "Upload a document to the knowledge base"
+         - create_concept: "Create a new concept in the knowledge graph"
+         - update_concept: "Update an existing concept"
+         - delete_concept: "Delete a concept from the knowledge graph"
+         - add_prerequisite: "Add a prerequisite relationship between concepts"
+
+      4. app/resources.py — MCP resource definitions:
+         - knowledge://graph → concept graph JSON
+         - progress://daily → daily summary
+         - progress://mastery → all mastery levels
+         - progress://trust-level → current trust level
+
+      5. Entry point (app/main.py):
+         - Create MCP server instance
+         - Register all tools and resources
+         - Run over stdio (default for CLI tools like Cursor/Claude Desktop)
+
+      6. Tests:
+         - test_client.py: mock httpx, verify all API calls correct
+         - test_tools.py: verify tool schemas, mock client, test handlers
+
+      RULES:
+      - MCP server is a SEPARATE service (not embedded in existing services)
+      - JWT token from environment variable (MCP_AUTH_TOKEN)
+      - API base URL from environment (MCP_API_URL, default http://localhost:8080 for gateway)
+      - All tools have clear descriptions for AI agent understanding
+      - Write tools require trust_level >= 2 (check before executing)
+      - Tool errors return structured error messages (not stack traces)
+      - No internal data leaks through tool descriptions or error messages
+
+      COMMIT: feat(mcp): add MCP server with full CRUD tools for AI tool integration
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/mcp && uv run --package mcp-server pytest tests/ -v"
+    depends_on: [ai-query-router]
+
+  - id: mcp-docker
+    title: "MCP server Docker and compose integration"
+    scope: infra:deploy
+    type: chore
+    prompt: |
+      Task: Add Dockerfile and docker-compose entries for the MCP server.
+
+      CONTEXT:
+      - MCP server: services/py/mcp/ (just created)
+      - Existing Dockerfiles: deploy/docker/*.Dockerfile
+      - docker-compose.dev.yml and docker-compose.prod.yml
+      - Pattern: same as other Python services
+
+      WHAT TO BUILD:
+
+      1. deploy/docker/mcp.Dockerfile:
+         Follow identity.Dockerfile pattern:
+         - python:3.12-slim base
+         - Install uv
+         - Copy common lib + mcp service
+         - Install dependencies
+         - Expose no port (stdio-based, or optional HTTP+SSE on 8009)
+
+      2. Update docker-compose.dev.yml:
+         Add mcp service (profile: mcp, so it's opt-in):
+         - Build from deploy/docker/mcp.Dockerfile
+         - Environment: JWT_SECRET, API base URL (api-gateway or direct services)
+         - Volumes for hot reload
+         - depends_on: redis (for caching)
+         - profiles: [mcp]
+
+      3. Update STRUCTURE.md: add services/py/mcp to tree
+
+      RULES:
+      - MCP server is optional (profile: mcp), not started by default
+      - Follow existing Dockerfile patterns exactly
+      - No new ports unless HTTP+SSE mode (then 8009)
+
+      COMMIT: chore(deploy): add MCP server Dockerfile and compose integration
+    test: "docker compose -f docker-compose.dev.yml config --quiet"
+    depends_on: [mcp-server-scaffold]
+
+  - id: b2c-cleanup
+    title: "Hide B2C pages and clean up unused components"
+    scope: frontend:buyer
+    type: refactor
+    prompt: |
+      Task: Remove or hide B2C pages that are no longer relevant for the B2B knowledge platform.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ — now a B2B knowledge platform
+      - B2C pages to hide/remove:
+        - /courses (catalog) — replaced by /graph
+        - /courses/new, /courses/[id]/edit — course creation (B2C teacher flow)
+        - /bundles, /bundles/[id] — course bundles
+        - /wishlist — saved courses
+        - /enrollments — replaced by /missions
+        - /my-courses — teacher's courses
+        - /referral — B2C referral program
+      - Pages to KEEP:
+        - / (landing — marketing)
+        - /login, /register, /forgot-password, /reset-password, /verify-email
+        - /dashboard, /graph, /graph/[conceptId], /search
+        - /missions, /missions/[id]
+        - /flashcards, /badges, /velocity
+        - /messages, /notifications, /feed
+        - /settings (admin)
+        - /users/[id] (public profile)
+        - /onboarding
+
+      WHAT TO DO:
+
+      1. Move B2C pages to apps/buyer/app/(deprecated)/:
+         This keeps the code but removes it from routing.
+         Move: courses/, bundles/, wishlist/, enrollments/, my-courses/, referral/
+
+      2. Remove B2C components that are no longer used:
+         - CatalogSection.tsx (replaced by graph + search)
+         - CourseCard.tsx, CourseCardSkeleton.tsx
+         - HeroCTA.tsx (if landing page redesigned)
+         - SimilarCourses.tsx
+         - WishlistButton.tsx
+         - CouponInput.tsx
+         - PriceDisplay.tsx
+
+      3. Clean up lib/api.ts:
+         Keep all API namespaces (they may be used by MCP or future features).
+         But add comment: // B2C — deprecated, kept for API compatibility
+
+      4. Clean up hooks/:
+         Move unused B2C hooks to hooks/_deprecated/:
+         - use-courses.ts (if not used by graph)
+         - use-reviews.ts
+         - use-bundles.ts
+         - use-coupons.ts
+         - use-subscriptions.ts (B2C individual subs)
+         - use-wishlist.ts
+         - use-recommendations.ts
+
+      5. Update Sidebar navigation: ensure no links to removed pages.
+
+      6. Update sitemap.ts: remove B2C routes.
+
+      RULES:
+      - Move, don't delete — keep code accessible in case of rollback
+      - Verify build passes after each move
+      - Do NOT remove API endpoints from api.ts (MCP uses them)
+      - Named exports consistency
+      - Update any imports that break
+
+      COMMIT: refactor(buyer): hide B2C pages and clean up deprecated components
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [mcp-docker]
