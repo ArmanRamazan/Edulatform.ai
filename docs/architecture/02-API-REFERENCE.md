@@ -975,6 +975,65 @@ Phases: `recap` → `read` → `check` → `practice` → `wrap-up`
 
 ---
 
+### GET /ai/config/llm/{org_id} (NEW)
+
+Получение текущей LLM-конфигурации для организации. Только admin.
+
+**Response `200`:**
+```json
+{
+  "internal_provider": "gemini",
+  "internal_model_url": null,
+  "external_provider": "gemini",
+  "embedding_provider": "gemini",
+  "data_isolation": "standard"
+}
+```
+
+---
+
+### PUT /ai/config/llm/{org_id} (NEW)
+
+Обновление LLM-конфигурации. Только admin. Validation: strict isolation требует self_hosted; self_hosted требует internal_model_url.
+
+**Request:**
+```json
+{
+  "internal_provider": "self_hosted",
+  "internal_model_url": "http://vllm:8000/v1",
+  "data_isolation": "strict"
+}
+```
+
+**Response `200`:** Обновлённая конфигурация.
+**Response `400`:** Невалидная конфигурация (strict + gemini, self_hosted без URL).
+
+---
+
+### POST /ai/config/llm/{org_id}/test (NEW)
+
+Тест подключения к LLM-провайдеру. Только admin. Отправляет "ping" и возвращает результат.
+
+**Request:**
+```json
+{
+  "internal_provider": "self_hosted",
+  "internal_model_url": "http://vllm:8000/v1"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "success": true,
+  "response_preview": "pong",
+  "tokens_in": 5,
+  "tokens_out": 2
+}
+```
+
+---
+
 ## Learning Engine (`:8007`)
 
 ### Quizzes (4 endpoints)

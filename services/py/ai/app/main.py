@@ -25,9 +25,11 @@ from app.services.strategist_service import StrategistService
 from app.services.designer_service import DesignerService
 from app.services.coach_service import CoachService
 from app.services.orchestrator_service import AgentOrchestrator
+from app.services.llm_resolver import LLMResolver
 from app.routes.ai import router as ai_router
 from app.routes.coach_routes import router as coach_router
 from app.routes.orchestrator_routes import router as orchestrator_router
+from app.routes.llm_config_routes import router as llm_config_router
 
 app_settings = Settings()
 
@@ -41,6 +43,8 @@ _strategist_service: StrategistService | None = None
 _designer_service: DesignerService | None = None
 _coach_service: CoachService | None = None
 _orchestrator_service: AgentOrchestrator | None = None
+_llm_resolver: LLMResolver | None = None
+_cache: AICache | None = None
 _http_client: httpx.AsyncClient | None = None
 
 
@@ -89,6 +93,16 @@ def get_orchestrator_service() -> AgentOrchestrator:
     return _orchestrator_service
 
 
+def get_llm_resolver() -> LLMResolver:
+    assert _llm_resolver is not None
+    return _llm_resolver
+
+
+def get_cache() -> AICache:
+    assert _cache is not None
+    return _cache
+
+
 def _create_health_router() -> APIRouter:
     router = APIRouter(tags=["health"])
 
@@ -125,7 +139,7 @@ def _create_health_router() -> APIRouter:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _strategist_service, _designer_service, _coach_service, _orchestrator_service, _http_client
+    global _redis, _ai_service, _tutor_service, _credit_service, _study_plan_service, _moderation_service, _strategist_service, _designer_service, _coach_service, _orchestrator_service, _llm_resolver, _cache, _http_client
 
     configure_logging(service_name="ai")
     logger = structlog.get_logger()
@@ -135,6 +149,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     llm = GeminiClient(_http_client, app_settings.gemini_api_key, app_settings.gemini_model)
     cache = AICache(_redis)
+    _cache = cache
+    _llm_resolver = LLMResolver(settings=app_settings, cache=cache, http_client=_http_client)
     _ai_service = AIService(llm, cache, app_settings)
     _tutor_service = TutorService(llm, cache, app_settings)
     _credit_service = CreditService(cache=cache)
@@ -180,6 +196,7 @@ app.add_middleware(
 app.include_router(ai_router)
 app.include_router(coach_router)
 app.include_router(orchestrator_router)
+app.include_router(llm_config_router)
 app.include_router(_create_health_router())
 
 Instrumentator().instrument(app).expose(app)
