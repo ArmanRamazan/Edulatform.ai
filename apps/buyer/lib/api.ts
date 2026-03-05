@@ -1316,6 +1316,100 @@ export const wishlist = {
   },
 };
 
+export interface MissionBlueprint {
+  concept_name: string;
+  reading_content: string;
+  check_questions: unknown[];
+  code_case: unknown | null;
+  recap_questions: unknown[];
+}
+
+export interface Mission {
+  id: string;
+  concept_id: string;
+  mission_type: string;
+  status: "pending" | "in_progress" | "completed";
+  blueprint: MissionBlueprint | null;
+  score: number | null;
+  started_at: string | null;
+  completed_at: string | null;
+}
+
+export interface TrustLevel {
+  level: number;
+  total_missions_completed: number;
+  total_concepts_mastered: number;
+  unlocked_areas: string[];
+}
+
+export interface DailySummary {
+  mission: Mission | null;
+  trust_level: TrustLevel;
+  due_flashcards: number;
+  streak_days: number;
+  greeting: string;
+}
+
+export interface MissionStartResponse {
+  session_id: string;
+  first_question: string;
+}
+
+export interface MissionCompleteResponse {
+  score: number;
+  mastery_delta: number;
+  strengths: string[];
+  gaps: string[];
+}
+
+export interface MissionHistoryList {
+  items: Mission[];
+  total: number;
+}
+
+export interface MissionStreakResponse {
+  current_streak: number;
+  longest_streak: number;
+}
+
+export const daily = {
+  getSummary(token: string) {
+    return request<DailySummary>(`${AI_URL}/ai/mission/daily`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export const missions = {
+  start(token: string, missionId: string) {
+    return request<MissionStartResponse>(`${AI_URL}/ai/mission/${missionId}/start`, {
+      method: "POST",
+      headers: authHeaders(token),
+    });
+  },
+  complete(token: string, missionId: string, sessionId: string) {
+    return request<MissionCompleteResponse>(`${AI_URL}/ai/mission/${missionId}/complete`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+  },
+  getHistory(token: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<MissionHistoryList>(`${AI_URL}/ai/missions/me${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+  getStreak(token: string) {
+    return request<MissionStreakResponse>(`${AI_URL}/ai/missions/streak`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
 export const concepts = {
   getCourseGraph(token: string, courseId: string) {
     return request<CourseGraphResponse>(`${LEARNING_URL}/concepts/course/${courseId}`, {
