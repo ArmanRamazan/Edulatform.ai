@@ -58,6 +58,7 @@ from app.routes.velocity import router as velocity_router
 from app.routes.activity import router as activity_router
 from app.routes.study_groups import router as study_groups_router
 from app.routes.certificates import router as certificates_router
+from app.routes.internal_certificates import router as internal_certificates_router
 from app.routes.trust_levels import router as trust_levels_router
 from app.routes.missions import router as missions_router
 
@@ -293,6 +294,7 @@ app.include_router(velocity_router)
 app.include_router(activity_router)
 app.include_router(study_groups_router)
 app.include_router(certificates_router)
+app.include_router(internal_certificates_router)
 app.include_router(trust_levels_router)
 app.include_router(missions_router)
 app.include_router(create_health_router(lambda: _pool, lambda: _redis))
