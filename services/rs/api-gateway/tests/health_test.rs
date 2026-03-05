@@ -45,7 +45,9 @@ async fn health_ready_returns_200() {
 }
 
 #[tokio::test]
-async fn unknown_route_returns_404() {
+async fn unknown_route_without_auth_returns_401() {
+    // Non-public unknown routes now return 401 because JWT middleware
+    // rejects unauthenticated requests before routing takes effect.
     let response = app()
         .oneshot(
             axum::http::Request::builder()
@@ -56,5 +58,5 @@ async fn unknown_route_returns_404() {
         .await
         .unwrap();
 
-    assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
 }

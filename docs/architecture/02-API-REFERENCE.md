@@ -22,6 +22,82 @@ Readiness probe. Проверяет PostgreSQL и Redis (если есть).
 
 ---
 
+## API Gateway (`:8080`)
+
+### JWT Verification Middleware
+
+API Gateway валидирует JWT (HS256) для всех non-public routes. Public routes пропускаются без авторизации.
+
+**Public routes (без JWT):**
+- `GET /health/*`
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/forgot-password`
+
+**Все остальные routes** требуют `Authorization: Bearer <token>`.
+
+При успешной валидации gateway устанавливает upstream headers для Python-сервисов:
+
+| Header | Source | Описание |
+|--------|--------|----------|
+| `X-User-Id` | `claims.sub` | UUID пользователя |
+| `X-User-Role` | `claims.role` | `student` / `teacher` / `admin` |
+| `X-User-Verified` | `claims.is_verified` | `true` / `false` |
+| `X-Organization-Id` | `claims.organization_id` | UUID организации (отсутствует если null) |
+
+**Ошибки:**
+
+| Code | Причина |
+|------|---------|
+| 401 | Отсутствует Authorization header |
+| 401 | Невалидная подпись JWT |
+| 401 | Истёкший токен (exp < now) |
+
+---
+
+### Rate Limiting
+
+Все запросы через API Gateway проходят Redis sliding window rate limiting по IP.
+
+### Лимиты по route groups
+
+| Route | Method | Лимит | Окно |
+|-------|--------|-------|------|
+| `/auth/register` | POST | 5 req | 60s |
+| `/auth/login` | POST | 10 req | 60s |
+| `/ai/*` | POST | 30 req | 60s |
+| Все остальные | * | 100 req | 60s |
+
+### Response Headers
+
+Все ответы через gateway содержат rate limit headers:
+
+| Header | Описание |
+|--------|----------|
+| `X-RateLimit-Limit` | Максимум запросов в окне |
+| `X-RateLimit-Remaining` | Оставшиеся запросы |
+| `X-RateLimit-Reset` | Unix timestamp сброса окна |
+
+### 429 Too Many Requests
+
+При превышении лимита:
+
+```json
+{ "error": "rate limit exceeded" }
+```
+
+Headers: `Retry-After` (секунды до сброса).
+
+### Fail-open
+
+При недоступности Redis запросы пропускаются без ограничений (fail-open).
+
+### IP Extraction
+
+Приоритет: `X-Forwarded-For` header (первый IP) > peer address.
+
+---
+
 ## Identity Service (`:8001`)
 
 ### POST /register
