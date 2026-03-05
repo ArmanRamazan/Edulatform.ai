@@ -2210,6 +2210,105 @@ Handled events: `invoice.paid` (→ active), `invoice.payment_failed` (→ past_
 
 ---
 
+## Search Service (`:8010`) — Rust/Axum + tantivy
+
+Full-text search service. Org-scoped document indexing with BM25 scoring. Called by RAG service and API Gateway.
+
+### GET /health/live
+
+**Response `200`:** `{"status": "ok"}`
+
+### POST /index
+
+Index a single document.
+
+**Request Body:**
+```json
+{
+  "id": "doc-uuid",
+  "org_id": "org-uuid",
+  "title": "Document title",
+  "body": "Full text content for indexing",
+  "source_type": "document",
+  "source_path": "/docs/example.md"
+}
+```
+
+**Response `201`:** `{"status": "indexed"}`
+
+**Errors:** `500` (index error)
+
+### POST /index/batch
+
+Index multiple documents in a single request.
+
+**Request Body:**
+```json
+{
+  "documents": [
+    {
+      "id": "doc-1",
+      "org_id": "org-uuid",
+      "title": "First doc",
+      "body": "Content",
+      "source_type": "code",
+      "source_path": "/src/main.rs"
+    }
+  ]
+}
+```
+
+**Response `201`:** `{"status": "indexed", "indexed": 1}`
+
+**Errors:** `500` (index error)
+
+### POST /search
+
+Search documents within an organization. BM25 scoring across title and body fields.
+
+**Request Body:**
+```json
+{
+  "query": "search terms",
+  "org_id": "org-uuid",
+  "limit": 10,
+  "offset": 0
+}
+```
+
+`limit` defaults to 10, `offset` defaults to 0.
+
+**Response `200`:**
+```json
+{
+  "results": [
+    {
+      "id": "doc-uuid",
+      "title": "Document title",
+      "snippet": "...matching <b>terms</b> highlighted...",
+      "score": 5.23,
+      "source_type": "document",
+      "source_path": "/docs/example.md"
+    }
+  ],
+  "total": 1
+}
+```
+
+Empty query returns `{"results": [], "total": 0}`.
+
+**Errors:** `400` (query parse error), `500` (search error)
+
+### DELETE /index/{org_id}
+
+Delete all indexed documents for an organization.
+
+**Response `200`:** `{"status": "deleted"}`
+
+**Errors:** `500` (index error)
+
+---
+
 ## Dormant Services
 
 ### Course Service (`:8002`) — dormant
