@@ -1342,6 +1342,26 @@ export interface TrustLevel {
   unlocked_areas: string[];
 }
 
+export interface TrustLevelWithUser extends TrustLevel {
+  user_id: string;
+}
+
+export interface TrustLevelListResponse {
+  levels: TrustLevelWithUser[];
+}
+
+export const trustLevels = {
+  getOrgLevels(token: string, orgId: string, params?: { limit?: number; offset?: number }) {
+    const sp = new URLSearchParams();
+    if (params?.limit) sp.set("limit", String(params.limit));
+    if (params?.offset) sp.set("offset", String(params.offset));
+    const qs = sp.toString();
+    return request<TrustLevelListResponse>(`${LEARNING_URL}/trust-level/org/${orgId}${qs ? `?${qs}` : ""}`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
 export interface DailySummary {
   mission: Mission | null;
   trust_level: TrustLevel;
@@ -1405,6 +1425,42 @@ export const missions = {
   },
   getStreak(token: string) {
     return request<MissionStreakResponse>(`${AI_URL}/ai/missions/streak`, {
+      headers: authHeaders(token),
+    });
+  },
+};
+
+export interface Organization {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  settings: Record<string, unknown>;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface OrgMember {
+  id: string;
+  organization_id: string;
+  user_id: string;
+  role: string;
+  joined_at: string;
+}
+
+export const organizations = {
+  getMyOrgs(token: string) {
+    return request<Organization[]>(`${IDENTITY_URL}/organizations/me`, {
+      headers: authHeaders(token),
+    });
+  },
+  getOrg(token: string, id: string) {
+    return request<Organization>(`${IDENTITY_URL}/organizations/${id}`, {
+      headers: authHeaders(token),
+    });
+  },
+  getMembers(token: string, id: string) {
+    return request<OrgMember[]>(`${IDENTITY_URL}/organizations/${id}/members`, {
       headers: authHeaders(token),
     });
   },

@@ -1,4 +1,4 @@
-# EduPlatform — Technical Overview
+# KnowledgeOS — Technical Overview
 
 B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist → Designer → Coach) генерирует персонализированные 15-минутные ежедневные миссии из реальной кодовой базы компании.
 
@@ -80,14 +80,14 @@ Pipeline: `Strategist → Designer → Coach` (sequential, stateful).
 
 ```
 GitHub repo / Docs / Wiki
-    → Ingest (clone, parse, extract)
+    → Ingest (clone, parse, extract) — GitHub adapter для repo ingestion
     → Chunk (code: function-level, docs: section-level)
-    → Embed (OpenAI / local model → pgvector)
+    → Embed (Gemini text-embedding-004 → pgvector)
     → Search (semantic similarity + entity filter)
     → Extract (functions, classes, concepts, dependencies)
 ```
 
-Хранение: PostgreSQL + pgvector (rag-db :5439). Scope: per-organization.
+Хранение: PostgreSQL + pgvector (rag-db :5439). Scope: per-organization. GitHub adapter позволяет загружать репозитории напрямую.
 
 ## Rust Performance Layer
 
@@ -128,23 +128,23 @@ Sprints 23-25. Rust-сервисы для performance-critical paths:
 | payment-db | 5436 | Payment (dormant) | payments, subscription_plans, user_subscriptions, teacher_earnings, payouts, coupons, refunds, gifts |
 | notification-db | 5437 | Notification | notifications, conversations, messages |
 | learning-db | 5438 | Learning | quizzes, questions, quiz_attempts, flashcards, review_logs, concepts, concept_edges, concept_mastery, streaks, leaderboard_entries, discussions, xp_events, badges, user_badges, pretests, pretest_answers, activity_events, study_groups, study_group_members, certificates, trust_levels, missions |
-| rag-db | 5439 | RAG | documents, chunks (pgvector embeddings) |
+| rag-db | 5439 | RAG | documents, chunks (pgvector embeddings), org_concepts, concept_relationships |
 | Redis | 6379 | All | Cache, rate limiting, AI memory, session |
 
 ## Тесты
 
 ```bash
 cd services/py/identity    && uv run --package identity pytest tests/ -v     # 156 tests
-cd services/py/course      && uv run --package course pytest tests/ -v       # 111 tests
-cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 28 tests
+cd services/py/course      && uv run --package course pytest tests/ -v       # 129 tests
+cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 39 tests (+3 failing)
 cd services/py/payment     && uv run --package payment pytest tests/ -v      # 151 tests
-cd services/py/notification && uv run --package notification pytest tests/ -v # 57 tests
+cd services/py/notification && uv run --package notification pytest tests/ -v # 136 tests (+3 failing)
 cd services/py/ai          && uv run --package ai pytest tests/ -v           # 172 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 272 tests
-cd services/py/rag         && uv run --package rag pytest tests/ -v          # 142 tests
+cd services/py/rag         && uv run --package rag pytest tests/ -v          # 161 tests
 ```
 
-**Итого:** 998 тестов по 8 сервисам.
+**Итого:** 1216 passed, 6 failing по 8 сервисам.
 
 ## Инфраструктура
 
@@ -195,28 +195,37 @@ docker compose -f docker-compose.prod.yml up -d
 |-------|----------|--------|
 | /courses | Каталог (dormant B2C) | ✅ |
 | /courses/[id] | Детали курса (dormant B2C) | ✅ |
-| /dashboard | Mission Dashboard (B2B) | 🔴 Sprint 21 |
-| /coach | Coach Chat UI | 🔴 Sprint 21 |
-| /knowledge | Knowledge Graph viz | 🔴 Sprint 21 |
-| /admin | Team Analytics | 🔴 Sprint 22 |
-| /settings/org | Org Switcher | 🔴 Sprint 21 |
+| /dashboard | Mission Dashboard — 7 endpoint-driven blocks | ✅ Built (Sprint 21) |
+| /org/select | Organization Selector | ✅ Built (Sprint 21) |
+| /graph | Knowledge Graph visualization | 🔴 Sprint 22 |
+| /graph/[conceptId] | Concept detail view | 🔴 Sprint 22 |
+| /search | Semantic search | 🔴 Sprint 22 |
+| /missions | Mission history & details | 🔴 Sprint 22 |
+| /admin | Team Analytics | 🔴 Sprint 26 |
+
+**Dark Knowledge Theme (Sprint 21):**
+- UI: shadcn/ui (15 components), next-themes, framer-motion, lucide-react, cmdk
+- Route groups: `(marketing)` для landing/auth, `(app)` для sidebar layout
+- Layout: Sidebar + TopBar + CommandPalette (Cmd+K)
+- Dashboard blocks: Greeting, Mission, TrustLevel, Flashcards, Mastery, Activity, TeamProgress
+- OrgProvider + org selector для multi-tenant context
 
 ## Текущий статус
 
 | Sprint | Название | Задач | Статус |
 |--------|----------|-------|--------|
 | Pre-pivot | Foundation + Optimization + Learning Intelligence | — | ✅ Завершено |
-| **Sprint 17** | RAG Foundation | 5 | 🔴 Следующий |
-| **Sprint 18** | Tri-Agent System | 5 | 🔴 |
-| **Sprint 19** | Mission Engine + Trust Levels | 6 | 🔴 |
-| **Sprint 20** | Company Integration | 5 | 🔴 |
-| **Sprint 21** | Frontend Redesign | 5 | 🔴 |
-| **Sprint 22** | B2B Launch | 4 | 🔴 |
-| **Sprint 23** | Rust API Gateway | 5 | 🔴 |
-| **Sprint 24** | Rust RAG Performance | 5 | 🔴 |
-| **Sprint 25** | Rust IO Performance | 5 | 🔴 |
+| **Sprint 17** | RAG Foundation | 5 | ✅ Done |
+| **Sprint 18** | Tri-Agent System | 5 | ✅ Done |
+| **Sprint 19** | Mission Engine + Trust Levels | 6 | ✅ Done |
+| **Sprint 20** | Company Integration | 5 | ✅ Done |
+| **Sprint 21** | Dark Knowledge Foundation | 5 | ✅ Done (shadcn/ui, sidebar, dashboard, org selector, GitHub adapter) |
+| **Sprint 22** | Knowledge Platform UI | 4 | 🔴 Следующий |
+| **Sprint 23-25** | Rust Performance Layer | 15 | 🔴 Planned |
+| **Sprint 26** | B2B Admin | — | 🔴 Planned |
+| **Sprint 27** | MCP Server | — | 🔴 Planned |
 
-**Итого:** 30 задач B2B MVP + 15 задач Rust Performance Layer.
+**Итого:** 30 задач B2B MVP + 15 задач Rust Performance Layer + B2B Admin + MCP.
 
 ## Документация
 

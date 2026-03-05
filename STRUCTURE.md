@@ -32,7 +32,7 @@ eduplatform/
 │   │   ├── notification/          #   In-app уведомления, email (lifecycle events), direct messaging
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache
 │   │   ├── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed, certificates, missions, trust levels
-│   │   └── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base
+│   │   └── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base, GitHub adapter
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Routing, auth check, rate limiting
 │       ├── search/                #   Поисковый proxy + ranking
@@ -40,9 +40,12 @@ eduplatform/
 │       └── payment-engine/        #   Транзакции, подписки, payouts
 │
 ├── apps/                          # Frontend приложения (Next.js)
-│   ├── buyer/                     #   Студенческий сайт (SSR/SSG/Client)
+│   ├── buyer/                     #   B2B knowledge app (SSR/SSG/Client)
+│   │   ├── app/(marketing)/       #     Public: landing, login, register (no sidebar)
+│   │   ├── app/(app)/             #     Authenticated: dashboard, courses, flashcards, org (sidebar)
 │   │   ├── components/ui/         #     shadcn/ui components (Dark Knowledge theme)
-│   │   └── app/fonts/             #     Local font files (Inter, JetBrains Mono)
+│   │   ├── components/layout/     #     Sidebar, TopBar, CommandPalette
+│   │   └── components/dashboard/  #     Dashboard grid + 7 endpoint-driven blocks
 │   └── seller/                    #   Дашборд преподавателя (Client-side)
 │
 ├── packages/                      # Shared frontend пакеты
@@ -61,8 +64,9 @@ eduplatform/
 │   ├── locust/                    #   Load test scenarios
 │   └── orchestrator/              #   AI orchestrator: autonomous Claude Code executor
 │       ├── orchestrator.py        #     YAML task parser, task executor, state persistence
-│       ├── run.sh                 #     Launcher script (./run.sh tasks/sprint-1.yaml)
-│       ├── tasks/                 #     Sprint YAML files (sprint-1 through sprint-4, phase-2.0 through phase-3.5)
+│       ├── run.sh                 #     Launcher script (./run.sh tasks/sprint-21.yaml)
+│       ├── run-b2b.sh             #     B2B build pipeline (4-phase parallel execution)
+│       ├── tasks/                 #     Sprint YAML files (sprint-21 through sprint-27, done/, on_hold/)
 │       └── pyproject.toml         #     uv workspace member (pure stdlib, no deps)
 │
 └── docs/                          # Документация (goals, phases, ADR)
@@ -161,35 +165,40 @@ services/rs/{service}/
 
 ```
 apps/{app}/
-├── app/                   # Next.js App Router
-│   ├── (group)/           #   Route groups (без влияния на URL)
-│   │   ├── page.tsx       #     Server Component по умолчанию
-│   │   ├── layout.tsx     #     Layout для группы
-│   │   ├── loading.tsx    #     Streaming skeleton
-│   │   └── error.tsx      #     Error boundary
-│   ├── layout.tsx         #   Root layout
-│   └── globals.css        #   Tailwind directives
-├── components/            #   Компоненты специфичные для этого app
-│   ├── Header.tsx         #     Навигация, auth state, email verification banner
-│   ├── Providers.tsx      #     QueryClientProvider (TanStack Query)
-│   ├── CourseCardSkeleton.tsx  #  Loading skeleton для курсов
-│   ├── TutorDrawer.tsx    #     Slide-out chat panel для AI-тьютора на уроке
-│   └── ...                #     Используют packages/ui как основу
-├── hooks/                 #   Custom React hooks (TanStack Query)
-│   ├── use-auth.ts        #     Login/register/logout (не server state)
-│   ├── use-courses.ts     #     useCourseList, useCourse, useCurriculum, useCategories
-│   ├── use-enrollments.ts #     useMyEnrollments, useEnroll (mutation)
-│   ├── use-reviews.ts     #     useCourseReviews, useCreateReview (optimistic)
-│   ├── use-progress.ts    #     useCourseProgress, useCompleteLesson (optimistic)
-│   ├── use-notifications.ts #   useMyNotifications, useMarkRead (optimistic)
-│   ├── use-quiz.ts        #     useQuiz, useSubmitQuiz, useMyAttempts
-│   ├── use-ai.ts          #     useGenerateQuiz, useSummary
-│   ├── use-tutor.ts       #     useTutorChat, useTutorFeedback
-│   ├── use-concepts.ts    #     useCourseGraph, useCourseMastery, useCreateConcept, useDeleteConcept
-│   ├── use-flashcards.ts  #     useDueCards, useDueCount, useReviewCard, useCreateFlashcard
-│   └── use-gamification.ts #    useMyXp, useMyXpHistory, useMyBadges, useMyStreak
-├── lib/                   #   API вызовы, утилиты, конфиг
-├── public/                #   Статика (favicon, robots.txt)
+├── app/                         # Next.js App Router
+│   ├── (marketing)/             #   Public pages (landing, auth) — no sidebar
+│   │   ├── login/
+│   │   ├── register/
+│   │   └── page.tsx             #     Landing page
+│   ├── (app)/                   #   Authenticated app — sidebar + TopBar layout
+│   │   ├── layout.tsx           #     Sidebar + TopBar wrapper
+│   │   ├── dashboard/           #     Endpoint-driven dashboard blocks
+│   │   ├── courses/             #     Course pages (catalog, detail, lesson)
+│   │   ├── flashcards/
+│   │   ├── badges/
+│   │   ├── org/                 #     Organization selector
+│   │   └── ...
+│   ├── layout.tsx               #   Root layout (fonts, providers)
+│   └── globals.css              #   Dark Knowledge theme CSS variables
+├── components/                  #   Компоненты специфичные для этого app
+│   ├── ui/                      #     shadcn/ui components (15: button, card, badge, input, dialog, etc.)
+│   ├── layout/                  #     Sidebar.tsx, TopBar.tsx, CommandPalette.tsx
+│   ├── dashboard/               #     DashboardGrid.tsx, BlockErrorBoundary.tsx
+│   │   └── blocks/              #     7 dashboard blocks (Greeting, Mission, TrustLevel, etc.)
+│   └── providers/               #     OrgProvider.tsx, Providers.tsx (QueryClient)
+├── hooks/                       #   Custom React hooks (TanStack Query)
+│   ├── use-auth.ts              #     Login/register/logout (не server state)
+│   ├── use-active-org.ts        #     Active organization from context
+│   ├── use-organizations.ts     #     Organization API hooks
+│   ├── use-courses.ts           #     useCourseList, useCourse, useCurriculum, useCategories
+│   ├── use-enrollments.ts       #     useMyEnrollments, useEnroll (mutation)
+│   ├── use-concepts.ts          #     useCourseGraph, useCourseMastery, useCreateConcept, useDeleteConcept
+│   ├── use-flashcards.ts        #     useDueCards, useDueCount, useReviewCard, useCreateFlashcard
+│   ├── use-gamification.ts      #     useMyXp, useMyXpHistory, useMyBadges, useMyStreak
+│   └── ...
+├── lib/                         #   API вызовы, утилиты, конфиг
+│   └── api.ts                   #     Typed API namespaces
+├── public/                      #   Статика (favicon, robots.txt)
 ├── next.config.ts
 ├── tailwind.config.ts
 ├── tsconfig.json
@@ -198,7 +207,10 @@ apps/{app}/
 
 **Правила:**
 - `app/` — только page.tsx, layout.tsx, loading.tsx, error.tsx. Без бизнес-логики
+- Route groups: `(marketing)` для публичных страниц (no sidebar), `(app)` для authenticated + sidebar
+- `components/ui/` — shadcn/ui компоненты (Dark Knowledge theme)
 - `components/` — UI специфичный для приложения. Общее — в `packages/ui/`
+- Dashboard blocks pattern: каждый блок = один API вызов, независимый error boundary (`BlockErrorBoundary`)
 - `hooks/` — data fetching, form logic, local state. Не дублировать между apps — выносить в `packages/shared/`
 - `lib/` — обертки над `packages/api-client/`, конфиг, auth helpers
 - Server Components по умолчанию. `"use client"` только когда нужен interactivity
