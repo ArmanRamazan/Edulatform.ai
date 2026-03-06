@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import fcntl
 import os
 import queue
 import signal
@@ -22,6 +23,7 @@ from config import (
     DISPATCH_INTERVAL,
     FRONTEND_SCOPES,
     MAX_RETRIES,
+    ORCH_DIR,
     ROOT,
     SCOPE_AGENT_MAP,
     TDD_PREAMBLE,
@@ -31,6 +33,7 @@ from state import SprintState, Task, _now
 
 _state_lock = threading.Lock()
 _merge_lock = threading.Lock()
+_MERGE_LOCK_FILE = ORCH_DIR / ".merge.lock"
 
 _SENTINEL = None  # poison pill
 
@@ -67,36 +70,45 @@ def _create_worktree(task_id: str) -> Path:
 
 def _merge_worktree(task_id: str) -> tuple[bool, str]:
     branch = f"orch/task-{task_id}"
+    # Thread lock (intra-process) + file lock (inter-process)
     with _merge_lock:
-        # Stash any uncommitted changes on main before merge
-        stash_result = subprocess.run(
-            ["git", "stash", "--include-untracked"],
-            cwd=str(ROOT), capture_output=True, text=True,
-        )
-        stashed = "No local changes" not in stash_result.stdout
+        _MERGE_LOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        lock_fd = open(_MERGE_LOCK_FILE, "w")
+        try:
+            fcntl.flock(lock_fd, fcntl.LOCK_EX)
 
-        result = subprocess.run(
-            ["git", "merge", "--no-ff", "-m", f"merge: task {task_id}", branch],
-            cwd=str(ROOT), capture_output=True, text=True,
-        )
-        if result.returncode != 0:
-            subprocess.run(
-                ["git", "merge", "--abort"],
-                cwd=str(ROOT), capture_output=True,
+            # Stash any uncommitted changes on main before merge
+            stash_result = subprocess.run(
+                ["git", "stash", "--include-untracked"],
+                cwd=str(ROOT), capture_output=True, text=True,
             )
+            stashed = "No local changes" not in stash_result.stdout
+
+            result = subprocess.run(
+                ["git", "merge", "--no-ff", "-m", f"merge: task {task_id}", branch],
+                cwd=str(ROOT), capture_output=True, text=True,
+            )
+            if result.returncode != 0:
+                subprocess.run(
+                    ["git", "merge", "--abort"],
+                    cwd=str(ROOT), capture_output=True,
+                )
+                if stashed:
+                    subprocess.run(
+                        ["git", "stash", "pop"],
+                        cwd=str(ROOT), capture_output=True,
+                    )
+                return False, result.stderr + result.stdout
+
+            # Restore stashed changes after successful merge
             if stashed:
                 subprocess.run(
                     ["git", "stash", "pop"],
                     cwd=str(ROOT), capture_output=True,
                 )
-            return False, result.stderr + result.stdout
-
-        # Restore stashed changes after successful merge
-        if stashed:
-            subprocess.run(
-                ["git", "stash", "pop"],
-                cwd=str(ROOT), capture_output=True,
-            )
+        finally:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+            lock_fd.close()
     return True, ""
 
 

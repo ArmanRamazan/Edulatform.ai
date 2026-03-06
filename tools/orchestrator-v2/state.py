@@ -9,6 +9,18 @@ from pathlib import Path
 
 from config import STATE_DIR
 
+# Allow per-instance state isolation (set by main.py --instance)
+_instance_state_dir: Path | None = None
+
+
+def set_state_dir(path: Path) -> None:
+    global _instance_state_dir
+    _instance_state_dir = path
+
+
+def get_state_dir() -> Path:
+    return _instance_state_dir or STATE_DIR
+
 try:
     import yaml
 except ImportError:
@@ -87,8 +99,9 @@ class SprintState:
     review_output: str = ""
 
     def save(self) -> None:
-        STATE_DIR.mkdir(parents=True, exist_ok=True)
-        path = STATE_DIR / "state.json"
+        state_dir = get_state_dir()
+        state_dir.mkdir(parents=True, exist_ok=True)
+        path = state_dir / "state.json"
         data = {
             "source_file": self.source_file,
             "phase": self.phase,
@@ -113,7 +126,7 @@ class SprintState:
 
     @classmethod
     def load(cls) -> SprintState | None:
-        path = STATE_DIR / "state.json"
+        path = get_state_dir() / "state.json"
         if not path.exists():
             return None
         data = json.loads(path.read_text())
