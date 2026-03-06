@@ -9,7 +9,7 @@ from common.errors import AppError
 from app.config import Settings
 from app.domain.llm_config import LLMConfig
 from app.repositories.cache import AICache
-from app.services.llm_provider import GeminiProvider, LLMProvider, SelfHostedProvider
+from app.services.llm_provider import GeminiProvider, LLMProvider, MockLLMProvider, SelfHostedProvider
 
 logger = structlog.get_logger()
 
@@ -51,8 +51,12 @@ class LLMResolver:
             purpose: "internal" (org-specific content) or "external" (public/search).
 
         Returns:
-            An LLMProvider instance.
+            An LLMProvider instance. Falls back to MockLLMProvider when no API key is set.
         """
+        if not self._settings.gemini_api_key:
+            logger.info("mock_llm_active", reason="no API key configured")
+            return MockLLMProvider()
+
         config = await self._load_config(org_id)
 
         if purpose == "external":
