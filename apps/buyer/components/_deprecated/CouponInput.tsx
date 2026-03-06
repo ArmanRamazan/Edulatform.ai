@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { type DiscountResult } from "@/lib/api";
-import { useValidateCoupon } from "@/hooks/use-coupons";
+import { useValidateCoupon } from "@/hooks/_deprecated/use-coupons";
 import { getErrorMessage } from "@/lib/errors";
 
 interface CouponInputProps {

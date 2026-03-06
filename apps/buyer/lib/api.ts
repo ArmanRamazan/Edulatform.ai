@@ -619,6 +619,7 @@ export const lessons = {
   },
 };
 
+// B2C — deprecated, kept for API compatibility
 export const reviews = {
   create(token: string, data: { course_id: string; rating: number; comment?: string }) {
     return request<Review>(`${COURSE_URL}/reviews`, {
@@ -661,6 +662,7 @@ export const progress = {
   },
 };
 
+// B2C — deprecated, kept for API compatibility
 export const enrollments = {
   create(token: string, data: { course_id: string; payment_id?: string; total_lessons?: number }) {
     return request<Enrollment>(`${ENROLLMENT_URL}/enrollments`, {
@@ -692,6 +694,7 @@ export interface DiscountResult {
   coupon_code: string;
 }
 
+// B2C — deprecated, kept for API compatibility
 export const coupons = {
   validate(token: string, data: { code: string; course_id: string; amount: number }) {
     return request<DiscountResult>(`${PAYMENT_URL}/coupons/validate`, {
@@ -752,6 +755,7 @@ export interface UserSubscription {
   updated_at: string;
 }
 
+// B2C — deprecated, kept for API compatibility
 export const subscriptions = {
   plans() {
     return request<SubscriptionPlan[]>(`${PAYMENT_URL}/subscriptions/plans`);
@@ -1095,6 +1099,7 @@ export interface BundleWithCourses extends CourseBundle {
   courses: Course[];
 }
 
+// B2C — deprecated, kept for API compatibility
 export const bundles = {
   list(params?: { limit?: number; offset?: number; teacher_id?: string }) {
     const sp = new URLSearchParams();
@@ -1256,6 +1261,7 @@ export interface PersonalRecommendation {
   relevance_score: number;
 }
 
+// B2C — deprecated, kept for API compatibility
 export const recommendations = {
   forCourse(courseId: string) {
     return request<CoEnrollmentRecommendation[]>(
@@ -1287,6 +1293,7 @@ export interface WishlistCheck {
   in_wishlist: boolean;
 }
 
+// B2C — deprecated, kept for API compatibility
 export const wishlist = {
   add(token: string, courseId: string) {
     return request<WishlistItem>(`${COURSE_URL}/wishlist`, {

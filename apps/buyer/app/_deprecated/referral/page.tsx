@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { useReferralInfo } from "@/hooks/use-referral";
+import { useReferralInfo } from "@/hooks/_deprecated/use-referral";
 import { Header } from "@/components/Header";
 
 function CopyButton({ text, label }: { text: string; label: string }) {
