@@ -1,258 +1,102 @@
 # KnowledgeOS — Technical Overview
 
-B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist → Designer → Coach) генерирует персонализированные 15-минутные ежедневные миссии из реальной кодовой базы компании.
+B2B AI-powered knowledge platform for engineering team onboarding via knowledge graph and AI coaching.
 
-## Архитектура
+## Architecture
 
-Монорепа: Python (бизнес-логика, AI) + Rust (performance-critical) + Next.js (frontend). Микросервисы с database-per-service. Пивот с B2C marketplace — Identity, AI, Learning, Notification сервисы переиспользуются, Course/Enrollment/Payment dormant. Rust Performance Layer (Sprints 23-25): API Gateway, Search, Embedding, WebSocket.
+Monorepo: **Python** (business logic) + **Rust** (performance-critical) + **TypeScript/Next.js** (frontend).
 
-```
-                      ┌─────────────┐
-                      │   Buyer     │
-                      │  Next.js    │
-                      │   :3001     │
-                      └──────┬──────┘
-                             │
-                      ┌──────▼──────┐     ┌───────────────────────┐
-                      │ API Gateway │     │  RUST PERFORMANCE     │
-                      │ Axum :8080  │────▶│  Search :8010         │
-                      │ JWT, Rate   │     │  Embed :8009 ✅       │
-                      │ Limit, CORS │     │  WS :8011             │
-                      └──────┬──────┘     │  Chunker (pyo3 FFI)   │
-                             │            └───────────────────────┘
-        ┌────────┬───────────┼───────────┬──────────┐
-        │        │           │           │          │
-   ┌────▼──┐ ┌──▼───┐ ┌────▼────┐ ┌───▼────┐ ┌───▼──┐
-   │Identit│ │  AI  │ │Learning │ │Notific.│ │ RAG  │
-   │ :8001 │ │:8006 │ │ :8007   │ │ :8005  │ │:8008 │
-   └───┬───┘ └──┬───┘ └───┬─────┘ └───┬────┘ └──┬───┘
-       │        │         │           │          │
-  ┌────▼──┐    Redis ┌───▼─────┐ ┌───▼────┐ ┌──▼────┐
-  │ident. │         │learning │ │notif.  │ │rag-db │
-  │  db   │         │  db     │ │  db    │ │pgvect.│
-  │:5433  │         │ :5438   │ │ :5437  │ │:5439  │
-  └───────┘         └─────────┘ └────────┘ └───────┘
-```
+Clean Architecture in every Python service: `routes → services → domain ← repositories`. Each service owns its PostgreSQL database. No cross-service DB access.
 
-## Стек
+## Services
 
-| Слой | Технология | Назначение |
-|------|-----------|------------|
-| Бизнес-логика | Python 3.12 / FastAPI | Clean Architecture, async |
-| Frontend | Next.js 15 / Tailwind CSS 4 | App Router, TanStack Query, shadcn/ui (Dark Knowledge theme) |
-| БД | PostgreSQL 16 | Database-per-service |
-| Vector DB | PostgreSQL + pgvector | RAG embeddings, semantic search |
-| Кэш | Redis 7 | Cache, rate limiting, AI conversation memory |
-| AI / LLM | Gemini 2.0 Flash Lite | Tri-Agent System, quiz gen, tutor |
-| Embeddings | Gemini text-embedding-004 | Document + code embeddings для RAG |
-| Метрики | Prometheus + Grafana | RPS, latency, pool metrics |
-| Performance Layer | Rust / Axum / Tokio | API Gateway, Search, Embedding, WebSocket |
-| Search Engine | tantivy | Full-text search (replaces Meilisearch) |
-| FFI Bridge | pyo3 + maturin | Rust chunker called from Python RAG |
-| Пакеты | uv (Python), pnpm (JS), cargo (Rust) | Монорепа workspace |
+| Service | Language | Framework | Port | DB Port | Tests | Purpose |
+|---------|----------|-----------|------|---------|-------|---------|
+| api-gateway | Rust | axum | 8000 | — | cargo test | JWT validation, reverse proxy |
+| identity | Python | FastAPI | 8001 | 5433 | 156 | Auth, profiles, follows, referrals, organizations |
+| course | Python | FastAPI | 8002 | 5434 | 129 | Courses, modules, lessons, reviews, bundles, promotions, wishlist |
+| enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations |
+| payment | Python | FastAPI | 8004 | 5436 | 151 | Payments, subscriptions, earnings, coupons, refunds, gifts, org billing |
+| notification | Python | FastAPI | 8005 | 5437 | 136 | Notifications, reminders, direct messaging |
+| ai | Python | FastAPI | 8006 | — | 257 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, unified search |
+| learning | Python | FastAPI | 8007 | 5438 | 272 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity, study groups, missions, certificates, trust levels |
+| rag | Python | FastAPI | 8008 | 5439 | 173 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter |
+| search | Rust | axum + tantivy | 9000 | — | cargo test | Full-text search index |
 
-## Сервисы
+**Total: 1343 tests passed, 6 pre-existing failures** (3 enrollment, 3 notification).
 
-| Сервис | Порт | БД порт | Роль | Статус |
-|--------|------|---------|------|--------|
-| Identity | 8001 | 5433 | Auth, JWT, roles, orgs | ✅ Active |
-| Course | 8002 | 5434 | CRUD курсов, search | ⏸ Dormant |
-| Enrollment | 8003 | 5435 | Запись, прогресс | ⏸ Dormant |
-| Payment | 8004 | 5436 | Платежи, subscriptions | ⏸ Dormant (реактивация в Sprint 22) |
-| Notification | 8005 | 5437 | In-app, email, DMs, WS push | ✅ Active |
-| AI | 8006 | — (Redis) | Tri-Agent System, LLM routing | ✅ Active |
-| Learning | 8007 | 5438 | Quizzes, FSRS, knowledge graph, missions | ✅ Active |
-| RAG | 8008 | 5439 | Document ingestion, semantic search, concept extraction, KB management | ✅ Active |
-| MCP Server | — (stdio) | — | MCP protocol server for AI tool integration (Cursor, Claude Desktop) | ✅ Active |
+## Frontend
 
-### Rust Performance Layer
+| App | Port | Stack | Purpose |
+|-----|------|-------|---------|
+| buyer | 3001 | Next.js 15, React 19, Tailwind, shadcn/ui, TanStack Query | B2B knowledge platform (dashboard, missions, concept hub, smart search, flashcards, coach) |
+| seller | 3002 | Next.js 15, React 19, TanStack Query | Teacher dashboard (course CRUD) |
 
-| Сервис | Порт | Роль | Статус |
-|--------|------|------|--------|
-| API Gateway | 8080 | JWT auth, rate limiting, reverse proxy, CORS | ✅ Active |
-| Search | 8010 | tantivy full-text search, BM25, org-scoped | ✅ Active |
-| Embedding Orchestrator | 8009 | Parallel embedding API calls, batch processing, semaphore concurrency | ✅ Active |
-| WebSocket | 8011 | Real-time messaging | Planned |
+Buyer theme: Dark-first UI, violet accent (#7c5cfc), Inter + JetBrains Mono fonts.
 
-## Tri-Agent System
+## Shared Libraries
 
-Три специализированных AI-агента, работающих последовательно:
+| Library | Language | Purpose |
+|---------|----------|---------|
+| `libs/py/common` | Python | Errors, JWT (create/decode with extra_claims), async DB pool (asyncpg), config (pydantic BaseSettings), structured logging |
+| `libs/rs/rag-chunker` | Rust (PyO3) | Markdown-aware chunking FFI crate with Python fallback |
 
-| Agent | Роль | Input | Output |
-|-------|------|-------|--------|
-| **Strategist** | Анализ кодовой базы, определение learning path, адаптация пути | RAG org concepts + Learning mastery + LLM | Ordered concept path (cached in Redis 24h), next concept, adapted path (remedial/skip) |
-| **Designer** | Генерация mission-контента из реального кода | Concept name + RAG search results + previous concepts | MissionBlueprint: reading content (~400w), 3 MCQ check questions, code case from real sources, 2 recap questions |
-| **Coach** | Socratic dialog, review ответов, подсказки | Mission context + engineer answers | Feedback, hints, trust level recommendation |
+## Authentication
 
-Pipeline: `Strategist → Designer → Coach` (sequential, stateful).
+JWT HS256 tokens. Claims: `sub` (user_id), `role` (student/teacher/admin), `is_verified`, `email_verified`, `organization_id` (B2B), `subscription_tier`.
 
-## RAG Pipeline
+- Access token: 1h TTL. Refresh token: 30d TTL (stored in DB, revocable)
+- API gateway validates JWT and proxies to upstream services
+- Passwords: bcrypt hash
 
-```
-GitHub repo / Docs / Wiki
-    → Ingest (clone, parse, extract) — GitHub adapter для repo ingestion
-    → Chunk (Rust FFI via rag-chunker, Python fallback; code: function-level, docs: section-level, markdown: heading-aware)
-    → Embed (Gemini text-embedding-004 → pgvector)
-    → Search (semantic similarity + entity filter)
-    → Extract (functions, classes, concepts, dependencies)
-```
+## B2B Multi-Tenancy
 
-Хранение: PostgreSQL + pgvector (rag-db :5439). Scope: per-organization. GitHub adapter позволяет загружать репозитории напрямую.
+- Organizations with members and roles
+- `organization_id` in JWT extra_claims
+- Services filter data by org_id
+- Org subscriptions: pilot / starter / growth / enterprise tiers (Stripe)
+- Per-org LLM configuration
+- Trust levels per org member
 
-## Rust Performance Layer
+## AI Pipeline
 
-Sprints 23-25. Rust-сервисы для performance-critical paths:
+Tri-agent coaching system powered by Gemini Flash:
 
-| Сервис | Порт | Технологии | Назначение | Sprint |
-|--------|------|-----------|------------|--------|
-| API Gateway | 8080 | Axum, tower-http, jsonwebtoken, redis, reqwest, uuid, thiserror, tracing | Единая точка входа, JWT verification, Redis sliding window rate limiting, CORS (env-based origins), structured JSON request logging (X-Request-Id), reverse proxy routing to Python services | 23 (JWT + rate limit + proxy + CORS + logging done) |
-| RAG Chunker | — (FFI) | pyo3, maturin, regex, unicode-segmentation | CPU-bound text/code/markdown chunking, integrated into RAG service with Python fallback | Done (26 Rust tests) |
-| Search Service | 8010 | Axum, tantivy, tower-http, serde, thiserror | Full-text search (BM25), org-scoped indexing, batch index, snippet highlighting | Done (10 tests) |
-| Embedding Orchestrator | 8009 | Axum, tokio, reqwest | Batch parallel embeddings | 25 |
-| WebSocket Gateway | 8011 | Axum (ws), dashmap, jsonwebtoken, tokio, futures, tower-http | Real-time Coach chat, notifications, org broadcast; DashMap concurrent connections, JWT auth on connect, heartbeat/keepalive, internal publish API | Done (30 tests) |
+1. **Strategist** — analyzes learner state, selects concept and difficulty
+2. **Designer** — creates mission blueprint (phases: recap → reading → questions → code_case → wrap_up)
+3. **Coach** — conducts interactive session with the learner
 
-Критерий: p99 < 50ms или > 10K RPS → Rust. IO-bound бизнес-логика → Python.
+Additional: quiz generation, summary generation, course outline, lesson generation, tutor chat, content moderation, unified search (query router: internal RAG + external Gemini).
 
-## Mission Engine
+## Knowledge Graph
 
-Ежедневные 15-минутные сессии, адаптированные под Trust Level инженера.
+- **Concepts** with prerequisites (directed graph) in learning service
+- **Concept mastery** (0.0–1.0) tracked per student per concept
+- **RAG concepts** extracted from documents via LLM in rag service
+- **Concept hub** UI: Obsidian-like page with internal sources, missions, discussions, team mastery
 
-**Типы миссий:**
+## Gamification
 
-| Тип | Trust Level | Описание |
-|-----|-------------|----------|
-| code_reading | 0-1 | Чтение и понимание фрагмента кода |
-| architecture_quiz | 1-2 | Вопросы по архитектуре системы |
-| code_writing | 2-3 | Написание кода по спецификации |
-| PR_review | 3-5 | Ревью реального pull request |
+XP points, badges, streaks, leaderboard (per course, opt-in), trust levels (B2B, 1–5), certificates.
 
-**Trust Levels (0-5):** Observer → Reader → Contributor → Developer → Reviewer → Expert. Прогрессия через completion rate, quiz scores, Coach оценки.
+## Infrastructure
 
-## Базы данных
+| Component | Version | Purpose |
+|-----------|---------|---------|
+| PostgreSQL | 16-alpine | Primary database (7 instances) |
+| Redis | 7-alpine | Cache, rate limiting |
+| Prometheus | latest | Metrics (5s scrape, 15d retention) |
+| Grafana | latest | Dashboards (auto-provisioned) |
 
-| БД | Порт | Сервис | Таблицы |
-|----|------|--------|---------|
-| identity-db | 5433 | Identity | users, refresh_tokens, email_tokens, password_tokens, referrals, follows, organizations, org_members |
-| course-db | 5434 | Course (dormant) | courses, modules, lessons, reviews, categories, bundles, wishlist |
-| enrollment-db | 5435 | Enrollment (dormant) | enrollments, lesson_progress |
-| payment-db | 5436 | Payment (dormant) | payments, subscription_plans, user_subscriptions, teacher_earnings, payouts, coupons, refunds, gifts |
-| notification-db | 5437 | Notification | notifications, conversations, messages |
-| learning-db | 5438 | Learning | quizzes, questions, quiz_attempts, flashcards, review_logs, concepts, concept_edges, concept_mastery, streaks, leaderboard_entries, discussions, xp_events, badges, user_badges, pretests, pretest_answers, activity_events, study_groups, study_group_members, certificates, trust_levels, missions |
-| rag-db | 5439 | RAG | documents, chunks (pgvector embeddings), org_concepts, concept_relationships |
-| Redis | 6379 | All | Cache, rate limiting, AI memory, session |
+Docker Compose: dev (hot reload), prod (4-worker uvicorn + monitoring), staging (pre-built images).
 
-## Тесты
+## Development
 
 ```bash
-cd services/py/identity    && uv run --package identity pytest tests/ -v     # 156 tests
-cd services/py/course      && uv run --package course pytest tests/ -v       # 129 tests
-cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 39 tests (+3 failing)
-cd services/py/payment     && uv run --package payment pytest tests/ -v      # 181 tests
-cd services/py/notification && uv run --package notification pytest tests/ -v # 145 tests (+3 failing)
-cd services/py/ai          && uv run --package ai pytest tests/ -v           # 267 tests
-cd services/py/learning    && uv run --package learning pytest tests/ -v     # 272 tests
-cd services/py/rag         && uv run --package rag pytest tests/ -v          # 180 tests
-cd services/py/mcp         && uv run --package mcp-server pytest tests/ -v  # 42 tests
+docker compose -f docker-compose.dev.yml up                          # All backends + DBs
+docker compose -f docker-compose.dev.yml --profile seed up seed      # Seed data
+cd apps/buyer && pnpm dev                                            # Frontend (3001)
+cd apps/seller && pnpm dev                                           # Seller (3002)
+cd services/py/<name> && uv run --package <name> pytest tests/ -v    # Python tests
+cd services/rs/<name> && cargo test && cargo clippy -- -D warnings   # Rust tests
 ```
-
-**Итого (Python):** 1402 passed, 6 failing по 9 сервисам.
-
-**Rust:**
-```bash
-cd services/rs/api-gateway && cargo test && cargo clippy -- -D warnings  # 39 tests
-cd services/rs/search && cargo test && cargo clippy -- -D warnings       # 10 tests
-cd services/rs/ws-gateway && cargo test && cargo clippy -- -D warnings   # 30 tests
-cd libs/rs/rag-chunker && cargo test && cargo clippy -- -D warnings      # 26 tests
-```
-
-## Инфраструктура
-
-```bash
-# Dev — hot reload
-docker compose -f docker-compose.dev.yml up
-
-# Seed data
-docker compose -f docker-compose.dev.yml --profile seed up seed
-
-# Prod — monitoring
-docker compose -f docker-compose.prod.yml up -d
-
-# Grafana → http://localhost:3000
-# Prometheus → http://localhost:9090
-# Locust → http://localhost:8089
-```
-
-## Порты
-
-| Сервис | Порт |
-|--------|------|
-| Identity API | 8001 |
-| Course API (dormant) | 8002 |
-| Enrollment API (dormant) | 8003 |
-| Payment API (dormant) | 8004 |
-| Notification API | 8005 |
-| AI API | 8006 |
-| Learning API | 8007 |
-| RAG API | 8008 |
-| API Gateway (Rust/Axum) | 8080 |
-| Embedding Orchestrator (Rust) | 8009 |
-| Search Service (Rust/tantivy) | 8010 |
-| WebSocket Gateway (Rust) | 8011 |
-| Buyer Frontend | 3001 |
-| Seller Frontend (dormant) | 3002 |
-| Grafana | 3000 |
-| Prometheus | 9090 |
-| Locust | 8089 |
-
-## Frontend (Buyer App)
-
-95+ endpoints на backend, растёт до 120+ с новыми сервисами.
-
-Ключевые маршруты (текущие + планируемые):
-
-| Route | Описание | Статус |
-|-------|----------|--------|
-| /courses | Каталог (dormant B2C) | ✅ |
-| /courses/[id] | Детали курса (dormant B2C) | ✅ |
-| /dashboard | Mission Dashboard — 7 endpoint-driven blocks | ✅ Built (Sprint 21) |
-| /org/select | Organization Selector | ✅ Built (Sprint 21) |
-| /graph | Knowledge Graph visualization | 🔴 Sprint 22 |
-| /graph/[conceptId] | Concept Hub — aggregator with sources, missions, team mastery, discussions, related graph | ✅ Built (Sprint 22) |
-| /search | Semantic search | 🔴 Sprint 22 |
-| /missions/[id] | 5-phase Socratic mission session with coach chat | ✅ Built (Sprint 22) |
-| /admin | Team Analytics | 🔴 Sprint 26 |
-
-**Dark Knowledge Theme (Sprint 21):**
-- UI: shadcn/ui (15 components), next-themes, framer-motion, lucide-react, cmdk
-- Route groups: `(marketing)` для landing/auth, `(app)` для sidebar layout
-- Layout: Sidebar + TopBar + CommandPalette (Cmd+K)
-- Dashboard blocks: Greeting, Mission, TrustLevel, Flashcards, Mastery, Activity, TeamProgress
-- OrgProvider + org selector для multi-tenant context
-
-## Текущий статус
-
-| Sprint | Название | Задач | Статус |
-|--------|----------|-------|--------|
-| Pre-pivot | Foundation + Optimization + Learning Intelligence | — | ✅ Завершено |
-| **Sprint 17** | RAG Foundation | 5 | ✅ Done |
-| **Sprint 18** | Tri-Agent System | 5 | ✅ Done |
-| **Sprint 19** | Mission Engine + Trust Levels | 6 | ✅ Done |
-| **Sprint 20** | Company Integration | 5 | ✅ Done |
-| **Sprint 21** | Dark Knowledge Foundation | 5 | ✅ Done (shadcn/ui, sidebar, dashboard, org selector, GitHub adapter) |
-| **Sprint 22** | Knowledge Platform UI | 4 | 🔴 Следующий |
-| **Sprint 23-25** | Rust Performance Layer | 15 | 🔴 Planned |
-| **Sprint 26** | B2B Admin | — | 🔴 Planned |
-| **Sprint 27** | MCP Server | — | ✅ Done (17 tools, 4 resources, 42 tests) |
-
-**Итого:** 30 задач B2B MVP + 15 задач Rust Performance Layer + B2B Admin + MCP.
-
-## Документация
-
-| Документ | Описание |
-|----------|----------|
-| [Phase 0](docs/phases/PHASE-0-FOUNDATION.md) | Foundation (completed, pre-pivot) |
-| [Phase 1](docs/phases/PHASE-1-LAUNCH.md) | Optimization (completed, pre-pivot) |
-| [Phase 2](docs/phases/PHASE-2-LEARNING-INTELLIGENCE.md) | Learning Intelligence (completed, pre-pivot) |
-| [Phase 3](docs/phases/PHASE-3-GROWTH.md) | B2B Sprint Roadmap (active, Sprints 17-22) |
-| [Phase 4](docs/phases/PHASE-4-SCALE.md) | Scale & Enterprise (future) |
-| [Architecture](docs/architecture/) | System overview, API reference, DB schemas |

@@ -1,2356 +1,493 @@
 # 02 — API Reference
 
-> Последнее обновление: 2026-03-05
-> Стадия: B2B Agentic Adaptive Learning Pivot
+> Последнее обновление: 2026-03-06
 
----
-
-## Общие endpoints (все сервисы)
-
-### GET /health/live
-
-Liveness probe. Всегда 200 если процесс жив.
-
-**Response `200`:** `{"status": "ok"}`
-
-### GET /health/ready
-
-Readiness probe. Проверяет PostgreSQL и Redis (если есть).
-
-**Response `200`:** `{"status": "ok", "checks": {"postgres": "ok", "redis": "ok"}}`
-**Response `503`:** `{"status": "degraded", "checks": {"postgres": "unavailable"}}`
-
----
-
-## API Gateway (`:8080`)
-
-### JWT Verification Middleware
-
-API Gateway валидирует JWT (HS256) для всех non-public routes. Public routes пропускаются без авторизации.
-
-**Public routes (без JWT):**
-- `GET /health/*`
-- `POST /auth/register`
-- `POST /auth/login`
-- `POST /auth/forgot-password`
-
-**Все остальные routes** требуют `Authorization: Bearer <token>`.
-
-При успешной валидации gateway устанавливает upstream headers для Python-сервисов:
-
-| Header | Source | Описание |
-|--------|--------|----------|
-| `X-User-Id` | `claims.sub` | UUID пользователя |
-| `X-User-Role` | `claims.role` | `student` / `teacher` / `admin` |
-| `X-User-Verified` | `claims.is_verified` | `true` / `false` |
-| `X-Organization-Id` | `claims.organization_id` | UUID организации (отсутствует если null) |
-
-**Ошибки:**
-
-| Code | Причина |
-|------|---------|
-| 401 | Отсутствует Authorization header |
-| 401 | Невалидная подпись JWT |
-| 401 | Истёкший токен (exp < now) |
-
----
-
-### Rate Limiting
-
-Все запросы через API Gateway проходят Redis sliding window rate limiting по IP.
-
-### Лимиты по route groups
-
-| Route | Method | Лимит | Окно |
-|-------|--------|-------|------|
-| `/auth/register` | POST | 5 req | 60s |
-| `/auth/login` | POST | 10 req | 60s |
-| `/ai/*` | POST | 30 req | 60s |
-| Все остальные | * | 100 req | 60s |
-
-### Response Headers
-
-Все ответы через gateway содержат rate limit headers:
-
-| Header | Описание |
-|--------|----------|
-| `X-RateLimit-Limit` | Максимум запросов в окне |
-| `X-RateLimit-Remaining` | Оставшиеся запросы |
-| `X-RateLimit-Reset` | Unix timestamp сброса окна |
-
-### 429 Too Many Requests
-
-При превышении лимита:
-
-```json
-{ "error": "rate limit exceeded" }
-```
-
-Headers: `Retry-After` (секунды до сброса).
-
-### Fail-open
-
-При недоступности Redis запросы пропускаются без ограничений (fail-open).
-
-### IP Extraction
-
-Приоритет: `X-Forwarded-For` header (первый IP) > peer address.
-
----
-
-### Reverse Proxy Routing
-
-API Gateway маршрутизирует запросы к Python backend-сервисам на основе URL prefix. Неизвестные пути возвращают `404`.
-
-| Prefix | Upstream | Сервис |
-|--------|----------|--------|
-| `/auth`, `/me`, `/users`, `/organizations`, `/follow`, `/referral` | `:8001` | Identity |
-| `/payments`, `/subscriptions`, `/coupons`, `/earnings`, `/gifts`, `/org-subscriptions` | `:8004` | Payment |
-| `/notifications`, `/conversations`, `/messages`, `/streak-reminders`, `/flashcard-reminders` | `:8005` | Notification |
-| `/ai` | `:8006` | AI |
-| `/quizzes`, `/flashcards`, `/concepts`, `/missions`, `/trust-level`, `/daily`, `/streaks`, `/leaderboard`, `/discussions`, `/xp`, `/badges`, `/pretests`, `/velocity`, `/activity`, `/study-groups` | `:8007` | Learning |
-| `/kb`, `/sources`, `/upload`, `/templates` | `:8008` | RAG |
-
-**Поведение:**
-- Path и query params передаются upstream без изменений
-- Request body и headers форвардятся (кроме hop-by-hop)
-- `X-User-*` headers добавляются из JWT claims
-- Timeout: 30s per request
-- Connection pooling через reqwest Client
-- Логирование на DEBUG: method, path, upstream, duration_ms
-
-**Ошибки:**
-
-| Code | Причина |
-|------|---------|
-| 404 | Путь не соответствует ни одному prefix |
-| 502 | Upstream сервис недоступен |
-| 504 | Upstream timeout (30s) |
-
----
-
-## Identity Service (`:8001`)
-
-### POST /register
-
-Регистрация нового пользователя. Роль по умолчанию — `student`.
-
-**Request:**
-```json
-{
-  "email": "user@example.com",
-  "password": "secret123",
-  "name": "Ivan Petrov",
-  "role": "student"          // optional, default "student". Enum: "student" | "teacher" | "admin"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "urlsafe-base64-token...",
-  "token_type": "bearer"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 409 | Email уже зарегистрирован |
-| 422 | Невалидные данные (email формат, пустые поля) |
-| 429 | Too many registration attempts (5/min per IP) |
-
----
-
-### POST /login
-
-Аутентификация по email + password.
-
-**Request:**
-```json
-{
-  "email": "user@example.com",
-  "password": "secret123"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "access_token": "eyJhbGciOiJIUzI1NiIs...",
-  "refresh_token": "urlsafe-base64-token...",
-  "token_type": "bearer"
-}
-```
-
-**Errors:**
-| Code | Причина |
-|------|---------|
-| 400 | Неверный email или пароль |
-| 422 | Невалидные данные |
-| 429 | Too many login attempts (10/min per IP) |
-
----
-
-### GET /me
-
-Информация о текущем пользователе. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "id": "550e8400-e29b-41d4-a716-446655440000",
-  "email": "user@example.com",
-  "name": "Ivan Petrov",
-  "role": "student",
-  "is_verified": false,
-  "email_verified": false,
-  "created_at": "2026-02-20T12:00:00+00:00"
-}
-```
-
-**Errors:** `401` — отсутствует или невалидный токен.
-
----
-
-### PATCH /me
-
-Обновление профиля текущего пользователя. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "name": "New Name",       // optional
-  "bio": "About me...",     // optional
-  "avatar_url": "https://..." // optional
-}
-```
-
-**Response `200`:** Объект `UserResponse`.
-
-**Errors:** `401` — невалидный токен. `422` — невалидные данные.
-
----
-
-### POST /refresh
-
-Обновление пары токенов. Refresh token rotation — старый токен инвалидируется.
-
-**Request:**
-```json
-{
-  "refresh_token": "urlsafe-base64-token..."
-}
-```
-
-**Response `200`:**
-```json
-{
-  "access_token": "new-access-token...",
-  "refresh_token": "new-refresh-token...",
-  "token_type": "bearer"
-}
-```
-
-**Errors:** `401` — невалидный, просроченный или повторно использованный refresh token. Token reuse detection: если revoked token используется повторно, вся token family отзывается.
-
----
-
-### POST /logout
-
-Отзыв refresh token family (выход с устройства).
-
-**Request:**
-```json
-{
-  "refresh_token": "urlsafe-base64-token..."
-}
-```
-
-**Response `204`:** No content.
-
----
-
-### POST /verify-email
-
-Подтверждение email по токену из ссылки. Публичный endpoint.
-
-**Request:**
-```json
-{
-  "token": "raw-verification-token"
-}
-```
-
-**Response `200`:** Объект `UserResponse`.
-
-**Errors:** `400` — невалидный, просроченный или уже использованный токен.
-
----
-
-### POST /forgot-password
-
-Запрос сброса пароля. Всегда возвращает 204 (не раскрывает существование email). Rate limit: 3/hour per user.
-
-**Request:**
-```json
-{
-  "email": "user@example.com"
-}
-```
-
-**Response `204`:** No content (всегда).
-
----
-
-### POST /reset-password
-
-Установка нового пароля по токену сброса.
-
-**Request:**
-```json
-{
-  "token": "raw-reset-token",
-  "new_password": "newsecret123"
-}
-```
-
-**Response `204`:** No content.
-
-**Errors:** `400` — невалидный, просроченный или уже использованный токен.
-
----
-
-### PATCH /admin/users/{user_id}/verify
-
-Верифицировать преподавателя. Только для `role=admin`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "id": "...",
-  "email": "teacher@example.com",
-  "name": "Ivan Petrov",
-  "role": "teacher",
-  "is_verified": true,
-  "created_at": "2026-02-20T12:00:00+00:00"
-}
-```
-
-**Errors:** `401` — невалидный токен. `403` — не admin. `404` — пользователь не найден. `409` — не teacher или уже верифицирован.
-
----
-
-### GET /referral/me
-
-Статистика реферальной программы текущего пользователя. Требует JWT.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Response `200`:**
-```json
-{
-  "referral_code": "REF-A1B2C3D4",
-  "total_referrals": 5,
-  "completed_referrals": 3,
-  "pending_referrals": 2
-}
-```
-
----
-
-### POST /referral/apply
-
-Применение реферального кода. Привязывает текущего пользователя как реферала. Требует JWT.
-
-**Request:**
-```json
-{
-  "referral_code": "REF-A1B2C3D4"
-}
-```
-
-**Response `201`:** Объект реферала с `id`, `referrer_id`, `referee_id`, `status: "pending"`.
-
-**Errors:** `404` — код не найден. `409` — уже применил код / нельзя реферить себя.
-
----
-
-### POST /referral/complete
-
-Завершение реферала (admin/внутренний триггер). Обновляет статус на `completed`.
-
-**Request:**
-```json
-{
-  "referee_id": "uuid"
-}
-```
-
-**Response `200`:** Объект реферала с `status: "completed"`.
-
-**Errors:** `404` — реферал не найден.
-
----
-
-### GET /users/{user_id}/profile
-
-Публичный профиль пользователя. Не требует авторизации. Возвращает 404 если профиль приватный.
-
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "name": "Ivan Petrov",
-  "bio": "About me...",
-  "avatar_url": "https://...",
-  "role": "teacher",
-  "is_verified": true,
-  "created_at": "2026-01-01T00:00:00Z",
-  "is_public": true
-}
-```
-
-**Errors:** `404` — пользователь не найден или профиль приватный.
-
----
-
-### GET /users/{user_id}/stats
-
-Публичная статистика пользователя (только данные Identity сервиса).
-
-**Response `200`:**
-```json
-{
-  "name": "Ivan Petrov",
-  "role": "teacher",
-  "is_verified": true,
-  "member_since": "2026-01-01T00:00:00Z"
-}
-```
-
-**Errors:** `404` — пользователь не найден или профиль приватный.
-
----
-
-### PATCH /users/me/visibility
-
-Переключение видимости профиля. Требует JWT.
-
-**Request:**
-```json
-{
-  "is_public": false
-}
-```
-
-**Response `204`:** No Content.
-
----
-
-### POST /follow/{user_id}
-
-Подписаться на пользователя. Требует JWT.
-
-**Response `201`:**
-```json
-{
-  "id": "uuid",
-  "follower_id": "uuid",
-  "following_id": "uuid",
-  "created_at": "2026-03-04T12:00:00Z"
-}
-```
-
-**Errors:** `400` — подписка на себя. `404` — пользователь не найден. `409` — уже подписан.
-
----
-
-### DELETE /follow/{user_id}
-
-Отписаться от пользователя. Требует JWT.
-
-**Response `204`:** No Content.
-
-**Errors:** `404` — не подписан.
-
----
-
-### GET /followers/me
-
-Список подписчиков текущего пользователя. Требует JWT.
-
-**Query params:** `limit` (default 20, max 100), `offset` (default 0).
-
-**Response `200`:**
-```json
-{
-  "items": [{"id": "uuid", "name": "...", "avatar_url": "..."}],
-  "total": 10
-}
-```
-
----
-
-### GET /following/me
-
-Список подписок текущего пользователя. Требует JWT.
-
-**Query params:** `limit` (default 20, max 100), `offset` (default 0).
-
-**Response `200`:** Аналогично `/followers/me`.
-
----
-
-### GET /users/{user_id}/followers/count
-
-Количество подписчиков пользователя. Публичный.
-
-**Response `200`:**
-```json
-{
-  "user_id": "uuid",
-  "followers_count": 42,
-  "following_count": 15
-}
-```
-
----
-
-### POST /organizations (NEW)
-
-Создание организации. Требует JWT. Создатель автоматически становится `owner`.
-
-**Headers:** `Authorization: Bearer <token>`
-
-**Request:**
-```json
-{
-  "name": "Acme Corp",
-  "slug": "acme-corp",
-  "domain": "acme.com"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "uuid",
-  "name": "Acme Corp",
-  "slug": "acme-corp",
-  "domain": "acme.com",
-  "owner_id": "uuid",
-  "created_at": "2026-03-05T00:00:00Z"
-}
-```
-
-**Errors:** `409` — slug или domain уже заняты. `422` — невалидные данные.
-
----
-
-### GET /organizations/me (NEW)
-
-Список организаций текущего пользователя. Требует JWT.
-
-**Response `200`:**
-```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "name": "Acme Corp",
-      "slug": "acme-corp",
-      "role": "owner",
-      "joined_at": "2026-03-05T00:00:00Z"
-    }
-  ]
-}
-```
-
----
-
-### GET /organizations/{org_id} (NEW)
-
-Информация об организации. Требует JWT + membership в организации.
-
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "name": "Acme Corp",
-  "slug": "acme-corp",
-  "domain": "acme.com",
-  "owner_id": "uuid",
-  "member_count": 25,
-  "created_at": "2026-03-05T00:00:00Z"
-}
-```
-
-**Errors:** `403` — не член организации. `404` — организация не найдена.
-
----
-
-### POST /organizations/{org_id}/members (NEW)
-
-Добавление участника в организацию. Требует JWT + role `owner` или `admin` в организации.
-
-**Request:**
-```json
-{
-  "user_id": "uuid",
-  "role": "member"    // "member" | "admin" | "owner"
-}
-```
-
-**Response `201`:**
-```json
-{
-  "id": "uuid",
-  "organization_id": "uuid",
-  "user_id": "uuid",
-  "role": "member",
-  "joined_at": "2026-03-05T00:00:00Z"
-}
-```
-
-**Errors:** `403` — нет прав. `404` — организация или пользователь не найдены. `409` — уже член.
-
----
-
-### DELETE /organizations/{org_id}/members/{user_id} (NEW)
-
-Удаление участника из организации. Требует JWT + role `owner` или `admin`.
-
-**Response `204`:** No Content.
-
-**Errors:** `403` — нет прав. `404` — не найден.
-
----
-
-### GET /organizations/{org_id}/members (NEW)
-
-Список участников организации. Требует JWT + membership.
-
-**Query params:** `limit` (default 50), `offset` (default 0).
-
-**Response `200`:**
-```json
-{
-  "items": [
-    {
-      "id": "uuid",
-      "user_id": "uuid",
-      "name": "Ivan Petrov",
-      "email": "ivan@acme.com",
-      "role": "member",
-      "joined_at": "2026-03-05T00:00:00Z"
-    }
-  ],
-  "total": 25
-}
-```
-
----
-
-## AI Service (`:8006`)
-
-### GET /ai/credits/me
-
-Баланс кредитов текущего пользователя. Требует JWT.
-
-**Response `200`:**
-```json
-{
-  "user_id": "uuid",
-  "tier": "student",
-  "daily_limit": 100,
-  "used_today": 15,
-  "remaining": 85
-}
-```
-
----
-
-### POST /ai/quiz/generate
-
-Генерация квиза из содержания урока. Требует JWT.
-
-**Request:**
-```json
-{
-  "lesson_content": "Text of the lesson...",
-  "num_questions": 5
-}
-```
-
-**Response `200`:** Список вопросов с вариантами ответов.
-
----
-
-### POST /ai/summary/generate
-
-Генерация краткого содержания. Требует JWT.
-
-**Request:**
-```json
-{
-  "content": "Long text to summarize..."
-}
-```
-
-**Response `200`:** Сжатое summary текста.
-
----
-
-### POST /ai/tutor/chat
-
-Socratic AI-тьютор (чат по уроку). Требует JWT.
-
-**Request:**
-```json
-{
-  "lesson_id": "uuid",
-  "message": "I don't understand recursion..."
-}
-```
-
-**Response `200`:** Ответ тьютора (Socratic method).
-
----
-
-### POST /ai/tutor/feedback
-
-Оценка ответа тьютора (thumbs up/down). Требует JWT.
-
-**Request:**
-```json
-{
-  "message_id": "uuid",
-  "rating": "up"    // "up" | "down"
-}
-```
-
-**Response `200`:** `{"status": "recorded"}`.
-
----
-
-### POST /ai/course/outline
-
-Генерация outline курса. Только teacher/admin.
-
-**Request:**
-```json
-{
-  "topic": "Introduction to Rust",
-  "target_audience": "junior developers",
-  "num_modules": 5
-}
-```
-
-**Response `200`:** Структурированный outline с модулями и уроками.
-
----
-
-### POST /ai/lesson/generate
-
-Генерация контента урока. Только teacher/admin.
-
-**Request:**
-```json
-{
-  "title": "Ownership and Borrowing",
-  "outline": "Key concepts...",
-  "level": "beginner"
-}
-```
-
-**Response `200`:** Сгенерированный контент урока.
-
----
-
-### POST /ai/study-plan
-
-Персонализированный недельный план обучения. Требует JWT. Вызывает Learning Service для получения concept mastery.
-
-**Request:**
-```json
-{
-  "course_id": "uuid",
-  "hours_per_week": 5
-}
-```
-
-**Response `200`:** Недельный план с ежедневными задачами.
-
----
-
-### POST /ai/moderate
-
-Модерация контента (advisory). Только teacher/admin.
-
-**Request:**
-```json
-{
-  "content": "Text to moderate..."
-}
-```
-
-**Response `200`:** Результат модерации (safe/flagged + причины).
-
----
-
-### POST /ai/strategist/plan-path (NEW)
-
-Планирование пути обучения для пользователя в организации. Требует JWT + org membership.
-
-**Request:**
-```json
-{
-  "organization_id": "uuid",
-  "user_id": "uuid",
-  "template_id": "uuid"    // optional, onboarding template
-}
-```
-
-**Response `200`:**
-```json
-{
-  "learning_path": [
-    {"concept_id": "uuid", "concept_name": "Git Basics", "estimated_days": 2, "priority": 1},
-    {"concept_id": "uuid", "concept_name": "CI/CD Pipeline", "estimated_days": 3, "priority": 2}
-  ],
-  "total_estimated_days": 30,
-  "current_trust_level": 1,
-  "target_trust_level": 3
-}
-```
-
----
-
-### POST /ai/strategist/next-concept (NEW)
-
-Выбор следующего концепта для изучения. Требует JWT.
-
-**Request:**
-```json
-{
-  "organization_id": "uuid"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "concept_id": "uuid",
-  "concept_name": "Docker Networking",
-  "reason": "Prerequisite for Kubernetes deployment, which is next in your path",
-  "estimated_minutes": 15,
-  "difficulty": "intermediate"
-}
-```
-
----
-
-### POST /ai/strategist/adapt (NEW)
-
-Адаптация пути обучения на основе прогресса. Требует JWT.
-
-**Request:**
-```json
-{
-  "organization_id": "uuid",
-  "feedback": "too_easy"    // "too_easy" | "too_hard" | "stuck" | "auto"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "adjustments": [
-    {"action": "skip", "concept_id": "uuid", "reason": "Already mastered"},
-    {"action": "add", "concept_id": "uuid", "reason": "Fills knowledge gap"}
-  ],
-  "new_pace": "accelerated"
-}
-```
-
----
-
-### POST /ai/designer/mission (NEW)
-
-Генерация 15-минутной миссии для концепта. Требует JWT.
-
-**Request:**
-```json
-{
-  "concept_id": "uuid",
-  "organization_id": "uuid",
-  "difficulty": "intermediate",
-  "mission_type": "code_review"    // "code_review" | "debugging" | "implementation" | "quiz"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "mission": {
-    "title": "Review Authentication Middleware",
-    "description": "...",
-    "estimated_minutes": 15,
-    "steps": [
-      {"order": 1, "type": "read", "content": "..."},
-      {"order": 2, "type": "question", "content": "..."},
-      {"order": 3, "type": "code", "content": "..."}
-    ],
-    "context_snippets": [
-      {"source": "auth/middleware.py", "content": "..."}
-    ]
-  }
-}
-```
-
----
-
-### POST /ai/designer/recap (NEW)
-
-Генерация recap/summary после завершения миссии. Требует JWT.
-
-**Request:**
-```json
-{
-  "mission_id": "uuid",
-  "user_answers": [...]
-}
-```
-
-**Response `200`:**
-```json
-{
-  "recap": "...",
-  "key_takeaways": ["...", "..."],
-  "mastery_delta": 0.15,
-  "next_suggestion": "Try a debugging mission on the same topic"
-}
-```
-
----
-
-### POST /ai/coach/start
-
-Начало structured 15-min coaching session. Требует JWT. Consumes 1 credit.
-
-**Request:**
-```json
-{
-  "mission_id": "uuid",
-  "personality": "friendly"  // optional, default "friendly"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "session_id": "uuid-string",
-  "content": "Welcome! Let's start with a quick recap. What is a closure?",
-  "phase": "recap",
-  "phase_progress": 1
-}
-```
-
----
-
-### POST /ai/coach/chat
-
-Сообщение в активной Coach session. Требует JWT. Consumes 1 credit.
-
-**Request:**
-```json
-{
-  "session_id": "uuid-string",
-  "message": "A closure captures variables from the enclosing scope"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "session_id": "uuid-string",
-  "content": "Good thinking! Can you give an example?",
-  "phase": "recap",
-  "phase_progress": 1
-}
-```
-
-Phases: `recap` → `read` → `check` → `practice` → `wrap-up`
-
----
-
-### POST /ai/coach/end
-
-Завершение Coach session с оценкой. Требует JWT.
-
-**Request:**
-```json
-{
-  "session_id": "uuid-string"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "session_id": "uuid-string",
-  "score": 78.0,
-  "mastery_delta": 0.15,
-  "duration_seconds": 600,
-  "strengths": ["Good understanding of closures"],
-  "gaps": ["Needs practice with async decorators"]
-}
-```
-
----
-
-### GET /ai/mission/daily
-
-Получение ежедневной миссии. Orchestrator координирует Strategist → Designer pipeline. Кэшируется на день. Требует JWT. Потребляет 1 AI credit.
-
-**Query params:** `org_id` (UUID, required).
-
-**Response `200`:**
-```json
-{
-  "concept_name": "Python Decorators",
-  "concept_id": "uuid",
-  "recap_questions": [{"question": "...", "expected_answer": "...", "concept_ref": "closures"}],
-  "reading_content": "Decorators are functions...",
-  "check_questions": [{"question": "...", "options": ["A","B","C","D"], "correct_index": 1, "explanation": "..."}],
-  "code_case": {"code_snippet": "...", "language": "python", "question": "...", "expected_answer": "...", "source_path": "..."} | null
-}
-```
-
-**Response `403`:** AI credit limit reached.
-**Response `404`:** No concept available (all mastered).
-
----
-
-### POST /ai/mission/complete
-
-Завершение сессии и адаптация learning path. Вызывает Coach.end_session → Orchestrator.complete_session (adapt path + update mastery). Требует JWT.
-
-**Request:**
-```json
-{
-  "session_id": "string",
-  "concept_id": "uuid",
-  "org_id": "uuid"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "next_concept_preview": "Async Python" | null,
-  "total_completed": 5,
-  "score": 85.0,
-  "mastery_delta": 0.2
-}
-```
-
----
-
-### POST /ai/memory/{user_id} (NEW)
-
-Обновление agent memory для пользователя. Требует JWT (admin или internal).
-
-**Request:**
-```json
-{
-  "learning_style": "visual",
-  "preferred_difficulty": "intermediate",
-  "strengths": ["backend", "sql"]
-}
-```
-
-**Response `200`:** Обновлённый объект memory.
-
----
-
-### GET /ai/config/llm/{org_id} (NEW)
-
-Получение текущей LLM-конфигурации для организации. Только admin.
-
-**Response `200`:**
-```json
-{
-  "internal_provider": "gemini",
-  "internal_model_url": null,
-  "external_provider": "gemini",
-  "embedding_provider": "gemini",
-  "data_isolation": "standard"
-}
-```
-
----
-
-### PUT /ai/config/llm/{org_id} (NEW)
-
-Обновление LLM-конфигурации. Только admin. Validation: strict isolation требует self_hosted; self_hosted требует internal_model_url.
-
-**Request:**
-```json
-{
-  "internal_provider": "self_hosted",
-  "internal_model_url": "http://vllm:8000/v1",
-  "data_isolation": "strict"
-}
-```
-
-**Response `200`:** Обновлённая конфигурация.
-**Response `400`:** Невалидная конфигурация (strict + gemini, self_hosted без URL).
-
----
-
-### POST /ai/config/llm/{org_id}/test (NEW)
-
-Тест подключения к LLM-провайдеру. Только admin. Отправляет "ping" и возвращает результат.
-
-**Request:**
-```json
-{
-  "internal_provider": "self_hosted",
-  "internal_model_url": "http://vllm:8000/v1"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "success": true,
-  "response_preview": "pong",
-  "tokens_in": 5,
-  "tokens_out": 2
-}
-```
-
----
-
-### POST /ai/search/unified
-
-Unified search — классифицирует запрос (internal/external/both) и выполняет параллельный поиск по RAG и/или LLM web grounding. Требует JWT. Потребляет 1 кредит.
-
-**Request:**
-```json
-{
-  "query": "how we use redis",
-  "org_id": "uuid",
-  "org_terms": ["PaymentEngine", "AuthService"],
-  "limit": 5
-}
-```
-
-- `org_terms` — optional, список терминов организации для улучшения классификации
-- `limit` — optional, default 5, max 20
-
-**Response `200`:**
-```json
-{
-  "route": "both",
-  "internal_results": [
-    {"title": "Redis Config", "source_path": "docs/redis.md", "content": "Our Redis setup..."}
-  ],
-  "external_results": [
-    {"title": "Redis Docs", "url": "https://redis.io", "snippet": "Redis is..."}
-  ]
-}
-```
-
-- `route` — `"internal"` | `"external"` | `"both"` — решение классификатора
-- `internal_results` — результаты из RAG (пустой если route = external)
-- `external_results` — результаты из LLM web grounding (пустой если route = internal)
-
----
-
-## Learning Engine (`:8007`)
-
-### Quizzes (4 endpoints)
-
-#### POST /quizzes
-Создание квиза для урока. Teacher-only (role=teacher + is_verified).
-
-#### GET /quizzes/lesson/{lesson_id}
-Получение квиза для урока. Authenticated.
-
-#### POST /quizzes/{quiz_id}/submit
-Сдача квиза. Student-only. Автоматически обновляет concept mastery (score × 0.3).
-
-#### GET /quizzes/{quiz_id}/attempts/me
-Мои попытки квиза. Student-only.
-
----
-
-### Flashcards + FSRS (4 endpoints)
-
-#### POST /flashcards
-Создание карточки. Student-only.
-
-#### GET /flashcards/due
-Карточки к повторению (FSRS algorithm). Student-only.
-
-#### POST /flashcards/{id}/review
-Повторение карточки с рейтингом. Student-only.
-
-#### DELETE /flashcards/{id}
-Удаление карточки. Student-only (owner).
-
----
-
-### Concepts / Knowledge Graph (7 endpoints)
-
-#### GET /concepts/course/{course_id}
-Граф концептов курса. Authenticated.
-
-#### GET /concepts/course/{course_id}/mastery
-Мастерство по концептам курса. Authenticated.
-
-#### POST /concepts
-Создание концепта. Teacher-only.
-
-#### PUT /concepts/{id}
-Обновление концепта. Teacher-only.
-
-#### DELETE /concepts/{id}
-Удаление концепта. Teacher-only.
-
-#### POST /concepts/{id}/prerequisites
-Добавление prerequisite связи. Teacher-only.
-
-#### DELETE /concepts/{id}/prerequisites/{prereq_id}
-Удаление prerequisite связи. Teacher-only.
-
----
-
-### Streaks (2 endpoints)
-
-#### GET /streaks/me
-Текущий streak пользователя. Authenticated.
-
-#### POST /streaks/checkin
-Отметка ежедневной активности. Authenticated.
-
----
-
-### Leaderboard (5 endpoints)
-
-#### GET /leaderboard
-Общий рейтинг. Authenticated.
-
-#### GET /leaderboard/course/{course_id}
-Рейтинг по курсу. Authenticated.
-
-#### GET /leaderboard/weekly
-Еженедельный рейтинг. Authenticated.
-
-#### GET /leaderboard/me
-Позиция текущего пользователя. Authenticated.
-
-#### GET /leaderboard/friends
-Рейтинг среди подписок. Authenticated.
-
----
-
-### Discussions (8 endpoints)
-
-#### POST /discussions
-Создание комментария. Authenticated.
-
-#### GET /discussions/lesson/{lesson_id}
-Threaded список обсуждений урока. Authenticated. Сортировка: pinned → teacher_answer → date.
-
-#### PATCH /discussions/{id}
-Обновление комментария. Owner only.
+Все endpoints доступны через api-gateway (port 8000). Auth = `Authorization: Bearer <jwt>`.
 
-#### DELETE /discussions/{id}
-Удаление комментария. Owner or admin.
-
-#### POST /discussions/{id}/upvote
-Голосование за комментарий. Authenticated.
-
-#### POST /discussions/{id}/reply
-Ответ на комментарий (max 2 уровня вложенности). Authenticated.
-
-#### PATCH /discussions/{id}/pin
-Закрепление/открепление комментария. Teacher-only.
-
-#### PATCH /discussions/{id}/mark-answer
-Отметить как ответ преподавателя. Teacher-only.
-
----
-
-### XP (1 endpoint)
-
-#### GET /xp/me
-XP текущего пользователя. Authenticated.
-
-**Response `200`:**
-```json
-{
-  "user_id": "uuid",
-  "total_xp": 1500,
-  "level": 7,
-  "xp_to_next_level": 200
-}
-```
-
-XP rewards: lesson_complete=10, quiz_submit=20, flashcard_review=5.
-
----
-
-### Badges (1 endpoint)
-
-#### GET /badges/me
-Значки текущего пользователя. Authenticated.
-
-Badge types: `first_enrollment`, `streak_7`, `quiz_ace`, `mastery_100`.
-
----
-
-### Adaptive Pre-tests (3 endpoints)
-
-#### POST /pretests/start
-Начало adaptive pre-test. Student-only.
-
-#### POST /pretests/answer
-Ответ на вопрос pre-test. Student-only.
-
-#### GET /pretests/results
-Результаты pre-test. Student-only.
-
-Concept-order-based difficulty, min 5 questions, mastery thresholds: 0.7 correct / 0.1 wrong.
-
----
-
-### Velocity (1 endpoint)
-
-#### GET /velocity/me
-Скорость обучения текущего пользователя. Authenticated.
-
----
-
-### Activity Feed (2 endpoints)
-
-#### GET /activity/me
-Персональная лента активности. Authenticated.
-
-#### GET /activity/feed
-Общая лента активности (друзья). Authenticated.
-
-Activity types: `quiz_completed`, `flashcard_reviewed`, `badge_earned`, `streak_milestone`, `concept_mastered`.
-
----
-
-### Study Groups (6 endpoints)
-
-#### POST /study-groups
-Создание учебной группы. Authenticated.
-
-#### GET /study-groups/course/{course_id}
-Группы по курсу. Authenticated.
-
-#### POST /study-groups/{id}/join
-Вступление в группу. Authenticated.
-
-#### DELETE /study-groups/{id}/leave
-Выход из группы. Authenticated.
-
-#### GET /study-groups/{id}/members
-Участники группы. Authenticated.
-
-#### GET /study-groups/me
-Мои группы. Authenticated.
-
----
-
-### Certificates (3 endpoints)
-
-#### POST /certificates/generate
-Генерация сертификата при завершении курса. Student-only.
-
-#### GET /certificates/me
-Мои сертификаты. Authenticated.
-
-#### GET /certificates/{id}
-Получение сертификата. Public (для проверки).
-
----
-
-### Missions (5 endpoints)
-
-#### GET /missions/today
-Сегодняшняя миссия пользователя (get-or-create). Вызывает AI Service для генерации blueprint если миссии на сегодня нет. Authenticated.
-
-**Query params:** `org_id` (required, UUID).
-
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "user_id": "uuid",
-  "organization_id": "uuid",
-  "concept_id": "uuid | null",
-  "mission_type": "daily",
-  "status": "pending",
-  "blueprint": {"topic": "...", "questions": [...]},
-  "score": null,
-  "mastery_delta": null,
-  "started_at": null,
-  "completed_at": null,
-  "created_at": "2026-03-05T08:00:00Z"
-}
-```
-
----
-
-#### POST /missions/{id}/start
-Начало выполнения миссии. Меняет статус на `in_progress`, устанавливает `started_at`. Authenticated (owner only).
-
-**Response `200`:** Same as GET /missions/today with `status: "in_progress"`.
-
-**Errors:** `404` — not found, `403` — not owner, `400` — already started.
-
----
-
-#### POST /missions/{id}/complete
-Завершение миссии. Вызывает AI Coach для оценки session. Обновляет trust level. Authenticated (owner only).
-
-**Request:**
-```json
-{
-  "session_id": "coach-session-uuid"
-}
-```
-
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "status": "completed",
-  "score": 0.85,
-  "mastery_delta": 0.1,
-  "completed_at": "2026-03-05T09:12:00Z"
-}
-```
-
-**Errors:** `404` — not found, `403` — not owner, `400` — not in_progress, `502` — AI service error.
-
----
-
-#### GET /missions/me
-История миссий пользователя. Authenticated.
-
-**Query params:** `limit` (default 20, max 100), `offset` (default 0).
-
-**Response `200`:**
-```json
-{
-  "missions": [...]
-}
-```
-
----
-
-#### GET /missions/streak
-Streak миссий пользователя. Authenticated.
-
-**Response `200`:**
-```json
-{
-  "current_streak": 7
-}
-```
-
----
-
-### Trust Levels (2 endpoints)
-
-#### GET /trust-level/me
-Trust level текущего пользователя. Authenticated.
-
-**Query params:** `org_id` (required, UUID).
-
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "user_id": "uuid",
-  "organization_id": "uuid",
-  "level": 2,
-  "level_name": "Contributor",
-  "total_missions_completed": 20,
-  "total_concepts_mastered": 10,
-  "unlocked_areas": [],
-  "level_up_at": "2026-03-05T12:00:00Z",
-  "next_level": {
-    "level": 3,
-    "level_name": "Builder",
-    "missions_required": 30,
-    "concepts_required": 15,
-    "missions_remaining": 10,
-    "concepts_remaining": 5
-  }
-}
-```
-
-При level=5 (Architect), `next_level` = `null`.
-
----
-
-#### GET /trust-level/org/{org_id}
-Trust levels всех участников организации. Admin-only (role=admin).
-
-**Query params:** `limit` (default 50, max 200), `offset` (default 0).
-
-**Response `200`:**
-```json
-{
-  "levels": [
-    {
-      "id": "uuid",
-      "user_id": "uuid",
-      "organization_id": "uuid",
-      "level": 3,
-      "level_name": "Builder",
-      "total_missions_completed": 35,
-      "total_concepts_mastered": 18,
-      "unlocked_areas": [],
-      "level_up_at": "2026-03-05T12:00:00Z",
-      "next_level": { "..." }
-    }
-  ]
-}
-```
-
-**Response `403`:** Non-admin role.
-
----
-
-### Daily Summary (1 endpoint)
-
-#### GET /daily/me
-Unified daily session summary. Authenticated.
-
-**Query params:** `org_id` (required, UUID).
-
-**Response `200`:**
-```json
-{
-  "mission": {
-    "id": "uuid",
-    "status": "pending",
-    "concept_name": "Authentication Middleware"
-  },
-  "trust_level": 2,
-  "due_flashcards": 5,
-  "streak_days": 7,
-  "greeting": "Good morning! You have a 7-day streak."
-}
-```
-
-`mission` может быть `null` если миссия ещё не создана на сегодня.
-
----
-
-## RAG Service (`:8008`)
-
-### Health
-
-#### GET /health/live
-Liveness probe. Всегда `{"status": "ok"}`.
-
-#### GET /health/ready
-Readiness probe. Проверяет PostgreSQL (pgvector) pool.
-
----
-
-### Document Ingestion (3 endpoints)
-
-#### POST /documents
-Загрузка документа: chunking + embedding + сохранение в pgvector. Требует JWT (admin или teacher).
-
-**Request:**
-```json
-{
-  "org_id": "uuid",
-  "source_type": "text",
-  "source_path": "/docs/guide.md",
-  "title": "Authentication Guide",
-  "content": "Markdown content..."
-}
-```
-
-`source_type`: `text`, `markdown`, `github`, `code`. Для `github`/`code` используется code chunker (split по def/class), для остальных — text chunker (split по параграфам/предложениям).
-
-**Response `201`:**
-```json
-{
-  "id": "uuid",
-  "organization_id": "uuid",
-  "source_type": "text",
-  "source_path": "/docs/guide.md",
-  "title": "Authentication Guide",
-  "metadata": {},
-  "created_at": "2026-03-05T00:00:00Z"
-}
-```
-
----
-
-#### GET /documents
-Список документов организации. Требует JWT.
-
-**Query params:** `org_id` (required), `limit` (default 20, max 100), `offset` (default 0).
-
----
-
-#### DELETE /documents/{id}
-Удаление документа и его chunks (CASCADE). Требует JWT (admin only).
-
-**Response `204`:** No Content.
-
----
-
-### Search (1 endpoint)
-
-#### POST /search
-Семантический поиск по документам организации через pgvector cosine similarity. Требует JWT.
-
-**Request:**
-```json
-{
-  "query": "How does authentication work?",
-  "org_id": "uuid",
-  "limit": 5
-}
-```
-
-`query` (required, min 1 char), `org_id` (required), `limit` (1–20, default 5).
-
-**Response `200`:**
-```json
-{
-  "query": "How does authentication work?",
-  "results": [
-    {
-      "chunk_id": "uuid",
-      "content": "...",
-      "similarity": 0.92,
-      "document_title": "Auth Guide",
-      "source_type": "text",
-      "source_path": "/docs/auth.md",
-      "metadata": {}
-    }
-  ]
-}
-```
-
----
-
-### Concepts (2 endpoints)
-
-#### GET /concepts
-Список концептов организации. Требует JWT (любая роль).
-
-**Query params:** `org_id` (UUID, required).
-
-**Response `200`:**
-```json
-[
-  {
-    "id": "uuid",
-    "organization_id": "uuid",
-    "name": "Dependency Injection",
-    "description": "A design pattern for decoupling components",
-    "source_document_id": "uuid",
-    "created_at": "2026-03-05T00:00:00Z"
-  }
-]
-```
-
----
-
-#### POST /concepts/extract/{document_id}
-Ручной запуск извлечения концептов из документа через LLM (Gemini Flash). Требует JWT + admin/teacher. Также вызывается автоматически при ingestion pipeline.
-
-**Request body:**
-```json
-{
-  "org_id": "uuid"
-}
-```
-
-**Response `202`:**
-```json
-{
-  "status": "accepted",
-  "document_id": "uuid"
-}
-```
-
----
-
-### Sources (1 endpoint)
-
-#### POST /sources/github
-Подключение GitHub репозитория как источника документов. Требует JWT + org admin.
-
-**Request:**
-```json
-{
-  "organization_id": "uuid",
-  "repo_url": "https://github.com/acme/backend",
-  "branch": "main",
-  "file_patterns": ["*.md", "*.py", "*.rs"],
-  "exclude_patterns": ["node_modules/**", ".git/**"]
-}
-```
-
-**Response `202`:**
-```json
-{
-  "job_id": "uuid",
-  "status": "processing",
-  "estimated_documents": 150
-}
-```
-
----
-
-### Upload (2 endpoints)
-
-#### POST /upload/markdown
-Загрузка markdown файла. Требует JWT + org membership.
-
-**Request:** multipart/form-data с файлом и `organization_id`.
-
-**Response `201`:** Объект документа.
-
----
-
-#### POST /upload/bulk
-Массовая загрузка документов. Требует JWT + org admin.
-
-**Request:** multipart/form-data с zip-архивом и `organization_id`.
-
-**Response `202`:**
-```json
-{
-  "job_id": "uuid",
-  "status": "processing",
-  "files_count": 25
-}
-```
-
----
-
-### Knowledge Base Management (5 endpoints)
-
-#### GET /kb/{org_id}/stats
-Статистика knowledge base организации. Требует JWT (любая роль).
-
-**Response `200`:**
-```json
-{
-  "total_documents": 150,
-  "total_chunks": 3200,
-  "total_concepts": 85,
-  "last_updated": "2026-03-05T00:00:00Z"
-}
-```
-
-`last_updated` — `null` если документов нет.
-
----
-
-#### GET /kb/{org_id}/sources
-Список документов-источников knowledge base. Требует JWT (любая роль). Возвращает до 100 документов.
-
-**Response `200`:**
-```json
-[
-  {
-    "id": "uuid",
-    "organization_id": "uuid",
-    "source_type": "text",
-    "source_path": "/docs/guide.md",
-    "title": "Authentication Guide",
-    "metadata": {},
-    "created_at": "2026-03-05T00:00:00Z"
-  }
-]
-```
-
----
-
-#### GET /kb/{org_id}/concepts
-Граф концептов knowledge base (nodes + edges). Требует JWT (любая роль).
-
-**Response `200`:**
-```json
-{
-  "nodes": [
-    {"id": "uuid", "name": "Dependency Injection", "description": "A design pattern"}
-  ],
-  "edges": [
-    {"source": "uuid", "target": "uuid", "type": "related"}
-  ]
-}
-```
-
----
-
-#### POST /kb/{org_id}/search
-Семантический поиск в knowledge base. Требует JWT (любая роль).
-
-**Request:**
-```json
-{
-  "query": "How does auth work?",
-  "limit": 5
-}
-```
-
-`query` (required, min 1 char), `limit` (1–20, default 5).
-
-**Response `200`:**
-```json
-[
-  {
-    "chunk_id": "uuid",
-    "content": "...",
-    "similarity": 0.92,
-    "document_title": "Auth Guide",
-    "source_type": "text",
-    "source_path": "/docs/auth.md",
-    "metadata": {}
-  }
-]
-```
-
----
-
-#### POST /kb/{org_id}/refresh/{document_id}
-Переиндексация документа (удаление chunks, перечанкинг, переэмбеддинг). Требует JWT + admin.
-
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "organization_id": "uuid",
-  "source_type": "text",
-  "source_path": "/docs/guide.md",
-  "title": "Authentication Guide",
-  "metadata": {},
-  "created_at": "2026-03-05T00:00:00Z"
-}
-```
-
-**`404`:** Document not found.
-
----
-
-### Onboarding Templates (6 endpoints)
-
-#### POST /templates
-Создание шаблона онбординга. Требует JWT + org admin.
-
-**Request:**
-```json
-{
-  "organization_id": "uuid",
-  "name": "Backend Engineer Onboarding",
-  "description": "30-day onboarding for backend engineers",
-  "target_role": "backend_engineer",
-  "estimated_days": 30
-}
-```
-
-**Response `201`:** Объект шаблона.
-
----
-
-#### GET /templates
-Список шаблонов организации. Требует JWT + org membership.
-
-**Query params:** `organization_id` (required).
-
----
-
-#### GET /templates/{id}
-Шаблон с stages. Требует JWT + org membership.
-
 ---
 
-#### POST /templates/{id}/stages
-Добавление этапа в шаблон. Требует JWT + org admin.
-
-**Request:**
-```json
-{
-  "title": "Week 1: Development Environment",
-  "description": "Setup and understand the dev environment",
-  "order": 1,
-  "estimated_days": 5,
-  "concept_ids": ["uuid", "uuid"]
-}
-```
-
-**Response `201`:** Объект stage.
-
----
-
-#### PUT /templates/{id}/stages/{stage_id}
-Обновление этапа. Требует JWT + org admin.
-
----
-
-#### DELETE /templates/{id}/stages/{stage_id}
-Удаление этапа. Требует JWT + org admin.
-
-**Response `204`:** No Content.
-
----
-
-## Notification Service (`:8005`)
-
-### POST /notifications
-
-Создание уведомления (internal/admin). Логирует в stdout (email stub).
-
-**Request:**
-```json
-{
-  "user_id": "uuid",
-  "type": "mission_reminder",
-  "title": "Daily Mission Available",
-  "message": "Your daily mission is ready!"
-}
-```
+## Identity Service (port 8001)
 
-**Response `201`:** Объект уведомления.
+### Authentication
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/auth/register` | — | Register (email, password, name, role) → TokenPair |
+| POST | `/auth/login` | — | Login (email, password) → TokenPair |
+| POST | `/auth/refresh` | — | Refresh (refresh_token) → TokenPair |
+| POST | `/auth/logout` | — | Logout (refresh_token) → 204 |
+| GET | `/auth/me` | required | Current user → User |
+| POST | `/auth/verify-email` | — | Verify email (token) → User |
+| POST | `/auth/resend-verification` | required | Resend verification → 204 |
+| POST | `/auth/forgot-password` | — | Request reset (email) → 204 |
+| POST | `/auth/reset-password` | — | Reset password (token, new_password) → 204 |
 
-### GET /notifications/me
+### Profiles
 
-Уведомления текущего пользователя. Требует JWT.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/users/{user_id}/profile` | — | Public profile |
+| GET | `/users/{user_id}/stats` | — | User stats (followers, courses) |
+| PATCH | `/users/me/visibility` | required | Set profile visibility (is_public) |
 
-**Query params:** `limit` (default 20), `offset` (default 0), `unread_only` (default false).
+### Follows
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/follow/{user_id}` | required | Follow user → 201 |
+| DELETE | `/follow/{user_id}` | required | Unfollow → 204 |
+| GET | `/followers/me` | required | My followers (paginated) |
+| GET | `/following/me` | required | My following (paginated) |
+| GET | `/users/{user_id}/followers/count` | — | Follower stats |
 
-### PATCH /notifications/{id}/read
+### Referrals
 
-Отметить уведомление как прочитанное. Требует JWT (owner only).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/referral/me` | required | My referral stats |
+| POST | `/referral/apply` | required | Apply referral code |
+| POST | `/referral/complete` | required | Complete referral (referee_id) |
 
-**Response `200`:** Обновлённый объект уведомления.
+### Organizations
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/organizations` | required | Create org (name, slug) → 201 |
+| GET | `/organizations/me` | required | My organizations |
+| GET | `/organizations/{org_id}` | required | Get organization |
+| POST | `/organizations/{org_id}/members` | required | Add member (user_id, role) → 201 |
+| DELETE | `/organizations/{org_id}/members/{user_id}` | required | Remove member → 204 |
+| GET | `/organizations/{org_id}/members` | required | List members (paginated) |
 
-### POST /streak-reminders/send
+### Admin
 
-Массовая отправка streak reminders. Admin-only. Дедупликация по дню.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/admin/teachers/pending` | admin | Pending teacher verifications |
+| PATCH | `/admin/users/{user_id}/verify` | admin | Verify teacher |
 
 ---
 
-### POST /flashcard-reminders/send
+## Course Service (port 8002)
 
-Массовая отправка flashcard reminders. Admin-only. Дедупликация по дню.
+### Courses
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/courses` | — | List courses (q, category_id, level, is_free, sort_by, limit, offset, cursor) |
+| GET | `/courses/my` | required | My courses (teacher) |
+| POST | `/courses` | teacher | Create course → 201 |
+| GET | `/courses/{course_id}` | — | Get course |
+| GET | `/courses/{course_id}/curriculum` | — | Full curriculum (modules + lessons) |
+| PUT | `/courses/{course_id}` | teacher | Update course |
 
-### POST /flashcard-reminders/smart
+### Modules
 
-FSRS-based smart reminders через Learning Service. Admin-only.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/courses/{course_id}/modules` | teacher | Create module → 201 |
+| PUT | `/modules/{module_id}` | teacher | Update module |
+| DELETE | `/modules/{module_id}` | teacher | Delete module → 204 |
 
----
+### Lessons
 
-### POST /messages
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/modules/{module_id}/lessons` | teacher | Create lesson → 201 |
+| GET | `/lessons/{lesson_id}` | — | Get lesson |
+| PUT | `/lessons/{lesson_id}` | teacher | Update lesson |
+| DELETE | `/lessons/{lesson_id}` | teacher | Delete lesson → 204 |
 
-Отправка прямого сообщения. Требует JWT. Лимит: 1–2000 символов.
+### Reviews
 
-**Request:**
-```json
-{
-  "recipient_id": "uuid",
-  "content": "Hello!"
-}
-```
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/reviews` | required | Create review (course_id, rating, comment) → 201 |
+| GET | `/reviews/course/{course_id}` | — | Course reviews (paginated) |
 
-**Response `201`:** Объект сообщения.
+### Bundles
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/bundles` | teacher | Create bundle → 201 |
+| GET | `/bundles` | — | List bundles (teacher_id filter) |
+| GET | `/bundles/{bundle_id}` | — | Get bundle |
+| PUT | `/bundles/{bundle_id}` | teacher | Update bundle |
+| DELETE | `/bundles/{bundle_id}` | teacher | Delete bundle → 204 |
 
-### GET /conversations/me
+### Promotions
 
-Список диалогов текущего пользователя. Требует JWT.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/courses/{course_id}/promotions` | teacher | Create promotion → 201 |
+| GET | `/courses/{course_id}/promotions` | — | List promotions |
+| DELETE | `/promotions/{promotion_id}` | teacher | Delete promotion → 204 |
 
----
+### Wishlist
 
-### GET /conversations/{id}/messages
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/wishlist` | required | Add to wishlist → 201 |
+| DELETE | `/wishlist/{course_id}` | required | Remove → 204 |
+| GET | `/wishlist/me` | required | My wishlist (paginated) |
+| GET | `/wishlist/check/{course_id}` | required | Check if wishlisted |
 
-Сообщения диалога. Требует JWT (participant only).
+### Categories & Analytics
 
-**Query params:** `limit` (default 50), `offset` (default 0).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/categories` | — | All categories |
+| GET | `/analytics/teacher` | teacher | Teacher analytics summary |
 
 ---
 
-### PATCH /messages/{id}/read
+## Enrollment Service (port 8003)
 
-Отметить сообщение как прочитанное. Требует JWT (recipient only).
+### Enrollments
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/enrollments` | required | Enroll (course_id, payment_id, total_lessons) → 201 |
+| GET | `/enrollments/me` | required | My enrollments (paginated) |
+| GET | `/enrollments/course/{course_id}/count` | — | Enrollment count |
 
-## Payment Service (`:8004`)
+### Progress
 
-### POST /payments
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/progress/lessons/{lesson_id}/complete` | required | Complete lesson → 201 |
+| GET | `/progress/courses/{course_id}` | required | Course progress |
+| GET | `/progress/courses/{course_id}/lessons` | required | Completed lesson IDs |
 
-Создание платежа (mock, всегда completed). Optional `coupon_code`. Student-only.
+### Recommendations
 
-**Request:**
-```json
-{
-  "course_id": "uuid",
-  "amount": 29.99,
-  "coupon_code": "SAVE20"    // optional
-}
-```
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/recommendations/courses/{course_id}` | — | Related courses (limit=5) |
+| GET | `/recommendations/me` | required | Personal recommendations (limit=10) |
 
 ---
 
-### GET /payments/{id}
+## Payment Service (port 8004)
 
-Информация о платеже. Authenticated (owner or admin).
-
----
+### Payments
 
-### GET /payments/me
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/payments` | required | Create payment (course_id, amount, coupon_code) → 201 |
+| GET | `/payments/me` | required | My payments (paginated) |
+| GET | `/payments/{payment_id}` | required | Get payment |
+| GET | `/payments/{payment_id}/invoice` | required | Download invoice (PDF) |
 
-Мои платежи. Authenticated.
+### Coupons
 
-**Query params:** `limit` (default 20), `offset` (default 0).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/coupons` | teacher | Create coupon → 201 |
+| GET | `/coupons` | teacher | List coupons (paginated) |
+| POST | `/coupons/validate` | required | Validate coupon (code, course_id, amount) |
+| PATCH | `/coupons/{coupon_id}/deactivate` | teacher | Deactivate → 204 |
 
----
+### Earnings
 
-### GET /payments/{id}/invoice
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/earnings/me/summary` | teacher | Earnings summary |
+| GET | `/earnings/me` | teacher | Earnings history (paginated) |
+| POST | `/earnings/payouts` | teacher | Request payout → 201 |
+| GET | `/earnings/payouts` | teacher | Payout history (paginated) |
 
-Скачивание PDF invoice. Authenticated (owner or admin).
+### Refunds
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/refunds` | required | Request refund (payment_id, reason) → 201 |
+| GET | `/refunds/me` | required | My refunds (paginated) |
+| GET | `/refunds` | admin | All refunds (status filter) |
+| PATCH | `/refunds/{refund_id}/approve` | admin | Approve refund |
+| PATCH | `/refunds/{refund_id}/reject` | admin | Reject refund (reason) |
 
-### POST /coupons
-
-Создание купона. Teacher/admin.
-
-**Request:**
-```json
-{
-  "code": "SAVE20",
-  "discount_percent": 20,
-  "max_uses": 100,
-  "expires_at": "2026-12-31T23:59:59Z"
-}
-```
+### Gifts
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/gifts` | required | Send gift (course_id, recipient_email, message) → 201 |
+| GET | `/gifts/me/sent` | required | My sent gifts (paginated) |
+| POST | `/gifts/redeem` | required | Redeem gift (gift_code) |
+| GET | `/gifts/{gift_code}/info` | — | Gift info |
 
-### GET /coupons
+### Organization Subscriptions
 
-Список купонов. Teacher/admin.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/org-subscriptions` | required | Create org subscription (plan_tier, payment_method_id) → 201 |
+| GET | `/org-subscriptions/{org_id}` | required | Get subscription |
+| POST | `/org-subscriptions/{org_id}/cancel` | required | Cancel subscription |
+| POST | `/webhooks/stripe-org` | — | Stripe webhook handler |
 
 ---
 
-### POST /coupons/validate
+## Notification Service (port 8005)
 
-Валидация купона. Authenticated.
+### Notifications
 
----
-
-### PATCH /coupons/{id}/deactivate
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/notifications` | required | Create notification → 201 |
+| GET | `/notifications/me` | required | My notifications (paginated) |
+| PATCH | `/notifications/{notification_id}/read` | required | Mark as read |
 
-Деактивация купона. Teacher/admin (owner).
+### Reminders
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/notifications/streak-reminders/send` | admin | Send streak reminders (user_ids) |
+| POST | `/notifications/flashcard-reminders/send` | admin | Send flashcard reminders (items) |
+| POST | `/notifications/flashcard-reminders/smart` | admin | Smart flashcard reminders |
 
-### POST /refunds
+### Messaging
 
-Запрос возврата. Authenticated (owner). 14-дневное окно, один на платёж.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/messages` | required | Send message (recipient_id, content) → 201 |
+| GET | `/conversations/me` | required | My conversations (paginated) |
+| GET | `/conversations/{conversation_id}/messages` | required | Conversation messages (paginated) |
+| PATCH | `/messages/{message_id}/read` | required | Mark message read → 204 |
 
 ---
-
-### GET /refunds/me
 
-Мои возвраты. Authenticated.
+## AI Service (port 8006)
 
----
-
-### GET /refunds
+### Credits
 
-Все возвраты. Admin-only.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/ai/credits/me` | required | Credit balance and tier |
 
----
+### Generation
 
-### PATCH /refunds/{id}/approve
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/ai/quiz/generate` | required | Generate quiz (lesson_id, content) |
+| POST | `/ai/summary/generate` | required | Generate summary (lesson_id, content) |
+| POST | `/ai/course/outline` | teacher | Generate course outline (topic, level) |
+| POST | `/ai/lesson/generate` | teacher | Generate lesson content (topic, level) |
+| POST | `/ai/study-plan` | required | Generate study plan (course_id, learning_style) |
+| POST | `/ai/tutor/chat` | required | Tutor chat (lesson_id, message, session_id) |
+| POST | `/ai/tutor/feedback` | required | Rate tutor session |
+| POST | `/ai/content/moderate` | required | Moderate content |
 
-Одобрение возврата. Admin-only. Payment status → `refunded`.
+### Coach (Tri-Agent)
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/ai/coach/start` | required | Start coach session (mission_id, personality) |
+| POST | `/ai/coach/chat` | required | Send message (session_id, message) |
+| POST | `/ai/coach/end` | required | End session (session_id) → summary |
 
-### PATCH /refunds/{id}/reject
+### Missions
 
-Отклонение возврата. Admin-only.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/ai/mission/daily` | required | Get daily mission (org_id) |
+| POST | `/ai/mission/complete` | required | Complete mission (session_id, org_id, concept_id) |
 
----
+### Unified Search
 
-### POST /gifts
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/ai/search/unified` | required | Query router: internal RAG + external Gemini |
 
-Покупка подарка (курс). Authenticated.
+### LLM Config
 
-**Request:**
-```json
-{
-  "course_id": "uuid",
-  "recipient_email": "friend@example.com",
-  "message": "Happy learning!"
-}
-```
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/ai/config/llm/{org_id}` | admin | Get org LLM config |
+| PUT | `/ai/config/llm/{org_id}` | admin | Update org LLM config |
+| POST | `/ai/config/llm/{org_id}/test` | admin | Test LLM connection |
 
 ---
-
-### GET /gifts/me/sent
-
-Мои отправленные подарки. Authenticated.
 
----
+## Learning Service (port 8007)
+
+### Quizzes
 
-### POST /gifts/redeem
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/quizzes` | teacher | Create quiz (lesson_id, questions) → 201 |
+| GET | `/quizzes/lesson/{lesson_id}` | required | Get quiz for lesson |
+| POST | `/quizzes/{quiz_id}/submit` | required | Submit answers |
+| GET | `/quizzes/{quiz_id}/attempts/me` | required | My attempts |
 
-Активация подарка по коду. Authenticated.
+### Flashcards (FSRS)
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/flashcards` | required | Create flashcard → 201 |
+| GET | `/flashcards/due` | required | Due cards (paginated) |
+| POST | `/flashcards/{card_id}/review` | required | Review card (rating) |
+| DELETE | `/flashcards/{card_id}` | required | Delete card → 204 |
 
-### GET /gifts/{gift_code}/info
+### Concepts (Knowledge Graph)
 
-Публичная информация о подарке (limited fields).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/concepts` | teacher | Create concept → 201 |
+| PUT | `/concepts/{concept_id}` | teacher | Update concept |
+| DELETE | `/concepts/{concept_id}` | teacher | Delete concept → 204 |
+| POST | `/concepts/{concept_id}/prerequisites` | teacher | Add prerequisite → 201 |
+| DELETE | `/concepts/{concept_id}/prerequisites/{prerequisite_id}` | teacher | Remove prerequisite → 204 |
+| GET | `/concepts/course/{course_id}` | required | Course knowledge graph |
+| GET | `/concepts/mastery/course/{course_id}` | required | Mastery data per concept |
 
----
+### Missions
 
-### GET /earnings/me/summary
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/missions/today` | required | Today's mission |
+| POST | `/missions/{mission_id}/start` | required | Start mission |
+| POST | `/missions/{mission_id}/complete` | required | Complete mission |
+| GET | `/missions/me` | required | My missions |
+| GET | `/missions/streak` | required | Mission streak |
 
-Сводка доходов преподавателя. Teacher-only.
+### Streaks
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/streaks/activity` | required | Record activity |
+| GET | `/streaks/me` | required | My streak |
+| GET | `/streaks/at-risk` | admin | At-risk users |
 
-### GET /earnings/me
+### Leaderboard
 
-Детализация доходов. Teacher-only.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/leaderboard/courses/{course_id}/opt-in` | required | Opt in |
+| DELETE | `/leaderboard/courses/{course_id}/opt-in` | required | Opt out |
+| GET | `/leaderboard/courses/{course_id}` | required | Rankings (limit=100) |
+| GET | `/leaderboard/courses/{course_id}/me` | required | My rank |
+| POST | `/leaderboard/courses/{course_id}/score` | required | Update score |
 
----
+### Discussions
 
-### POST /earnings/payouts
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/discussions/comments` | required | Create comment → 201 |
+| GET | `/discussions/lessons/{lesson_id}/comments` | required | Threaded comments |
+| PATCH | `/discussions/comments/{comment_id}` | required | Edit comment |
+| DELETE | `/discussions/comments/{comment_id}` | required | Delete comment → 204 |
+| POST | `/discussions/comments/{comment_id}/upvote` | required | Upvote |
+| POST | `/discussions/comments/{comment_id}/flag` | required | Flag |
+| PATCH | `/discussions/comments/{comment_id}/pin` | teacher | Pin comment |
+| PATCH | `/discussions/comments/{comment_id}/unpin` | teacher | Unpin comment |
 
-Запрос выплаты. Teacher-only.
+### Study Groups
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/study-groups` | required | Create group → 201 |
+| GET | `/study-groups/course/{course_id}` | required | Course groups |
+| POST | `/study-groups/{group_id}/join` | required | Join → 201 |
+| DELETE | `/study-groups/{group_id}/leave` | required | Leave → 204 |
+| GET | `/study-groups/{group_id}/members` | required | Group members |
+| GET | `/study-groups/me` | required | My groups |
 
-### GET /earnings/payouts
+### Other
 
-Мои выплаты. Teacher-only.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/xp/me` | required | XP summary |
+| GET | `/badges/me` | required | My badges |
+| POST | `/certificates/issue` | admin | Issue certificate → 201 |
+| GET | `/certificates/me` | required | My certificates |
+| GET | `/certificates/{certificate_id}` | required | Get certificate |
+| POST | `/pretests/course/{course_id}/start` | required | Start pretest → 201 |
+| POST | `/pretests/{pretest_id}/answer` | required | Answer question |
+| GET | `/pretests/course/{course_id}/results` | required | Pretest results |
+| GET | `/trust-level/me` | required | My trust level |
+| GET | `/trust-level/org/{org_id}` | required | Org trust levels |
+| GET | `/velocity/me` | required | Learning velocity |
+| GET | `/activity/me` | required | My activity feed |
+| GET | `/activity/feed` | required | Global activity feed |
+| GET | `/daily/me` | required | Daily summary |
 
 ---
 
-### POST /org-subscriptions
-
-Создание подписки организации. Требует JWT с `organization_id` claim.
-
-**Request:**
-```json
-{
-  "plan_tier": "pilot",           // "pilot" ($1000/mo, 20 seats) | "enterprise" ($10000/mo, 999 seats)
-  "payment_method_id": "pm_xxx",
-  "org_email": "org@example.com",
-  "org_name": "Test Org"
-}
-```
+## RAG Service (port 8008)
 
-**Response `201`:**
-```json
-{
-  "id": "uuid",
-  "organization_id": "uuid",
-  "plan_tier": "pilot",
-  "max_seats": 20,
-  "current_seats": 0,
-  "price_cents": 100000,
-  "status": "active",
-  "trial_ends_at": null,
-  "current_period_start": "2026-03-06T00:00:00Z",
-  "current_period_end": "2026-04-06T00:00:00Z",
-  "created_at": "2026-03-06T00:00:00Z"
-}
-```
+### Documents
 
-**Errors:** `409` (org already has subscription), `422` (invalid plan tier), `403` (no organization in JWT).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/documents` | required | Ingest document (content, source_type, source_path, metadata) → 201 |
+| GET | `/documents` | required | List documents (org_id) |
+| DELETE | `/documents/{document_id}` | required | Delete document → 204 |
 
----
+### GitHub Adapter
 
-### GET /org-subscriptions/{org_id}
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/sources/github` | required | Ingest from GitHub (repo_url, file_pattern, org_id) |
 
-Информация о подписке организации. Требует JWT + organization_id match.
+### Search
 
-**Response `200`:** Same schema as POST response.
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| POST | `/search` | required | Semantic search (query, org_id, limit) |
 
-**Errors:** `403` (wrong org), `404` (no subscription found).
+### Knowledge Base
 
----
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/kb/{org_id}/stats` | required | KB stats (documents, chunks, concepts) |
+| GET | `/kb/{org_id}/sources` | required | KB sources |
+| GET | `/kb/{org_id}/concepts` | required | KB concepts |
+| POST | `/kb/{org_id}/search` | required | Semantic search within org |
+| POST | `/kb/{org_id}/refresh/{document_id}` | required | Refresh document |
 
-### POST /org-subscriptions/{org_id}/cancel
-
-Отмена подписки организации. Требует JWT + organization_id match. Отменяет в Stripe немедленно.
-
-**Response `200`:**
-```json
-{
-  "id": "uuid",
-  "organization_id": "uuid",
-  "plan_tier": "pilot",
-  "status": "canceled",
-  ...
-}
-```
+### Concept Extraction
 
-**Errors:** `403` (wrong org), `404` (not found), `400` (already canceled).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/concepts` | required | List concepts (org_id) |
+| POST | `/concepts/extract/{document_id}` | required | Extract concepts (async) → 202 |
 
 ---
-
-### POST /webhooks/stripe-org
 
-Webhook для Stripe events связанных с org subscriptions. Публичный (verification via Stripe signature).
+## Search Service (Rust, port 9000)
 
-Handled events: `invoice.paid` (→ active), `invoice.payment_failed` (→ past_due), `customer.subscription.deleted` (→ canceled). Unknown subscriptions silently ignored (idempotent).
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/health/live` | — | Health check |
+| POST | `/index` | — | Index document (doc_id, org_id, text, metadata) |
+| POST | `/index/batch` | — | Batch index documents |
+| POST | `/search` | — | Full-text search (query, org_id, limit) |
+| DELETE | `/index/{org_id}` | — | Delete org index |
 
 ---
-
-## Search Service (`:8010`) — Rust/Axum + tantivy
-
-Full-text search service. Org-scoped document indexing with BM25 scoring. Called by RAG service and API Gateway.
-
-### GET /health/live
-
-**Response `200`:** `{"status": "ok"}`
-
-### POST /index
-
-Index a single document.
-
-**Request Body:**
-```json
-{
-  "id": "doc-uuid",
-  "org_id": "org-uuid",
-  "title": "Document title",
-  "body": "Full text content for indexing",
-  "source_type": "document",
-  "source_path": "/docs/example.md"
-}
-```
 
-**Response `201`:** `{"status": "indexed"}`
-
-**Errors:** `500` (index error)
-
-### POST /index/batch
-
-Index multiple documents in a single request.
-
-**Request Body:**
-```json
-{
-  "documents": [
-    {
-      "id": "doc-1",
-      "org_id": "org-uuid",
-      "title": "First doc",
-      "body": "Content",
-      "source_type": "code",
-      "source_path": "/src/main.rs"
-    }
-  ]
-}
-```
-
-**Response `201`:** `{"status": "indexed", "indexed": 1}`
+## API Gateway (Rust, port 8000)
 
-**Errors:** `500` (index error)
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| GET | `/health/live` | — | Liveness probe |
+| GET | `/health/ready` | — | Readiness probe |
 
-### POST /search
+Route prefix → upstream mapping:
 
-Search documents within an organization. BM25 scoring across title and body fields.
-
-**Request Body:**
-```json
-{
-  "query": "search terms",
-  "org_id": "org-uuid",
-  "limit": 10,
-  "offset": 0
-}
 ```
-
-`limit` defaults to 10, `offset` defaults to 0.
-
-**Response `200`:**
-```json
-{
-  "results": [
-    {
-      "id": "doc-uuid",
-      "title": "Document title",
-      "snippet": "...matching <b>terms</b> highlighted...",
-      "score": 5.23,
-      "source_type": "document",
-      "source_path": "/docs/example.md"
-    }
-  ],
-  "total": 1
-}
+/auth, /me, /users, /organizations, /follow, /referral  →  identity:8001
+/courses, /modules, /lessons, /reviews, /bundles,
+  /promotions, /wishlist, /categories, /analytics        →  course:8002
+/enrollments, /progress, /recommendations                →  enrollment:8003
+/payments, /coupons, /earnings, /refunds, /gifts,
+  /org-subscriptions, /webhooks/stripe-org               →  payment:8004
+/notifications, /conversations, /messages,
+  /streak-reminders, /flashcard-reminders                →  notification:8005
+/ai                                                      →  ai:8006
+/quizzes, /flashcards, /concepts, /missions,
+  /streaks, /leaderboard, /discussions, /study-groups,
+  /xp, /badges, /certificates, /pretests, /trust-level,
+  /velocity, /activity, /daily                           →  learning:8007
+/documents, /search, /kb, /sources, /concepts            →  rag:8008
 ```
-
-Empty query returns `{"results": [], "total": 0}`.
-
-**Errors:** `400` (query parse error), `500` (search error)
-
-### DELETE /index/{org_id}
-
-Delete all indexed documents for an organization.
-
-**Response `200`:** `{"status": "deleted"}`
-
-**Errors:** `500` (index error)
-
----
-
-## Dormant Services
-
-### Course Service (`:8002`) — dormant
-
-17 endpoints. CRUD courses + modules + lessons + reviews, ILIKE search, curriculum, categories, filtering/sorting, bundles, promotions, wishlist. Код сохранён, не развивается.
-
-### Enrollment Service (`:8003`) — dormant
-
-8 endpoints. POST /enrollments, GET /me, lesson progress, auto-completion, course enrollment count, recommendations. Код сохранён, не развивается.
