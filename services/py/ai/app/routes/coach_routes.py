@@ -4,7 +4,8 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends, Header, Query
+from fastapi.responses import StreamingResponse
 
 from common.errors import AppError
 from app.domain.models import (
@@ -127,4 +128,22 @@ async def coach_end(
         duration_seconds=result.duration_seconds,
         strengths=result.strengths,
         gaps=result.gaps,
+    )
+
+
+@router.get("/stream/{session_id}")
+async def coach_stream(
+    session_id: str,
+    message: Annotated[str, Query(min_length=1, max_length=2000)],
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    coach: Annotated[CoachService, Depends(_get_coach_service)],
+) -> StreamingResponse:
+    """Stream coach reply token-by-token as Server-Sent Events."""
+    return StreamingResponse(
+        coach.stream_response(session_id=session_id, message=message),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+        },
     )

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
+import random
 import re
 import time
 import uuid
+from collections.abc import AsyncGenerator
 
 import structlog
 
@@ -222,6 +225,52 @@ class CoachService:
             phase_progress=user_msg_count,
             session_id=session_id,
         )
+
+    async def stream_response(
+        self,
+        session_id: str,
+        message: str,
+    ) -> AsyncGenerator[str, None]:
+        """Yield the coach reply word-by-word as Server-Sent Events.
+
+        Each event: ``data: {"token": "<word>", "done": false}\\n\\n``
+        Final event: ``data: {"token": "", "done": true, "full_text": "<reply>"}\\n\\n``
+        """
+        session_data = await self._cache.get_coach_session(session_id)
+        if session_data is None:
+            raise AppError("Session not found", status_code=404)
+
+        system_prompt = session_data["system_prompt"]
+        messages = session_data["messages"]
+
+        messages.append({"role": "user", "content": message})
+
+        prompt_parts = [system_prompt, ""]
+        for msg in messages:
+            role_label = "Student" if msg["role"] == "user" else "Coach"
+            prompt_parts.append(f"{role_label}: {msg['content']}")
+        prompt_parts.append("Coach:")
+
+        full_prompt = "\n".join(prompt_parts)
+
+        raw, tokens_in, tokens_out = await self._llm.generate(full_prompt)
+        logger.info("coach_stream", tokens_in=tokens_in, tokens_out=tokens_out)
+
+        reply = raw.strip()
+
+        messages.append({"role": "assistant", "content": reply})
+        session_data["messages"] = messages
+        await self._cache.save_coach_session(
+            session_id, session_data, self._settings.tutor_session_ttl
+        )
+
+        for word in reply.split():
+            event_data = json.dumps({"token": word, "done": False})
+            yield f"data: {event_data}\n\n"
+            await asyncio.sleep(random.uniform(0.03, 0.05))  # noqa: S311
+
+        done_data = json.dumps({"token": "", "done": True, "full_text": reply})
+        yield f"data: {done_data}\n\n"
 
     async def end_session(
         self,

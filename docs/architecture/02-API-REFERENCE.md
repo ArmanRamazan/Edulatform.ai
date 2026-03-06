@@ -284,6 +284,7 @@
 | POST | `/ai/coach/start` | required | Start coach session (mission_id, personality) |
 | POST | `/ai/coach/chat` | required | Send message (session_id, message) |
 | POST | `/ai/coach/end` | required | End session (session_id) → summary |
+| GET | `/ai/coach/stream/{session_id}?message=` | required | Stream coach reply as SSE tokens (text/event-stream) |
 
 ### Missions
 

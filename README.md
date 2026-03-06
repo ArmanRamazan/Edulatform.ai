@@ -16,7 +16,7 @@ Monorepo: **Python** (business logic) + **Rust** (performance-critical) + **Type
 | enrollment | Python | 8003 | 39 | Enrollments, progress |
 | payment | Python | 8004 | 151 | Payments, subscriptions, earnings, gifts, org billing |
 | notification | Python | 8005 | 136 | Notifications, messaging |
-| ai | Python | 8006 | 281 | LLM orchestrator, tri-agent coaching, missions, unified search, MockLLMProvider |
+| ai | Python | 8006 | 291 | LLM orchestrator, tri-agent coaching, missions, unified search, MockLLMProvider, SSE streaming |
 | learning | Python | 8007 | 272 | Quizzes, flashcards, concepts, gamification, certificates |
 | rag | Python | 8008 | 173 | pgvector, ingestion, semantic search, concept extraction |
 | search | Rust | 9000 | + | Full-text search (tantivy) |
