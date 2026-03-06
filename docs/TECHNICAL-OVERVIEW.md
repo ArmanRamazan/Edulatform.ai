@@ -16,7 +16,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
                       ┌──────▼──────┐     ┌───────────────────────┐
                       │ API Gateway │     │  RUST PERFORMANCE     │
                       │ Axum :8080  │────▶│  Search :8010         │
-                      │ JWT, Rate   │     │  Embed :8009          │
+                      │ JWT, Rate   │     │  Embed :8009 ✅       │
                       │ Limit, CORS │     │  WS :8011             │
                       └──────┬──────┘     │  Chunker (pyo3 FFI)   │
                              │            └───────────────────────┘
@@ -63,6 +63,15 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | AI | 8006 | — (Redis) | Tri-Agent System, LLM routing | ✅ Active |
 | Learning | 8007 | 5438 | Quizzes, FSRS, knowledge graph, missions | ✅ Active |
 | RAG | 8008 | 5439 | Document ingestion, semantic search, concept extraction, KB management | ✅ Active |
+
+### Rust Performance Layer
+
+| Сервис | Порт | Роль | Статус |
+|--------|------|------|--------|
+| API Gateway | 8080 | JWT auth, rate limiting, reverse proxy, CORS | ✅ Active |
+| Search | 8010 | tantivy full-text search, BM25, org-scoped | ✅ Active |
+| Embedding Orchestrator | 8009 | Parallel embedding API calls, batch processing, semaphore concurrency | ✅ Active |
+| WebSocket | 8011 | Real-time messaging | Planned |
 
 ## Tri-Agent System
 
