@@ -9,3 +9,4 @@ class Settings(BaseAppSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
     github_token: str = ""
+    embedding_service_url: str = ""

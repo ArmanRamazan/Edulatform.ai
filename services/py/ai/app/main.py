@@ -23,6 +23,7 @@ from app.services.study_plan_service import StudyPlanService
 from app.services.moderation_service import ModerationService
 from app.services.strategist_service import StrategistService
 from app.services.designer_service import DesignerService
+from app.adapters.ws_client import WsPublisher
 from app.services.coach_service import CoachService
 from app.services.orchestrator_service import AgentOrchestrator
 from app.services.llm_resolver import LLMResolver
@@ -171,7 +172,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _designer_service = DesignerService(
         gemini_client=llm, cache=cache, http_client=_http_client, settings=app_settings,
     )
-    _coach_service = CoachService(llm=llm, cache=cache, settings=app_settings)
+    ws_publisher = WsPublisher(http_client=_http_client, settings=app_settings) if app_settings.ws_gateway_url else None
+    _coach_service = CoachService(llm=llm, cache=cache, settings=app_settings, ws_publisher=ws_publisher)
     _orchestrator_service = AgentOrchestrator(
         strategist=_strategist_service,
         designer=_designer_service,

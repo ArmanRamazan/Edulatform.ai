@@ -84,6 +84,66 @@ class GeminiEmbeddingClient(EmbeddingClient):
         return [await self.embed(text) for text in texts]
 
 
+class OrchestratorEmbeddingClient(EmbeddingClient):
+    """Calls the Rust embedding-orchestrator service with fallback to direct API."""
+
+    def __init__(
+        self,
+        http_client: httpx.AsyncClient,
+        orchestrator_url: str,
+        fallback: EmbeddingClient,
+    ) -> None:
+        self._http = http_client
+        self._url = orchestrator_url.rstrip("/")
+        self._fallback = fallback
+
+    async def embed(self, text: str) -> list[float]:
+        try:
+            return await self._call_single(text)
+        except (httpx.HTTPError, httpx.HTTPStatusError):
+            logger.warning("orchestrator_embed_fallback", reason="connection_or_http_error")
+            return await self._fallback.embed(text)
+
+    async def embed_batch(self, texts: list[str]) -> list[list[float]]:
+        try:
+            return await self._call_batch(texts)
+        except (httpx.HTTPError, httpx.HTTPStatusError):
+            logger.warning("orchestrator_embed_batch_fallback", reason="connection_or_http_error")
+            return await self._fallback.embed_batch(texts)
+
+    async def _call_single(self, text: str) -> list[float]:
+        last_exc: Exception | None = None
+        for _attempt in range(2):
+            try:
+                resp = await self._http.post(
+                    f"{self._url}/embed",
+                    json={"text": text},
+                    timeout=10.0,
+                )
+                resp.raise_for_status()
+                return resp.json()["embedding"]
+            except httpx.ConnectError as exc:
+                last_exc = exc
+                continue
+        raise last_exc  # type: ignore[misc]
+
+    async def _call_batch(self, texts: list[str]) -> list[list[float]]:
+        last_exc: Exception | None = None
+        for _attempt in range(2):
+            try:
+                resp = await self._http.post(
+                    f"{self._url}/embed/batch",
+                    json={"texts": texts},
+                    timeout=60.0,
+                )
+                resp.raise_for_status()
+                return resp.json()["embeddings"]
+            except httpx.ConnectError as exc:
+                last_exc = exc
+                continue
+        raise last_exc  # type: ignore[misc]
+
+
 class StubEmbeddingClient(EmbeddingClient):
     def __init__(self, dimensions: int = 768) -> None:
         self._dimensions = dimensions

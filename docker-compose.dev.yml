@@ -230,6 +230,7 @@ services:
       JWT_SECRET: dev-secret-key
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-lite}
+      WS_GATEWAY_URL: http://ws-gateway:8011
     volumes:
       - ./services/py/ai/app:/app/app
       - ./libs/py/common/common:/libs/common/common
@@ -237,6 +238,16 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+
+  ws-gateway:
+    build: services/rs/ws-gateway
+    ports:
+      - "8011:8011"
+    environment:
+      WS_PORT: 8011
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-key-at-least-32-chars!!}
+      MAX_CONNECTIONS: 10000
+      RUST_LOG: ws_gateway=debug
 
   learning:
     build:
@@ -266,6 +277,7 @@ services:
     environment:
       DATABASE_URL: postgresql://rag:rag@rag-db:5432/rag
       JWT_SECRET: dev-secret-key
+      EMBEDDING_SERVICE_URL: http://embedding-orchestrator:8009
     volumes:
       - ./services/py/rag/app:/app/app
       - ./services/py/rag/migrations:/app/migrations
@@ -296,6 +308,17 @@ services:
         condition: service_healthy
       identity:
         condition: service_started
+
+  embedding-orchestrator:
+    build: services/rs/embedding-orchestrator
+    ports:
+      - "8009:8009"
+    environment:
+      PORT: 8009
+      EMBEDDING_API_URL: ${GEMINI_EMBEDDING_URL}
+      EMBEDDING_API_KEY: ${GEMINI_API_KEY}
+      MAX_CONCURRENT_REQUESTS: 50
+      RUST_LOG: embedding_orchestrator=debug
 
   seed:
     build:

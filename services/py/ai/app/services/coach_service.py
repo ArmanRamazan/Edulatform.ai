@@ -8,6 +8,7 @@ import uuid
 import structlog
 
 from common.errors import AppError
+from app.adapters.ws_client import WsPublisher
 from app.config import Settings
 from app.domain.coach import CoachMessage, SessionResult
 from app.domain.mission import MissionBlueprint
@@ -88,10 +89,25 @@ def _format_code_case(mission: MissionBlueprint) -> str:
 
 
 class CoachService:
-    def __init__(self, llm: GeminiClient, cache: AICache, settings: Settings) -> None:
+    def __init__(
+        self,
+        llm: GeminiClient,
+        cache: AICache,
+        settings: Settings,
+        ws_publisher: WsPublisher | None = None,
+    ) -> None:
         self._llm = llm
         self._cache = cache
         self._settings = settings
+        self._ws = ws_publisher
+
+    async def _ws_publish(self, user_id: uuid.UUID, message: dict) -> None:
+        if self._ws is None:
+            return
+        try:
+            await self._ws.publish_to_user(str(user_id), message)
+        except Exception:
+            logger.warning("ws_publish_error", user_id=str(user_id), exc_info=True)
 
     async def start_session(
         self,
@@ -133,12 +149,21 @@ class CoachService:
             session_id, session_data, self._settings.tutor_session_ttl
         )
 
-        return CoachMessage(
+        result = CoachMessage(
             content=reply,
             phase="recap",
             phase_progress=1,
             session_id=session_id,
         )
+
+        await self._ws_publish(user_id, {
+            "type": "coach_message",
+            "session_id": session_id,
+            "content": reply,
+            "phase": "recap",
+        })
+
+        return result
 
     async def chat(
         self,
@@ -155,6 +180,12 @@ class CoachService:
         phase = session_data["phase"]
 
         messages.append({"role": "user", "content": message})
+
+        await self._ws_publish(user_id, {
+            "type": "typing_indicator",
+            "session_id": session_id,
+            "is_typing": True,
+        })
 
         prompt_parts = [system_prompt, ""]
         for msg in messages:
@@ -177,6 +208,13 @@ class CoachService:
         )
 
         user_msg_count = sum(1 for m in messages if m["role"] == "user")
+
+        await self._ws_publish(user_id, {
+            "type": "coach_message",
+            "session_id": session_id,
+            "content": reply,
+            "phase": phase,
+        })
 
         return CoachMessage(
             content=reply,
