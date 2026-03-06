@@ -29,6 +29,7 @@ from app.services.gift_service import GiftService
 from app.services.org_subscription_service import OrgSubscriptionService
 from app.repositories.org_subscription_repo import OrgSubscriptionRepository
 from app.repositories.stripe_client import StripeClient
+from app.services.stripe_mock import MockStripeService, create_stripe_client
 from app.routes.payments import router as payments_router
 from app.routes.earnings import router as earnings_router
 from app.routes.coupons import router as coupons_router
@@ -48,7 +49,7 @@ _invoice_service: InvoiceService | None = None
 _refund_service: RefundService | None = None
 _gift_service: GiftService | None = None
 _org_subscription_service: OrgSubscriptionService | None = None
-_stripe_client: StripeClient | None = None
+_stripe_client: StripeClient | MockStripeService | None = None
 
 
 def get_payment_service() -> PaymentService:
@@ -86,7 +87,7 @@ def get_org_subscription_service() -> OrgSubscriptionService:
     return _org_subscription_service
 
 
-def get_stripe_client() -> StripeClient:
+def get_stripe_client() -> StripeClient | MockStripeService:
     assert _stripe_client is not None
     return _stripe_client
 
@@ -139,7 +140,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     gift_repo = GiftRepository(_pool)
     _gift_service = GiftService(gift_repo=gift_repo, payment_repo=repo)
     org_sub_repo = OrgSubscriptionRepository(_pool)
-    _stripe_client = StripeClient(app_settings.stripe_secret_key)
+    _stripe_client = create_stripe_client(app_settings)
     _org_subscription_service = OrgSubscriptionService(
         repo=org_sub_repo, stripe_client=_stripe_client,
     )
