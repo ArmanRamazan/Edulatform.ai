@@ -1,0 +1,239 @@
+phase: "sprint-36"
+description: "Frontend Polish + Docker Health — final integration for demo readiness"
+
+tasks:
+  - id: frontend-build-fix
+    title: "Fix pnpm build errors in buyer app"
+    scope: frontend
+    type: fix
+    prompt: |
+      Task: Make `pnpm build` pass without errors in the buyer app.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/ (Next.js 15, TypeScript strict)
+      - There may be type errors, missing imports, or env var issues
+      - New components were added: onboarding wizard, knowledge graph, WebSocket, coach streaming
+
+      WHAT TO DO:
+
+      1. Run: cd apps/buyer && pnpm build
+      2. Fix ALL errors:
+         - Type errors: add missing types, fix mismatched types
+         - Import errors: fix missing imports, circular imports
+         - Missing env vars: create .env.local with required vars (API URLs)
+         - Dynamic import issues: ensure ssr: false for React Flow
+      3. Run build again to verify: 0 errors
+      4. Create apps/buyer/.env.example with all required env vars:
+         NEXT_PUBLIC_API_URL=http://localhost:8000
+         (or whatever the actual proxy config needs)
+
+      RULES:
+      - Fix ONLY what's broken — do not refactor or improve
+      - Do NOT add new features
+      - Do NOT modify business logic
+      - If a component has a type error from a missing API type, add the type inline
+
+      COMMIT: fix(buyer): resolve build errors for demo readiness
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: route-protection
+    title: "Add auth middleware for route protection"
+    scope: frontend
+    type: feat
+    prompt: |
+      Task: Add route protection — redirect unauthenticated users to login.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/
+      - Auth: useAuth() hook in hooks/use-auth.ts — provides token, user
+      - Token stored in localStorage
+      - Routes: (app)/* = authenticated, (marketing)/* = public
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/middleware.ts (Next.js middleware):
+         - Runs on all routes
+         - Check for auth token in cookies OR custom header
+         - If no token AND path starts with /(app)/* patterns:
+           → redirect to /login?redirect={originalPath}
+         - Allow: /, /login, /register, /forgot-password, /verify-email, /reset-password
+         - Allow: /_next/*, /api/*, /favicon.ico, static assets
+
+         NOTE: Next.js middleware can't read localStorage, so we need cookies.
+
+      2. Update useAuth hook — store token in both localStorage AND a cookie:
+         - On login: document.cookie = `auth_token=${token}; path=/; samesite=strict`
+         - On logout: clear both localStorage and cookie
+         - This lets middleware read the token
+
+      3. Update login page:
+         - Read ?redirect param from URL
+         - After successful login: redirect to ?redirect value OR /dashboard
+
+      RULES:
+      - Middleware is lightweight — only checks cookie existence, not JWT validity
+      - JWT validation happens on backend (api-gateway)
+      - Named exports
+      - Don't break existing auth flow
+
+      COMMIT: feat(buyer): add route protection middleware
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [frontend-build-fix]
+
+  - id: empty-states
+    title: "Add empty and error states for all pages"
+    scope: frontend
+    type: feat
+    prompt: |
+      Task: Ensure all pages show proper empty states and error states instead of blank screens.
+
+      CONTEXT:
+      - Buyer app: apps/buyer/
+      - Pages: dashboard, graph, search, flashcards, missions, feed, messages, badges, velocity, notifications
+      - Dashboard blocks already have BlockErrorBoundary
+      - shadcn components available
+
+      WHAT TO BUILD:
+
+      1. apps/buyer/components/ui/EmptyState.tsx:
+         - Reusable component: icon + title + description + optional CTA button
+         - Dark Knowledge styling: muted text, centered, subtle icon
+         - Props: { icon: LucideIcon, title: string, description: string, action?: { label, href } }
+
+      2. Add empty states to pages that may have no data:
+         - /graph: "Upload documents to build your knowledge graph" + upload icon
+         - /flashcards: "All caught up! No cards due." + checkmark icon
+         - /search: "Search your knowledge base" + search icon (before first query)
+         - /feed: "No activity yet. Complete a mission to get started." + activity icon
+         - /messages: "No conversations yet." + message icon
+         - /notifications: "No notifications." + bell icon
+         - Dashboard blocks: each block handles its own empty state
+
+      3. Check each page: if the API returns empty array/null, show EmptyState instead of blank
+
+      RULES:
+      - One reusable EmptyState component, not per-page copies
+      - Consistent style across all empty states
+      - Named exports
+      - Do NOT modify pages that already handle empty states correctly
+
+      COMMIT: feat(buyer): add consistent empty states for all pages
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: [frontend-build-fix]
+
+  - id: docker-compose-verify
+    title: "Verify Docker Compose starts all services"
+    scope: infra
+    type: fix
+    prompt: |
+      Task: Verify and fix docker-compose.dev.yml so all services start and pass health checks.
+
+      CONTEXT:
+      - docker-compose.dev.yml in project root
+      - Services: identity, course, enrollment, payment, notification, ai, learning, rag (Python)
+                  api-gateway, search (Rust), plus 7 Postgres DBs, Redis
+      - Dockerfiles: deploy/docker/{service}.Dockerfile
+      - Known WSL2 issue: COPY --from=ghcr.io fails → use ADD + tar for uv
+
+      WHAT TO DO:
+
+      1. Run: docker compose -f docker-compose.dev.yml up --build 2>&1 | tail -100
+      2. Check: all services reach "healthy" or "running" state
+      3. Fix any issues:
+         - Dockerfile build errors (missing deps, wrong paths)
+         - Health check failures (wrong port, missing endpoint)
+         - Migration errors (SQL syntax, missing tables)
+         - Dependency ordering (service starts before DB is ready)
+      4. Verify services respond:
+         - curl http://localhost:8001/health (identity)
+         - curl http://localhost:8007/health (learning)
+         - curl http://localhost:8000/health/live (api-gateway)
+      5. Test seed: docker compose -f docker-compose.dev.yml --profile seed up seed
+
+      RULES:
+      - Fix ONLY what's broken
+      - Document any env vars needed in .env.example
+      - Do NOT add new services or change architecture
+
+      COMMIT: fix(deploy): ensure all services start in docker compose
+    test: "docker compose -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/docker-compose.dev.yml config --quiet"
+    depends_on: []
+
+  - id: env-example
+    title: "Create .env.example with demo defaults"
+    scope: infra
+    type: docs
+    prompt: |
+      Task: Create .env.example with all required environment variables and demo-safe defaults.
+
+      CONTEXT:
+      - Project root: /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/
+      - Services need: JWT_SECRET, DATABASE_URLs, REDIS_URL, GEMINI_API_KEY, STRIPE_SECRET_KEY
+      - Docker compose defines many vars inline, but some need external config
+
+      WHAT TO BUILD:
+
+      1. .env.example at project root:
+         ```
+         # KnowledgeOS Demo Environment
+         # Copy to .env: cp .env.example .env
+
+         # ============================================
+         # Required — set these for any environment
+         # ============================================
+         JWT_SECRET=demo-jwt-secret-change-in-production
+
+         # ============================================
+         # Optional — empty = mock mode (safe for demo)
+         # ============================================
+         GEMINI_API_KEY=
+         STRIPE_SECRET_KEY=
+
+         # ============================================
+         # Infrastructure — defaults work with docker-compose
+         # ============================================
+         REDIS_URL=redis://redis:6379
+
+         # Database URLs (set by docker-compose, override here if needed)
+         # IDENTITY_DATABASE_URL=postgresql://identity:identity@identity-db:5432/identity
+         # COURSE_DATABASE_URL=postgresql://course:course@course-db:5432/course
+         # ... etc
+         ```
+
+      2. Create demo.sh at project root:
+         ```bash
+         #!/usr/bin/env bash
+         # Start KnowledgeOS demo
+         set -euo pipefail
+
+         # Copy env if not exists
+         [ -f .env ] || cp .env.example .env
+
+         echo "Starting KnowledgeOS..."
+         docker compose -f docker-compose.dev.yml up -d --build
+
+         echo "Waiting for services..."
+         sleep 30
+
+         echo "Running seed..."
+         docker compose -f docker-compose.dev.yml --profile seed up seed
+
+         echo ""
+         echo "==================================="
+         echo "  KnowledgeOS is ready!"
+         echo "  App: http://localhost:3001"
+         echo "  API: http://localhost:8000"
+         echo "  Demo: demo@acme.com / demo123"
+         echo "==================================="
+         ```
+
+      RULES:
+      - .env.example must NEVER contain real secrets
+      - Comments explain what each var does
+      - demo.sh is executable (chmod +x)
+      - Keep it simple
+
+      COMMIT: docs(deploy): add .env.example and demo.sh startup script
+    test: "test -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/.env.example"
+    depends_on: [docker-compose-verify]

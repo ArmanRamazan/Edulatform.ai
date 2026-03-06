@@ -32,9 +32,21 @@
 
 **Итого: 10 сервисов, 1343 теста, 2 frontend apps.**
 
-## Next — Phase 4: Scale & Enterprise (not started)
+## Current — Phase 5: Demo-Ready Product (in progress)
+
+- AI Mock Provider (работа без Gemini API ключа)
+- Stripe Mock (работа без Stripe ключа)
+- Onboarding Wizard (5 шагов: org → role → pretest → plan → start)
+- Knowledge Graph (React Flow: Concept Map + Mind Map)
+- Real-time (WebSocket нотификации + coach streaming SSE)
+- B2B Seed Data (Acme Engineering, 47 концептов, demo user)
+- Frontend polish + Docker health
+
+Подробнее: [PHASE-5-DEMO.md](../phases/PHASE-5-DEMO.md)
+
+## Planned — Phase 6: Scale & Enterprise
 
 - Multi-region (K8s), ClickHouse analytics
-- WebSocket real-time, OAuth/Social login
+- OAuth/Social login
 - MCP Server, video transcoding
 - Custom ML models
