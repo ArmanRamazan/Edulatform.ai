@@ -131,8 +131,9 @@ EduPlatform — B2B AI-powered платформа адаптивного онб�
 | AI Service | ~21 | — | 207 | quiz/summary generation, Socratic tutor, study-plan, content moderation, **Strategist** (path planning via LLM + RAG concepts + Learning mastery, next concept, adaptive path with remedial/skip, Redis cache 24h), **Designer** (mission generation, recaps), **Coach** (guided sessions), **daily mission**, **agent memory**, **configurable LLM provider per org** (Gemini/self-hosted OpenAI-compatible, data isolation) |
 | Learning Engine | ~55 | 21 | 265 | Quizzes, Flashcards+FSRS, Concepts/Knowledge Graph, Streaks, Leaderboard, Discussions, XP, Badges, Pre-tests, Velocity, Activity Feed, Study Groups, Certificates, **Missions** (daily, streak, completion), **Trust Levels**, **Daily summary** |
 | RAG Service | ~20 | 6 | 115 | Document ingestion (markdown, GitHub), pgvector semantic search, LLM concept extraction (auto-extraction in pipeline), knowledge base management, onboarding templates with stages |
+| MCP Server | 17 tools + 4 resources | — | 42 | MCP protocol server for AI tool integration (Cursor, Claude Desktop), wraps platform APIs via httpx, JWT auth, stdio transport |
 
-**Итого (активные):** ~154 endpoints, ~48 таблиц, ~806 тестов
+**Итого (активные):** ~154 endpoints + 17 MCP tools, ~48 таблиц, ~848 тестов
 
 ### Спящие сервисы (dormant)
 
