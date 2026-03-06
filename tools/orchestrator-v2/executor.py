@@ -68,6 +68,13 @@ def _create_worktree(task_id: str) -> Path:
 def _merge_worktree(task_id: str) -> tuple[bool, str]:
     branch = f"orch/task-{task_id}"
     with _merge_lock:
+        # Stash any uncommitted changes on main before merge
+        stash_result = subprocess.run(
+            ["git", "stash", "--include-untracked"],
+            cwd=str(ROOT), capture_output=True, text=True,
+        )
+        stashed = "No local changes" not in stash_result.stdout
+
         result = subprocess.run(
             ["git", "merge", "--no-ff", "-m", f"merge: task {task_id}", branch],
             cwd=str(ROOT), capture_output=True, text=True,
@@ -77,7 +84,19 @@ def _merge_worktree(task_id: str) -> tuple[bool, str]:
                 ["git", "merge", "--abort"],
                 cwd=str(ROOT), capture_output=True,
             )
+            if stashed:
+                subprocess.run(
+                    ["git", "stash", "pop"],
+                    cwd=str(ROOT), capture_output=True,
+                )
             return False, result.stderr + result.stdout
+
+        # Restore stashed changes after successful merge
+        if stashed:
+            subprocess.run(
+                ["git", "stash", "pop"],
+                cwd=str(ROOT), capture_output=True,
+            )
     return True, ""
 
 
@@ -272,6 +291,16 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
             if attempt < MAX_RETRIES:
                 log("Retrying after merge conflict...", tid)
                 _cleanup_worktree(tid)
+                try:
+                    wt_path = _create_worktree(tid)
+                except RuntimeError as e:
+                    log(f"X Worktree recreation failed: {e}", tid)
+                    task.status = "failed"
+                    task.error = str(e)
+                    task.finished_at = _now()
+                    with _state_lock:
+                        state.save()
+                    return
                 prompt += f"\n\nPREVIOUS ATTEMPT HAD MERGE CONFLICT:\n{err[:500]}\nFix conflicts."
                 continue
             task.status = "failed"
