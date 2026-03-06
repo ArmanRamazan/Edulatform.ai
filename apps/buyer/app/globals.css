@@ -134,3 +134,78 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ─── React Flow — Dark Knowledge overrides ──────────────────────────────────
+   These complement the CSS imported in KnowledgeGraphImpl.tsx and lock
+   every React Flow surface to the dark-first design token palette.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+.react-flow {
+  /* Core background is handled inline via style prop; variables are fallbacks */
+  --xy-background-color: #0a0a0f;
+  --xy-edge-label-background-color: #14141f;
+  --xy-selection-background-color: rgba(124, 92, 252, 0.08);
+  --xy-selection-border-color: #7c5cfc;
+  --xy-node-border-radius: 50%;
+  --xy-handle-background-color: #7c5cfc;
+  --xy-handle-border-color: #0a0a0f;
+}
+
+/* Strip the default node card appearance — ConceptNode handles its own styling */
+.react-flow__node {
+  background: transparent;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  box-shadow: none;
+}
+
+/* Edge paths inherit stroke from the edge style prop */
+.react-flow__edge-path {
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Animated edges glow slightly on the violet channel */
+.react-flow__edge.animated path {
+  filter: drop-shadow(0 0 3px rgba(124, 92, 252, 0.35));
+}
+
+/* ── Controls (zoom / fit) — dark background, violet hover ── */
+.react-flow__controls {
+  background: #14141f;
+  border: 1px solid #1e1e2e;
+  border-radius: 8px;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.react-flow__controls-button {
+  background: #14141f;
+  border: none;
+  border-bottom: 1px solid #1e1e2e;
+  color: #6b6b80;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.react-flow__controls-button:last-child {
+  border-bottom: none;
+}
+
+.react-flow__controls-button:hover {
+  background: #7c5cfc;
+  color: #ffffff;
+}
+
+.react-flow__controls-button svg {
+  fill: currentColor;
+}
+
+/* ── MiniMap — hide default border, our inline style handles it ── */
+.react-flow__minimap {
+  box-shadow: none;
+}
+
+.react-flow__minimap-svg {
+  border-radius: 6px;
+}
