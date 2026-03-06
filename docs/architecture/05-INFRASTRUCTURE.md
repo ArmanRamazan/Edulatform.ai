@@ -214,6 +214,21 @@ Reverse proxy routing to Python services based on URL prefix. JWT verification, 
 | `CORS_MAX_AGE` | `3600` | CORS preflight cache max age in seconds |
 | `RUST_LOG` | `info` | Tracing env filter |
 
+### Embedding Orchestrator (Rust) — NEW
+
+Parallel embedding API caller with semaphore-based concurrency control. Accepts text chunks, calls embedding API (Gemini/OpenAI) in parallel via tokio, returns embeddings. Retry on failure with exponential backoff. Partial failures reported per-index.
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `EMBEDDING_PORT` | `8009` | HTTP listen port |
+| `EMBEDDING_API_URL` | — (required) | Embedding API endpoint (Gemini/OpenAI) |
+| `EMBEDDING_API_KEY` | — (required) | API key for embedding provider |
+| `EMBEDDING_MODEL` | `text-embedding-004` | Model name for embedding requests |
+| `MAX_CONCURRENT_REQUESTS` | `50` | Semaphore limit for parallel API calls |
+| `BATCH_SIZE` | `100` | Sub-batch size for chunking large requests |
+| `REQUEST_TIMEOUT_SECS` | `30` | Per-request timeout in seconds |
+| `RUST_LOG` | `info` | Tracing env filter |
+
 ### Payment-specific
 
 | Variable | Default | Описание |

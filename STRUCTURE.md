@@ -37,6 +37,7 @@ eduplatform/
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Axum :8080, JWT auth, rate limiting, reverse proxy, CORS, Dockerfile (multi-stage)
 │       ├── search/                #   Axum :8010, tantivy full-text search, BM25 scoring, org-scoped indexing
+│       ├── embedding-orchestrator/#   Axum :8009, parallel embedding API calls, semaphore-based concurrency, batch processing
 │       ├── video-processor/       #   Upload, transcode, stream
 │       └── payment-engine/        #   Транзакции, подписки, payouts
 │
