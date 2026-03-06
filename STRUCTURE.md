@@ -46,6 +46,7 @@ eduplatform/
 │   │   ├── components/ui/         #     shadcn/ui components (Dark Knowledge theme)
 │   │   ├── components/layout/     #     Sidebar, TopBar, CommandPalette
 │   │   ├── components/dashboard/  #     Dashboard grid + 7 endpoint-driven blocks
+│   │   ├── components/graph/     #     Concept Hub: ConceptHeader, InternalSources, Missions, TeamMastery, Discussions, RelatedGraph
 │   │   └── components/search/    #     Smart Search: SearchView, Internal/External results, RouteIndicator
 │   └── seller/                    #   Дашборд преподавателя (Client-side)
 │

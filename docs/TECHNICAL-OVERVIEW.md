@@ -204,7 +204,7 @@ docker compose -f docker-compose.prod.yml up -d
 | /dashboard | Mission Dashboard — 7 endpoint-driven blocks | ✅ Built (Sprint 21) |
 | /org/select | Organization Selector | ✅ Built (Sprint 21) |
 | /graph | Knowledge Graph visualization | 🔴 Sprint 22 |
-| /graph/[conceptId] | Concept detail view | 🔴 Sprint 22 |
+| /graph/[conceptId] | Concept Hub — aggregator with sources, missions, team mastery, discussions, related graph | ✅ Built (Sprint 22) |
 | /search | Semantic search | 🔴 Sprint 22 |
 | /missions/[id] | 5-phase Socratic mission session with coach chat | ✅ Built (Sprint 22) |
 | /admin | Team Analytics | 🔴 Sprint 26 |
