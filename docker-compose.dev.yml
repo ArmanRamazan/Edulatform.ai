@@ -320,6 +320,21 @@ services:
       MAX_CONCURRENT_REQUESTS: 50
       RUST_LOG: embedding_orchestrator=debug
 
+  mcp:
+    build:
+      context: .
+      dockerfile: deploy/docker/mcp.Dockerfile
+    environment:
+      MCP_API_BASE_URL: http://api-gateway:8080
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+    volumes:
+      - ./services/py/mcp/app:/app/app
+    depends_on:
+      redis:
+        condition: service_healthy
+    profiles:
+      - mcp
+
   seed:
     build:
       context: .

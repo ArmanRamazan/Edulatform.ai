@@ -41,6 +41,7 @@ docker compose -f docker-compose.dev.yml up
 | api-gateway | Rust multi-stage build | 8080 |
 | embedding-orchestrator | Rust multi-stage build | 8009 |
 | ws-gateway | Rust multi-stage build | 8011 |
+| mcp (profile) | Dockerfile build | — (stdio) |
 | seed (profile) | Dockerfile build | — |
 
 ### Prod (`docker-compose.prod.yml`)
@@ -115,7 +116,8 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "<port>"]
 - `deploy/docker/payment.Dockerfile`
 - `deploy/docker/notification.Dockerfile`
 - `deploy/docker/learning.Dockerfile`
-- `deploy/docker/rag.Dockerfile` (NEW)
+- `deploy/docker/rag.Dockerfile`
+- `deploy/docker/mcp.Dockerfile` (NEW — stdio-based, no common lib, no EXPOSE)
 - `deploy/docker/seed.Dockerfile`
 - `deploy/docker/locust.Dockerfile`
 
@@ -246,6 +248,18 @@ Real-time WebSocket gateway for Coach chat and notifications. JWT validated on c
 | `HEARTBEAT_TIMEOUT_SECS` | `10` | Pong timeout before disconnect |
 | `MAX_MESSAGE_SIZE` | `65536` | Maximum incoming message size in bytes (64KB) |
 | `RUST_LOG` | `info` | Tracing env filter |
+
+### MCP Server (NEW)
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `MCP_API_BASE_URL` | `http://localhost:8080` | API Gateway URL for backend calls |
+| `MCP_AUTH_TOKEN` | `""` (empty) | JWT token for authenticating API calls |
+
+MCP server runs in stdio mode (no HTTP port). Started via `--profile mcp`:
+```bash
+docker compose -f docker-compose.dev.yml --profile mcp up mcp
+```
 
 ### Payment-specific
 
