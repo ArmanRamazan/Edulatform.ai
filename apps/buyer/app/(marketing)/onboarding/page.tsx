@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, MotionConfig } from "framer-motion";
 import {
   AlertCircle,
   ArrowRight,
@@ -12,9 +12,12 @@ import {
   CheckCircle2,
   ChevronLeft,
   Clock,
+  Flame,
   GraduationCap,
   Layers,
+  Rocket,
   RotateCcw,
+  Sprout,
   Star,
   Trophy,
   Users,
@@ -44,7 +47,8 @@ interface StepIndicatorProps {
 }
 
 function StepIndicator({ current }: StepIndicatorProps) {
-  const progress = ((current - 1) / (TOTAL_STEPS - 1)) * 100;
+  // Start at 20% on step 1 — immediately signals forward motion to the user
+  const progress = (current / TOTAL_STEPS) * 100;
 
   return (
     <div
@@ -66,7 +70,7 @@ function StepIndicator({ current }: StepIndicatorProps) {
               <div className="flex shrink-0 flex-col items-center gap-2">
                 <motion.div
                   className={cn(
-                    "flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors duration-300",
+                    "flex h-9 w-9 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors duration-300",
                     isCompleted && "border-success bg-success text-white",
                     isActive &&
                       "border-primary bg-primary text-white",
@@ -104,16 +108,16 @@ function StepIndicator({ current }: StepIndicatorProps) {
 
               {/* Connector line */}
               {i < TOTAL_STEPS - 1 && (
-                <div className="relative mx-1 h-px flex-1">
-                  <div className="absolute inset-0 bg-border" />
+                <div className="relative mx-2 h-0.5 flex-1 rounded-full">
+                  <div className="absolute inset-0 rounded-full bg-border" />
                   <motion.div
-                    className="absolute inset-y-0 left-0"
+                    className="absolute inset-y-0 left-0 rounded-full"
                     style={{
                       background: "linear-gradient(90deg, #7c5cfc, #a78bfa)",
-                      boxShadow: "0 0 4px rgba(124,92,252,0.5)",
+                      boxShadow: "0 0 6px rgba(124,92,252,0.6)",
                     }}
                     animate={{ width: s < current ? "100%" : "0%" }}
-                    transition={{ duration: 0.4, ease: "easeInOut" }}
+                    transition={{ duration: 0.45, ease: "easeOut" }}
                   />
                 </div>
               )}
@@ -190,7 +194,7 @@ function StepWelcome({ onNext }: StepWelcomeProps) {
           <Zap className="h-3 w-3" />
           KnowledgeOS
         </div>
-        <h1 className="mb-3 text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+        <h1 className="mb-3 text-3xl font-semibold tracking-tight text-foreground sm:text-4xl">
           Добро пожаловать в базу знаний
         </h1>
         <p className="mb-10 text-muted-foreground">
@@ -292,7 +296,7 @@ function StepRole({ value, onChange, onNext, onBack }: StepRoleProps) {
         animate={{ opacity: 1, y: 0 }}
         className="mb-8 text-center"
       >
-        <h2 className="mb-2 text-2xl font-bold tracking-tight text-foreground">
+        <h2 id="role-heading" className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
           Кто вы в команде?
         </h2>
         <p className="text-muted-foreground">
@@ -301,6 +305,8 @@ function StepRole({ value, onChange, onNext, onBack }: StepRoleProps) {
       </motion.div>
 
       <motion.div
+        role="radiogroup"
+        aria-labelledby="role-heading"
         className="mx-auto grid max-w-lg gap-3 sm:grid-cols-2"
         initial="hidden"
         animate="visible"
@@ -313,18 +319,29 @@ function StepRole({ value, onChange, onNext, onBack }: StepRoleProps) {
           <motion.button
             key={id}
             type="button"
+            role="radio"
+            aria-checked={value === id}
             onClick={() => onChange(id)}
             variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.97 }}
             className={cn(
-              "rounded-xl border-2 p-5 text-left outline-none transition-all duration-200",
+              "relative rounded-xl border-2 p-5 text-left outline-none transition-all duration-200",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               value === id
                 ? "border-primary bg-primary/10 shadow-[0_0_20px_rgba(124,92,252,0.2)]"
                 : "border-border bg-card hover:border-primary/50",
             )}
           >
+            {value === id && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute right-3 top-3"
+              >
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+              </motion.div>
+            )}
             <div
               className={cn(
                 "mb-3 inline-flex rounded-lg p-2 transition-colors",
@@ -339,19 +356,30 @@ function StepRole({ value, onChange, onNext, onBack }: StepRoleProps) {
         ))}
       </motion.div>
 
-      <div className="mt-8 flex items-center justify-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1">
-          <ChevronLeft className="h-4 w-4" />
-          Назад
-        </Button>
-        <Button
-          onClick={onNext}
-          disabled={!value}
-          className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
-        >
-          Продолжить
-          <ArrowRight className="h-4 w-4" />
-        </Button>
+      <div className="mt-8 flex flex-col items-center gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={onBack} className="gap-1">
+            <ChevronLeft className="h-4 w-4" />
+            Назад
+          </Button>
+          <Button
+            onClick={onNext}
+            disabled={!value}
+            className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
+          >
+            Продолжить
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+        {value && (
+          <p className="text-xs text-muted-foreground">
+            Нажмите{" "}
+            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd>{" "}
+            для продолжения ·{" "}
+            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd>{" "}
+            для возврата
+          </p>
+        )}
       </div>
     </div>
   );
@@ -391,6 +419,8 @@ function CoursePickCard({ course, selected, onSelect }: CoursePickCardProps) {
   return (
     <motion.button
       type="button"
+      role="radio"
+      aria-checked={selected}
       onClick={onSelect}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
@@ -471,7 +501,7 @@ function StepPickCourse({ token, onNext, onBack }: StepPickCourseProps) {
         animate={{ opacity: 1, y: 0 }}
         className="mb-6 text-center"
       >
-        <h2 className="mb-2 text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
           Выберите первый курс
         </h2>
         <p className="text-sm text-muted-foreground">Все курсы ниже — бесплатные</p>
@@ -526,6 +556,8 @@ function StepPickCourse({ token, onNext, onBack }: StepPickCourseProps) {
         </motion.div>
       ) : (
         <motion.div
+          role="radiogroup"
+          aria-label="Выберите курс"
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
           initial="hidden"
           animate="visible"
@@ -564,13 +596,15 @@ function StepPickCourse({ token, onNext, onBack }: StepPickCourseProps) {
             {!enroll.isPending && <ArrowRight className="h-4 w-4" />}
           </Button>
         </div>
-        <button
+        <Button
           type="button"
+          variant="ghost"
+          size="sm"
           onClick={() => onNext(null)}
-          className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+          className="h-auto text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
         >
           Пропустить этот шаг
-        </button>
+        </Button>
       </div>
     </div>
   );
@@ -581,11 +615,11 @@ function StepPickCourse({ token, onNext, onBack }: StepPickCourseProps) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const GOALS = [
-  { id: "casual", label: "1–2\u00a0ч / нед", desc: "Лёгкий темп", emoji: "🌱" },
-  { id: "regular", label: "3–5\u00a0ч / нед", desc: "Стабильный рост", emoji: "🔥" },
-  { id: "intense", label: "5–10\u00a0ч / нед", desc: "Быстрый прогресс", emoji: "⚡" },
-  { id: "deep", label: "10+\u00a0ч / нед", desc: "Полное погружение", emoji: "🚀" },
-] as const;
+  { id: "casual",  label: "1–2\u00a0ч / нед",  desc: "Лёгкий темп",        icon: Sprout, iconClass: "text-[#34d399]", bgClass: "bg-[#34d399]/10" },
+  { id: "regular", label: "3–5\u00a0ч / нед",  desc: "Стабильный рост",    icon: Flame,  iconClass: "text-[#fbbf24]", bgClass: "bg-[#fbbf24]/10" },
+  { id: "intense", label: "5–10\u00a0ч / нед", desc: "Быстрый прогресс",   icon: Zap,    iconClass: "text-primary",   bgClass: "bg-primary/10"   },
+  { id: "deep",    label: "10+\u00a0ч / нед",  desc: "Полное погружение",  icon: Rocket, iconClass: "text-[#38bdf8]", bgClass: "bg-[#38bdf8]/10" },
+];
 
 interface StepGoalProps {
   value: string | null;
@@ -611,7 +645,7 @@ function StepGoal({ value, onChange, onNext, onBack }: StepGoalProps) {
         animate={{ opacity: 1, y: 0 }}
         className="mb-8 text-center"
       >
-        <h2 className="mb-2 text-2xl font-bold tracking-tight text-foreground">
+        <h2 id="goal-heading" className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
           Сколько времени готовы уделять?
         </h2>
         <p className="text-muted-foreground">
@@ -620,6 +654,8 @@ function StepGoal({ value, onChange, onNext, onBack }: StepGoalProps) {
       </motion.div>
 
       <motion.div
+        role="radiogroup"
+        aria-labelledby="goal-heading"
         className="mx-auto grid max-w-lg gap-3 sm:grid-cols-2"
         initial="hidden"
         animate="visible"
@@ -628,44 +664,66 @@ function StepGoal({ value, onChange, onNext, onBack }: StepGoalProps) {
           hidden: {},
         }}
       >
-        {GOALS.map(({ id, label, desc, emoji }) => (
+        {GOALS.map(({ id, label, desc, icon: GoalIcon, iconClass, bgClass }) => (
           <motion.button
             key={id}
             type="button"
+            role="radio"
+            aria-checked={value === id}
             onClick={() => onChange(id)}
             variants={{ hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1 } }}
             whileHover={{ y: -2 }}
             whileTap={{ scale: 0.97 }}
             className={cn(
-              "rounded-xl border-2 p-5 text-left outline-none transition-all duration-200",
+              "relative rounded-xl border-2 p-5 text-left outline-none transition-all duration-200",
               "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
               value === id
                 ? "border-primary bg-primary/10 shadow-[0_0_20px_rgba(124,92,252,0.2)]"
                 : "border-border bg-card hover:border-primary/40",
             )}
           >
-            <span className="mb-2 block text-2xl" role="img" aria-hidden="true">
-              {emoji}
-            </span>
+            {value === id && (
+              <motion.div
+                initial={{ opacity: 0, scale: 0.5 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="absolute right-3 top-3"
+              >
+                <CheckCircle2 className="h-4 w-4 text-primary" />
+              </motion.div>
+            )}
+            <div className={cn("mb-3 inline-flex rounded-lg p-2", bgClass)}>
+              <GoalIcon className={cn("h-5 w-5", iconClass)} />
+            </div>
             <p className="font-semibold text-foreground">{label}</p>
             <p className="mt-0.5 text-xs text-muted-foreground">{desc}</p>
           </motion.button>
         ))}
       </motion.div>
 
-      <div className="mt-8 flex items-center justify-center gap-3">
-        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1">
-          <ChevronLeft className="h-4 w-4" />
-          Назад
-        </Button>
-        <Button
-          onClick={onNext}
-          disabled={!value}
-          className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
-        >
-          Завершить настройку
-          <ArrowRight className="h-4 w-4" />
-        </Button>
+      <div className="mt-8 flex flex-col items-center gap-3">
+        <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={onBack} className="gap-1">
+            <ChevronLeft className="h-4 w-4" />
+            Назад
+          </Button>
+          <Button
+            onClick={onNext}
+            disabled={!value}
+            className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
+          >
+            Завершить настройку
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+        {value && (
+          <p className="text-xs text-muted-foreground">
+            Нажмите{" "}
+            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd>{" "}
+            для продолжения ·{" "}
+            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd>{" "}
+            для возврата
+          </p>
+        )}
       </div>
     </div>
   );
@@ -712,14 +770,24 @@ function StepDone({ enrolledCourseId }: StepDoneProps) {
 
   return (
     <div className="text-center">
-      <motion.div
-        initial={{ opacity: 0, scale: 0.5 }}
-        animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: "spring", stiffness: 200, damping: 14 }}
-        className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/30"
-      >
-        <CheckCircle2 className="h-8 w-8 text-success" />
-      </motion.div>
+      {/* Success icon — spring scale-in + pulsing outer ring */}
+      <div className="relative mx-auto mb-6 flex h-16 w-16 items-center justify-center">
+        {/* Outer pulse ring */}
+        <motion.div
+          className="absolute inset-0 rounded-full ring-2 ring-success/40"
+          animate={{ scale: [1, 1.35, 1], opacity: [0.6, 0, 0.6] }}
+          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+        />
+        {/* Icon container */}
+        <motion.div
+          initial={{ opacity: 0, scale: 0.4 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ type: "spring", stiffness: 220, damping: 14, delay: 0.05 }}
+          className="flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/30"
+        >
+          <CheckCircle2 className="h-8 w-8 text-success" />
+        </motion.div>
+      </div>
 
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -727,7 +795,7 @@ function StepDone({ enrolledCourseId }: StepDoneProps) {
         transition={{ delay: 0.2 }}
         className="mb-8"
       >
-        <h2 className="mb-2 text-2xl font-bold tracking-tight text-foreground">
+        <h2 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
           Всё готово!
         </h2>
         <p className="text-muted-foreground">Начните исследовать базу знаний прямо сейчас</p>
@@ -746,10 +814,12 @@ function StepDone({ enrolledCourseId }: StepDoneProps) {
           <motion.div
             key={href}
             variants={{ hidden: { opacity: 0, x: -12 }, visible: { opacity: 1, x: 0 } }}
+            whileHover={{ y: -2, transition: { duration: 0.15 } }}
+            whileTap={{ scale: 0.98 }}
           >
             <Link
               href={href}
-              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/50 hover:bg-muted/30"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/50 hover:bg-muted/30 hover:shadow-[0_4px_16px_rgba(124,92,252,0.12)]"
             >
               <div className={cn("shrink-0 rounded-lg p-2", bgClass)}>
                 <Icon className={cn("h-5 w-5", iconClass)} />
@@ -769,13 +839,16 @@ function StepDone({ enrolledCourseId }: StepDoneProps) {
         animate={{ opacity: 1 }}
         transition={{ delay: 0.7 }}
       >
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 rounded-lg bg-primary px-8 py-3 font-medium text-white shadow-[0_0_20px_rgba(124,92,252,0.35)] transition-all hover:bg-primary/90 hover:shadow-[0_0_28px_rgba(124,92,252,0.5)]"
+        <Button
+          asChild
+          size="lg"
+          className="gap-2 shadow-[0_0_20px_rgba(124,92,252,0.35)] hover:shadow-[0_0_28px_rgba(124,92,252,0.5)]"
         >
-          Перейти в дашборд
-          <ArrowRight className="h-4 w-4" />
-        </Link>
+          <Link href="/">
+            Перейти в дашборд
+            <ArrowRight className="h-4 w-4" />
+          </Link>
+        </Button>
       </motion.div>
     </div>
   );
@@ -793,7 +866,7 @@ function OnboardingPageSkeleton() {
         {[1, 2, 3, 4, 5].map((i, idx) => (
           <React.Fragment key={i}>
             <div className="flex shrink-0 flex-col items-center gap-2">
-              <Skeleton className="h-8 w-8 rounded-full" />
+              <Skeleton className="h-9 w-9 rounded-full" />
               <Skeleton className="hidden h-2.5 w-14 sm:block" />
             </div>
             {idx < 4 && <Skeleton className="mx-1 h-px flex-1" />}
@@ -844,13 +917,15 @@ const stepVariants = {
 export default function OnboardingPage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
-  const { data: enrollmentsData } = useMyEnrollments(token, { limit: 1, offset: 4 });
+  const { data: enrollmentsData } = useMyEnrollments(token, { limit: 1, offset: 0 });
 
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
   const [enrolledCourseId, setEnrolledCourseId] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
   const [goal, setGoal] = useState<string | null>(null);
+
+  const stepContentRef = useRef<HTMLDivElement>(null);
 
   const goNext = useCallback(() => {
     setDirection(1);
@@ -861,6 +936,14 @@ export default function OnboardingPage() {
     setDirection(-1);
     setStep((s) => Math.max(s - 1, 1));
   }, []);
+
+  // Focus the step content container when step changes for keyboard users
+  useEffect(() => {
+    const raf = requestAnimationFrame(() => {
+      stepContentRef.current?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [step]);
 
   if (loading) return <OnboardingPageSkeleton />;
 
@@ -885,27 +968,46 @@ export default function OnboardingPage() {
   }
 
   return (
+    <MotionConfig reducedMotion="user">
     <>
-      {/* Ambient background glow */}
+      {/* Ambient background glows */}
       <div
         className="pointer-events-none fixed inset-0 -z-10"
         aria-hidden="true"
       >
-        <div className="absolute left-1/2 top-1/3 h-[500px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
+        <div className="absolute left-1/2 top-1/3 h-[600px] w-[800px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/6 blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 h-[300px] w-[400px] rounded-full bg-[#38bdf8]/4 blur-3xl" />
+        <div className="absolute left-1/4 top-3/4 h-[200px] w-[280px] rounded-full bg-[#34d399]/3 blur-3xl" />
       </div>
 
-      <main className="mx-auto min-h-screen max-w-2xl px-4 py-8">
+      <main className="mx-auto min-h-screen max-w-2xl px-4 py-10">
+        {/* Logo mark */}
+        <div className="mb-10 flex items-center justify-center gap-2">
+          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/15 ring-1 ring-primary/20">
+            <BrainCircuit className="h-4 w-4 text-primary" />
+          </div>
+          <span className="text-sm font-semibold tracking-tight text-foreground/70">KnowledgeOS</span>
+        </div>
+
         <StepIndicator current={step} />
+
+        {/* Screen reader step announcement */}
+        <div aria-live="polite" aria-atomic="true" className="sr-only">
+          {STEP_LABELS[step - 1]} — шаг {step} из {TOTAL_STEPS}
+        </div>
 
         <AnimatePresence mode="wait" custom={direction}>
           <motion.div
             key={step}
+            ref={stepContentRef}
+            tabIndex={-1}
             custom={direction}
             variants={stepVariants}
             initial="enter"
             animate="center"
             exit="exit"
             transition={{ duration: 0.22, ease: "easeInOut" }}
+            className="outline-none"
           >
             {step === 1 && <StepWelcome onNext={goNext} />}
 
@@ -943,5 +1045,6 @@ export default function OnboardingPage() {
         </AnimatePresence>
       </main>
     </>
+    </MotionConfig>
   );
 }
