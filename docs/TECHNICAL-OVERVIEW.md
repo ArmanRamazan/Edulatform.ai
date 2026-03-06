@@ -18,12 +18,12 @@ Clean Architecture in every Python service: `routes → services → domain ← 
 | enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations |
 | payment | Python | FastAPI | 8004 | 5436 | 151 | Payments, subscriptions, earnings, coupons, refunds, gifts, org billing |
 | notification | Python | FastAPI | 8005 | 5437 | 136 | Notifications, reminders, direct messaging |
-| ai | Python | FastAPI | 8006 | — | 281 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, unified search, MockLLMProvider fallback |
+| ai | Python | FastAPI | 8006 | — | 291 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, unified search, MockLLMProvider fallback, SSE coach streaming |
 | learning | Python | FastAPI | 8007 | 5438 | 272 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity, study groups, missions, certificates, trust levels |
 | rag | Python | FastAPI | 8008 | 5439 | 173 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter |
 | search | Rust | axum + tantivy | 9000 | — | cargo test | Full-text search index |
 
-**Total: 1357 tests passed, 6 pre-existing failures** (3 enrollment, 3 notification).
+**Total: 1367 tests passed, 6 pre-existing failures** (3 enrollment, 3 notification).
 
 ## Frontend
 

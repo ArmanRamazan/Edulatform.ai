@@ -23,7 +23,7 @@ Monorepo: **Python** (business logic) + **Rust** (performance-critical) + **Type
 
 **Frontend**: buyer (Next.js 15, port 3001) + seller (Next.js 15, port 3002)
 
-**Total: 1357 tests passed** across 10 services.
+**Total: 1367 tests passed** across 10 services.
 
 ## Quick Start
 
