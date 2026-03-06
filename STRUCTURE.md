@@ -1,272 +1,126 @@
 # Monorepo Structure
 
-> Принципы: **YAGNI** — только то, что нужно сейчас. **SRP** — один сервис = один домен. **DIP** — сервисы зависят от контрактов (proto), не друг от друга.
-
----
-
-## Дерево
+> YAGNI — только то, что используется. SRP — один сервис = один домен.
 
 ```
-eduplatform/
+.
+├── apps/
+│   ├── buyer/                    # Next.js 15 — B2B knowledge platform (port 3001)
+│   │   ├── app/
+│   │   │   ├── (app)/            # Authenticated pages (sidebar layout)
+│   │   │   │   ├── dashboard/    # 7-block dashboard
+│   │   │   │   ├── search/       # Smart search (RAG + external)
+│   │   │   │   ├── flashcards/   # FSRS spaced repetition
+│   │   │   │   ├── missions/[id]/ # Coach session
+│   │   │   │   ├── graph/[id]/   # Concept hub
+│   │   │   │   ├── settings/     # Analytics, billing
+│   │   │   │   └── ...
+│   │   │   └── (marketing)/      # Public pages (landing, auth)
+│   │   ├── components/           # 71 components (ui/, layout/, dashboard/, graph/, mission/, search/, admin/)
+│   │   ├── hooks/                # 28 custom hooks (use-auth, use-coach, use-flashcards, ...)
+│   │   └── lib/                  # api.ts (typed API client), utils.ts
+│   │
+│   └── seller/                   # Next.js 15 — Teacher dashboard (port 3002)
+│       ├── app/                  # Dashboard, course CRUD
+│       ├── components/
+│       └── lib/
 │
-├── proto/                         # Контракты между сервисами (source of truth)
-│   ├── identity/v1/               #   Auth, users, roles
-│   ├── course/v1/                 #   Courses, lessons, materials
-│   ├── enrollment/v1/             #   Enrollment, progress
-│   └── events/v1/                 #   Domain events (async)
-│
-├── libs/                          # Shared код (минимум, только DRY)
+├── services/
 │   ├── py/
-│   │   ├── common/                #   Config, errors, security, database, health, logging, rate_limit, sentry
-│   │   └── db/                    #   DB connection, migration helpers
+│   │   ├── identity/             # Port 8001, DB 5433 — Auth, profiles, orgs
+│   │   │   ├── app/
+│   │   │   │   ├── routes/       # auth, profiles, follows, referrals, organizations, admin
+│   │   │   │   ├── services/
+│   │   │   │   ├── domain/
+│   │   │   │   └── repositories/
+│   │   │   ├── migrations/       # 010 migrations
+│   │   │   └── tests/            # 156 tests
+│   │   │
+│   │   ├── course/               # Port 8002, DB 5434 — Courses, modules, lessons
+│   │   │   ├── app/routes/       # courses, modules, lessons, reviews, bundles, promotions, wishlist, categories, analytics
+│   │   │   ├── migrations/       # 010 migrations
+│   │   │   └── tests/            # 129 tests
+│   │   │
+│   │   ├── enrollment/           # Port 8003, DB 5435 — Enrollments, progress
+│   │   │   ├── app/routes/       # enrollments, progress, recommendations
+│   │   │   ├── migrations/       # 004 migrations
+│   │   │   └── tests/            # 39 tests
+│   │   │
+│   │   ├── payment/              # Port 8004, DB 5436 — Payments, subscriptions
+│   │   │   ├── app/routes/       # payments, coupons, earnings, refunds, gifts, invoices, org_subscriptions
+│   │   │   ├── migrations/       # 008 migrations
+│   │   │   └── tests/            # 151 tests
+│   │   │
+│   │   ├── notification/         # Port 8005, DB 5437 — Notifications, messaging
+│   │   │   ├── app/routes/       # notifications, messaging
+│   │   │   ├── migrations/       # 007 migrations
+│   │   │   └── tests/            # 136 tests
+│   │   │
+│   │   ├── ai/                   # Port 8006 — LLM orchestrator
+│   │   │   ├── app/routes/       # ai, coach, orchestrator, search, llm_config
+│   │   │   └── tests/            # 257 tests
+│   │   │
+│   │   ├── learning/             # Port 8007, DB 5438 — Learning engine
+│   │   │   ├── app/routes/       # quizzes, flashcards, concepts, missions, streaks, leaderboard, discussions, study_groups, xp, badges, certificates, pretests, trust_levels, velocity, activity, daily
+│   │   │   ├── migrations/       # 015 migrations
+│   │   │   └── tests/            # 272 tests
+│   │   │
+│   │   └── rag/                  # Port 8008, DB 5439 — RAG & knowledge base
+│   │       ├── app/routes/       # ingestion, search, knowledge_base, concepts, github
+│   │       ├── migrations/       # 002 migrations
+│   │       └── tests/            # 173 tests
+│   │
 │   └── rs/
-│       ├── common/src/            #   Error types, config, tracing setup
-│       ├── proto-gen/src/         #   Сгенерированный код из proto/
-│       └── rag-chunker/           #   pyo3 chunker: text/code/markdown splitting + metadata for RAG (maturin build)
+│       ├── api-gateway/          # Port 8000 — Rust reverse proxy (axum, JWT)
+│       │   ├── src/              # main.rs, config.rs, routes/
+│       │   └── tests/
+│       │
+│       └── search/               # Port 9000 — Tantivy full-text search
+│           └── src/              # main.rs, config.rs, routes.rs, index.rs
 │
-├── services/                      # Deployable сервисы
-│   ├── py/                        # Python сервисы (бизнес-логика)
-│   │   ├── identity/              #   Auth, JWT refresh tokens, roles, admin, email verification, forgot password
-│   │   ├── course/                #   CRUD курсов, поиск, модули, уроки, отзывы, категории, фильтрация, XSS sanitization, bundles, wishlist
-│   │   ├── enrollment/            #   Запись на курс, прогресс, lesson completion, auto-completion, recommendations
-│   │   ├── payment/               #   Mock-оплата, Stripe SDK adapter, подписки, teacher earnings, payouts, coupons, invoice PDF, refunds, org subscriptions (seat-based B2B)
-│   │   ├── notification/          #   In-app уведомления, email (lifecycle events), direct messaging
-│   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache, configurable LLM provider per org (Gemini/self-hosted)
-│   │   ├── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed, certificates, missions, trust levels
-│   │   ├── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base, GitHub adapter
-│   │   └── mcp/                   #   MCP server for AI tool integration (Cursor, Claude Desktop), 17 tools + 4 resources
-│   └── rs/                        # Rust сервисы (performance-critical)
-│       ├── api-gateway/           #   Axum :8080, JWT auth, rate limiting, reverse proxy, CORS, Dockerfile (multi-stage)
-│       ├── search/                #   Axum :8010, tantivy full-text search, BM25 scoring, org-scoped indexing
-│       ├── embedding-orchestrator/#   Axum :8009, parallel embedding API calls, semaphore-based concurrency, batch processing
-│       ├── ws-gateway/            #   Axum :8011, WebSocket gateway for real-time messaging (Coach chat, notifications)
-│       ├── video-processor/       #   Upload, transcode, stream
-│       └── payment-engine/        #   Транзакции, подписки, payouts
+├── libs/
+│   ├── py/
+│   │   └── common/              # Shared Python: errors, security (JWT), database (asyncpg), config, logging
+│   └── rs/
+│       └── rag-chunker/         # PyO3 FFI: markdown-aware chunking
 │
-├── apps/                          # Frontend приложения (Next.js)
-│   ├── buyer/                     #   B2B knowledge app (SSR/SSG/Client)
-│   │   ├── app/(marketing)/       #     Public: landing, login, register (no sidebar)
-│   │   ├── app/(app)/             #     Authenticated: dashboard, courses, flashcards, org (sidebar)
-│   │   ├── components/ui/         #     shadcn/ui components (Dark Knowledge theme)
-│   │   ├── components/layout/     #     Sidebar, TopBar, CommandPalette
-│   │   ├── components/dashboard/  #     Dashboard grid + 7 endpoint-driven blocks
-│   │   ├── components/graph/     #     Concept Hub: ConceptHeader, InternalSources, Missions, TeamMastery, Discussions, RelatedGraph
-│   │   └── components/search/    #     Smart Search: SearchView, Internal/External results, RouteIndicator
-│   └── seller/                    #   Дашборд преподавателя (Client-side)
+├── deploy/
+│   ├── docker/                  # Dockerfiles per service, Grafana dashboards, Prometheus config
+│   ├── scripts/                 # backup-all-dbs.sh, restore-db.sh, list-backups.sh
+│   └── staging/                 # .env.staging.example
 │
-├── packages/                      # Shared frontend пакеты
-│   ├── ui/                        #   UI Kit: Radix + Tailwind компоненты
-│   ├── api-client/                #   Typed API client (codegen из OpenAPI)
-│   └── shared/                    #   Validators, formatters, constants
+├── tools/
+│   ├── orchestrator/            # Autonomous Claude Code task executor
+│   ├── seed/                    # Database seed script
+│   ├── locust/                  # Load testing (locustfile.py)
+│   └── demo/                    # Demo script
 │
-├── deploy/                        # Infrastructure
-│   ├── docker/                    #   Dockerfiles per service
-│   ├── scripts/                   #   Ops scripts (backup, restore, list-backups)
-│   ├── staging/                   #   Staging env config (.env.staging.example)
-│   └── k8s/base/                  #   K8s manifests
+├── docs/
+│   ├── architecture/            # 01-06: system, API, DB, auth, infra, libs
+│   ├── phases/                  # PHASE-0 through PHASE-4
+│   ├── goals/                   # Product vision, architecture principles, domains
+│   └── ...
 │
-├── tools/                         # Dev utilities
-│   ├── seed/                      #   Database seeding scripts
-│   ├── locust/                    #   Load test scenarios
-│   └── orchestrator/              #   AI orchestrator: autonomous Claude Code executor
-│       ├── orchestrator.py        #     YAML task parser, task executor, state persistence
-│       ├── run.sh                 #     Launcher script (./run.sh tasks/sprint-21.yaml)
-│       ├── run-b2b.sh             #     B2B build pipeline (4-phase parallel execution)
-│       ├── tasks/                 #     Sprint YAML files (sprint-21 through sprint-27, done/, on_hold/)
-│       └── pyproject.toml         #     uv workspace member (pure stdlib, no deps)
-│
-└── docs/                          # Документация (goals, phases, ADR)
+├── docker-compose.dev.yml       # Development (hot reload)
+├── docker-compose.prod.yml      # Production (monitoring, 4 workers)
+├── docker-compose.staging.yml   # Staging (pre-built images)
+├── pyproject.toml               # uv workspace root
+├── pnpm-workspace.yaml          # pnpm workspace
+└── turbo.json                   # Turborepo config
 ```
 
----
-
-## Почему именно так
-
-### Что есть и почему
-
-| Решение | Принцип | Обоснование |
-|---------|---------|-------------|
-| `proto/` на верхнем уровне | **DIP** | Контракты — это абстракции. Сервисы зависят от них, не друг от друга |
-| `services/py/` и `services/rs/` | **SRP** | Четкое разделение по языку и runtime. Разные build pipelines |
-| `libs/` минимальный | **YAGNI** | Только config, logging, db utils. Абстракции появятся когда будет 2+ потребителя |
-| Каждый Python сервис: `routes → services → domain → repositories` | **SRP + DIP** | Clean Architecture слои. Domain не знает про HTTP и БД |
-| `events/v1/` в proto | **OCP** | Новые события добавляются без изменения существующих сервисов |
-| `deploy/` отдельно от сервисов | **SRP** | Инфраструктура не смешивается с бизнес-логикой |
-| `apps/` для фронтенда, `packages/` для shared | **SRP** | Студент и преподаватель — разные приложения с разными требованиями к рендерингу и аудиториями |
-| `packages/ui/` отдельно | **DRY + OCP** | Единый UI Kit для всех приложений. Новый app использует готовые компоненты |
-| `packages/api-client/` с codegen | **DIP** | Фронтенд зависит от сгенерированного контракта, не от деталей реализации API |
-
-### Чего НЕТ и почему (YAGNI)
-
-| Чего нет | Когда появится | Триггер для создания |
-|----------|---------------|---------------------|
-| `services/py/moderation/` | Phase 2 | Когда будет > 1000 курсов и нужна модерация контента |
-| `services/py/analytics-api/` | Phase 2 | Когда teacher dashboard потребует аналитику |
-| `services/rs/feed-builder/` | Phase 2 | Когда рекомендации станут приоритетом |
-| `workers/` директория | Когда вырастет | Пока background jobs живут внутри сервисов. Выделим когда нужна независимая масштабируемость |
-| `libs/py/testing/` | Когда будет boilerplate | Пока fixtures живут в `tests/` каждого сервиса. Выделим когда увидим дублирование |
-| `terraform/` | Phase 2 | Пока Docker Compose хватает. IaC когда будет multi-env |
-| ~~`apps/seller/`~~ | ~~Phase 1.7~~ | ✅ Dashboard, course CRUD, AI outline/lesson generation |
-
----
-
-## Внутренняя структура Python сервиса
+## Service Architecture (Python)
 
 ```
-services/py/{service}/
+services/py/{name}/
 ├── app/
-│   ├── routes/          # HTTP handlers (presentation layer)
-│   │   └──              #   Принимает request → вызывает service → возвращает response
-│   │                    #   Здесь: валидация input, HTTP коды, сериализация
-│   │
-│   ├── services/        # Use cases (application layer)
-│   │   └──              #   Оркестрация бизнес-логики
-│   │                    #   Вызывает domain + repositories + external services
-│   │                    #   Транзакции и координация
-│   │
-│   ├── domain/          # Бизнес-правила (domain layer)
-│   │   └──              #   Entities, Value Objects, Domain Events
-│   │                    #   НЕ зависит от фреймворков, БД, HTTP
-│   │                    #   Чистый Python, максимум dataclasses
-│   │
-│   ├── repositories/    # Доступ к данным (infrastructure layer)
-│   │   └──              #   Абстрактный интерфейс + SQL реализация
-│   │                    #   Маппинг domain entities ↔ DB rows
-│   │
-│   └── adapters/        # Внешние сервисы (infrastructure layer, optional)
-│       └──              #   HTTP клиенты к другим сервисам (fire-and-forget)
-│                        #   Пример: WsPublisher для WebSocket gateway
-│
-├── tests/               # Тесты рядом с кодом
-│   └──                  #   Unit: мокают repositories
-│                        #   Integration: реальная БД (testcontainers)
-│
-└── migrations/          # SQL миграции (alembic или raw SQL)
+│   ├── routes/          # HTTP handlers (parse request → call service → format response)
+│   ├── services/        # Use cases (orchestrate domain + repositories)
+│   ├── domain/          # Entities, Value Objects (pure Python, no framework imports)
+│   └── repositories/    # ABC interface + SQL implementation
+├── migrations/          # Idempotent SQL (forward-only)
+├── tests/               # Unit (AsyncMock) + integration
+└── pyproject.toml       # Virtual workspace member
 ```
 
-**Правило зависимостей** (Dependency Rule):
-```
-routes → services → domain ← repositories
-                      ↑
-              Ничто не зависит от routes
-              Domain не зависит ни от чего внешнего
-```
-
----
-
-## Внутренняя структура Rust сервиса
-
-```
-services/rs/{service}/
-├── src/
-│   ├── main.rs          # Точка входа, wiring
-│   ├── config.rs        # Конфигурация из env
-│   ├── routes/          # HTTP/gRPC handlers
-│   ├── services/        # Бизнес-логика
-│   └── adapters/        # Внешние зависимости (DB, Redis, S3)
-├── tests/               # Integration tests
-├── Cargo.toml
-└── Dockerfile
-```
-
----
-
-## Внутренняя структура Frontend приложения
-
-```
-apps/{app}/
-├── app/                         # Next.js App Router
-│   ├── (marketing)/             #   Public pages (landing, auth) — no sidebar
-│   │   ├── login/
-│   │   ├── register/
-│   │   └── page.tsx             #     Landing page
-│   ├── (app)/                   #   Authenticated app — sidebar + TopBar layout
-│   │   ├── layout.tsx           #     Sidebar + TopBar wrapper
-│   │   ├── dashboard/           #     Endpoint-driven dashboard blocks
-│   │   ├── courses/             #     Course pages (catalog, detail, lesson)
-│   │   ├── flashcards/
-│   │   ├── badges/
-│   │   ├── org/                 #     Organization selector
-│   │   ├── settings/analytics/  #     Team analytics (admin: overview, heatmap, bottlenecks)
-│   │   ├── settings/billing/    #     Org subscription billing (Stripe integration)
-│   │   └── ...
-│   ├── layout.tsx               #   Root layout (fonts, providers)
-│   └── globals.css              #   Dark Knowledge theme CSS variables
-├── components/                  #   Компоненты специфичные для этого app
-│   ├── ui/                      #     shadcn/ui components (16: button, card, badge, input, dialog, alert-dialog, etc.)
-│   ├── layout/                  #     Sidebar.tsx, TopBar.tsx, CommandPalette.tsx
-│   ├── dashboard/               #     DashboardGrid.tsx, BlockErrorBoundary.tsx
-│   │   └── blocks/              #     7 dashboard blocks (Greeting, Mission, TrustLevel, etc.)
-│   ├── search/                  #     SearchView.tsx, InternalResultsSection, ExternalResultsSection, RouteIndicator
-│   ├── mission/                 #     MissionSession.tsx, MissionComplete.tsx, PhaseIndicator.tsx (5-phase Socratic session)
-│   ├── admin/analytics/         #     TeamOverview, ConceptCoverage (heatmap), BottleneckReport
-│   ├── admin/billing/           #     BillingPage.tsx, PaymentForm.tsx (Stripe Elements)
-│   └── providers/               #     OrgProvider.tsx, Providers.tsx (QueryClient)
-├── hooks/                       #   Custom React hooks (TanStack Query)
-│   ├── use-auth.ts              #     Login/register/logout (не server state)
-│   ├── use-active-org.ts        #     Active organization from context
-│   ├── use-organizations.ts     #     Organization API hooks
-│   ├── use-search.ts            #     useInternalSearch, useExternalSearch, classifyQuery (AI router)
-│   ├── use-courses.ts           #     useCourseList, useCourse, useCurriculum, useCategories
-│   ├── use-enrollments.ts       #     useMyEnrollments, useEnroll (mutation)
-│   ├── use-concepts.ts          #     useCourseGraph, useCourseMastery, useCreateConcept, useDeleteConcept
-│   ├── use-flashcards.ts        #     useDueCards, useDueCount, useReviewCard, useCreateFlashcard
-│   ├── use-gamification.ts      #     useMyXp, useMyXpHistory, useMyBadges, useMyStreak
-│   ├── use-coach.ts             #     useStartCoachSession, useSendCoachMessage, useEndCoachSession
-│   ├── use-analytics.ts         #     useTeamOverview, useConceptCoverage, useBottlenecks (org admin analytics)
-│   ├── use-billing.ts           #     useOrgSubscription, useCreateOrgSubscription, useCancelOrgSubscription
-│   └── ...
-├── lib/                         #   API вызовы, утилиты, конфиг
-│   └── api.ts                   #     Typed API namespaces
-├── public/                      #   Статика (favicon, robots.txt)
-├── next.config.ts
-├── tailwind.config.ts
-├── tsconfig.json
-└── package.json
-```
-
-**Правила:**
-- `app/` — только page.tsx, layout.tsx, loading.tsx, error.tsx. Без бизнес-логики
-- Route groups: `(marketing)` для публичных страниц (no sidebar), `(app)` для authenticated + sidebar
-- `components/ui/` — shadcn/ui компоненты (Dark Knowledge theme)
-- `components/` — UI специфичный для приложения. Общее — в `packages/ui/`
-- Dashboard blocks pattern: каждый блок = один API вызов, независимый error boundary (`BlockErrorBoundary`)
-- `hooks/` — data fetching, form logic, local state. Не дублировать между apps — выносить в `packages/shared/`
-- `lib/` — обертки над `packages/api-client/`, конфиг, auth helpers
-- Server Components по умолчанию. `"use client"` только когда нужен interactivity
-
-## Shared UI Kit (`packages/ui/`)
-
-```
-packages/ui/
-├── components/
-│   ├── button.tsx         # Каждый компонент — один файл
-│   ├── input.tsx          # Экспорт через index.ts
-│   ├── modal.tsx
-│   ├── video-player.tsx
-│   └── ...
-├── tokens/
-│   ├── colors.ts          # Design tokens как JS объекты
-│   ├── spacing.ts
-│   └── typography.ts
-├── index.ts               # Public API пакета
-├── tailwind.config.ts     # Shared Tailwind preset
-├── tsconfig.json
-└── package.json
-```
-
-**Правила:**
-- Каждый компонент — самодостаточный, без внешних зависимостей кроме Radix и Tailwind
-- Props типизированы, дефолты указаны, forwardRef где нужен DOM доступ
-- Не содержит бизнес-логику. Только UI: рендер, стили, accessibility, анимации
-
----
-
-## Принципы расширения
-
-1. **Новый сервис** — создай директорию в `services/py/` или `services/rs/`, добавь proto контракт
-2. **Новый event** — определи в `proto/events/v1/`, сгенерируй код, подпишись в нужном сервисе
-3. **Shared код** — сначала скопируй. Если дублируется в 3+ местах — вынеси в `libs/`
-4. **Новый worker** — пока живет внутри сервиса. Выделяй когда нужна независимая масштабируемость
-5. **Новый frontend app** — создай директорию в `apps/`, переиспользуй `packages/ui/` и `packages/api-client/`
-6. **Новый UI компонент** — если используется в 1 app → в `apps/{app}/components/`. Если в 2+ → в `packages/ui/`
+Dependency rule: `routes → services → domain ← repositories`
