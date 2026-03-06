@@ -18,7 +18,9 @@ from agent_runner import (
     run_git,
 )
 from config import (
+    DESIGN_REVIEW_AGENTS,
     DISPATCH_INTERVAL,
+    FRONTEND_SCOPES,
     MAX_RETRIES,
     ROOT,
     SCOPE_AGENT_MAP,
@@ -122,6 +124,28 @@ def _resolve_agent(scope: str) -> str:
     return agent
 
 
+def _is_frontend_scope(scope: str) -> bool:
+    base_scope = scope.split(":")[0]
+    return base_scope in FRONTEND_SCOPES
+
+
+def _build_design_review_prompt(task: Task) -> str:
+    return (
+        f"You are reviewing frontend code just written for task: {task.title}\n\n"
+        f"Original requirement: {task.prompt[:1000]}\n\n"
+        "Review the code in this worktree and IMPROVE it:\n"
+        "- Fix any design system violations (colors, spacing, typography)\n"
+        "- Add missing states (loading skeleton, empty, error, partial)\n"
+        "- Add micro-interactions (hover, press, mount animations via Framer Motion)\n"
+        "- Ensure keyboard accessibility and focus management\n"
+        "- Apply Dark Knowledge theme: dark-first, violet accent #7c5cfc, Inter font\n"
+        "- Follow Linear/Vercel/Stripe quality standard\n\n"
+        "Make direct edits to the files. Do NOT create new files unless absolutely needed.\n"
+        "Do NOT rewrite from scratch — refine what exists.\n"
+        "Run `cd apps/buyer && pnpm build` to verify your changes compile."
+    )
+
+
 def _build_implement_prompt(task: Task, design_context: str) -> str:
     parts = [task.prompt]
     if design_context:
@@ -216,11 +240,21 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
                 state.save()
             break
 
-        # Commit in worktree
-        commit_code, commit_out = _commit_in_worktree(task, wt_path)
-        if commit_code == 0:
-            last = commit_out.strip().splitlines()[-1] if commit_out.strip() else "ok"
-            log(f"V Committed: {last}", tid)
+        # --- Design review pass for frontend tasks ---
+        if _is_frontend_scope(task.scope) and agent_name not in DESIGN_REVIEW_AGENTS:
+            review_prompt = _build_design_review_prompt(task)
+            for designer in DESIGN_REVIEW_AGENTS:
+                if is_shutdown():
+                    break
+                log(f"Design review: {designer}...", tid)
+                d_exit, d_output = run_agent(designer, review_prompt, cwd=wt_path, task_id=tid)
+                if d_exit != 0:
+                    log(f"  ! {designer} exited {d_exit} (non-fatal)", tid)
+                else:
+                    log(f"  V {designer} done", tid)
+
+        # Commit any uncommitted changes (agent may have already committed)
+        _commit_in_worktree(task, wt_path)
 
         # Merge back
         log("Merging to main...", tid)
