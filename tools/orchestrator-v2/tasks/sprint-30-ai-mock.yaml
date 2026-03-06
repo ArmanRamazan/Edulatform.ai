@@ -1,0 +1,112 @@
+phase: "sprint-30"
+description: "AI Mock Provider — fallback LLM для работы без Gemini API ключа"
+
+tasks:
+  - id: mock-llm-provider
+    title: "MockLLMProvider implementation"
+    scope: ai
+    type: feat
+    prompt: |
+      Task: Add MockLLMProvider to the AI service as a fallback when GEMINI_API_KEY is not set.
+
+      CONTEXT:
+      - AI service: services/py/ai/ (port 8006, FastAPI, 257 tests)
+      - LLM abstraction: app/services/llm_provider.py — has ABC `LLMProvider` with `complete(prompt, system) -> (text, tokens_in, tokens_out)`
+      - Concrete implementations: `GeminiProvider`, `SelfHostedProvider`
+      - Resolver: app/services/llm_resolver.py — `LLMResolver` picks provider based on org config
+      - Config: app/config.py — Settings with gemini_api_key field
+
+      WHAT TO BUILD (TDD — write tests FIRST):
+
+      1. In app/services/llm_provider.py — add MockLLMProvider(LLMProvider):
+         - `complete()` method:
+           a) Detect request type from prompt keywords:
+              - "mission" or "blueprint" → return mock mission blueprint JSON
+              - "coach" or "session" or "socratic" → return mock coach response
+              - "quiz" or "question" → return mock quiz questions JSON
+              - "summary" or "summarize" → return mock summary text
+              - "search" or "route" or "classify" → return mock search routing
+              - "moderate" or "safety" → return '{"safe": true}'
+              - default → return generic helpful response
+           b) Add asyncio.sleep(0.5-1.5 random) to simulate latency
+           c) Return (response_text, random(200,800), random(100,500))
+
+      2. Mock data bank — add to the class or a separate _MOCK_DATA dict:
+         - 3 mission blueprints for Python/Rust/TypeScript concepts
+         - Each blueprint is valid JSON with: concept_name, difficulty, phases (recap, reading, questions, code_case, wrap_up)
+         - 5 coach response templates (encouraging, questioning, explaining, correcting, wrapping up)
+         - 5 quiz questions (multiple choice, with correct_answer field)
+         - 2 summary templates
+         - Make responses realistic — they should look like real AI output
+
+      3. In app/services/llm_resolver.py — modify resolver:
+         - In the method that creates/returns a provider:
+           If settings.gemini_api_key is empty/None → return MockLLMProvider()
+           Add log: logger.info("mock_llm_active", reason="no API key configured")
+         - Do NOT change the interface or break existing tests
+
+      4. Tests in tests/test_mock_llm.py:
+         - test_mock_provider_returns_mission_blueprint
+         - test_mock_provider_returns_coach_response
+         - test_mock_provider_returns_quiz
+         - test_mock_provider_returns_summary
+         - test_mock_provider_returns_search_routing
+         - test_mock_provider_simulates_latency (check complete() takes > 0.3s)
+         - test_resolver_returns_mock_when_no_api_key
+
+      RULES:
+      - TDD mandatory: failing tests first, then implement
+      - Do NOT modify existing tests
+      - Do NOT change the LLMProvider ABC interface
+      - All mock responses must be valid JSON where JSON is expected
+      - Use random.choice() to vary responses between calls
+
+      COMMIT: feat(ai): add MockLLMProvider for demo mode without API key
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: []
+
+  - id: mock-coach-streaming
+    title: "SSE endpoint for coach streaming"
+    scope: ai
+    type: feat
+    prompt: |
+      Task: Add Server-Sent Events endpoint for coach message streaming.
+
+      CONTEXT:
+      - AI service: services/py/ai/ (FastAPI)
+      - Coach routes: app/routes/coach_routes.py — existing POST /coach/chat/{session_id}
+      - Coach service: app/services/coach_service.py — manages coach sessions
+      - MockLLMProvider is now available (from previous task)
+      - FastAPI supports StreamingResponse with media_type="text/event-stream"
+
+      WHAT TO BUILD (TDD):
+
+      1. New route in app/routes/coach_routes.py:
+         GET /coach/stream/{session_id}
+         - Auth required (JWT)
+         - Returns StreamingResponse with media_type="text/event-stream"
+         - Each event: `data: {"token": "word", "done": false}\n\n`
+         - Final event: `data: {"token": "", "done": true, "full_text": "complete response"}\n\n`
+         - Headers: Cache-Control: no-cache, Connection: keep-alive
+
+      2. In coach service — add stream_response method:
+         - Gets the coach response text (from LLM or mock)
+         - Splits into words
+         - Yields each word as SSE event with 30-50ms delay between words
+         - After all words: yields done event with full text
+
+      3. Tests:
+         - test_coach_stream_returns_sse_content_type
+         - test_coach_stream_sends_tokens
+         - test_coach_stream_sends_done_event
+         - test_coach_stream_requires_auth
+
+      RULES:
+      - TDD mandatory
+      - Use async generator for streaming
+      - Keep existing POST endpoint unchanged
+      - SSE format must be valid (data: prefix, double newline)
+
+      COMMIT: feat(ai): add SSE streaming endpoint for coach responses
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: [mock-llm-provider]
