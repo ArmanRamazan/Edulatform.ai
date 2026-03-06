@@ -1,4 +1,23 @@
-from app.services.chunker import chunk_text, chunk_code
+from unittest.mock import patch
+
+from app.services.chunker import (
+    chunk_text,
+    chunk_code,
+    chunk_markdown,
+    count_tokens,
+    RUST_CHUNKER,
+    _py_chunk_text,
+    _py_chunk_code,
+)
+
+
+class TestRustChunkerFlag:
+    def test_flag_is_bool(self):
+        assert isinstance(RUST_CHUNKER, bool)
+
+    def test_python_fallback_functions_exist(self):
+        assert callable(_py_chunk_text)
+        assert callable(_py_chunk_code)
 
 
 class TestChunkText:
@@ -105,3 +124,65 @@ class TestChunkCode:
         chunks = chunk_code(code, chunk_size=5000)
         assert len(chunks) == 1
         assert "def big():" in chunks[0]
+
+    def test_language_param_accepted(self):
+        code = "def foo():\n    pass\n"
+        chunks = chunk_code(code, chunk_size=1500, language="python")
+        assert len(chunks) >= 1
+        assert "def foo():" in chunks[0]
+
+
+class TestChunkMarkdown:
+    def test_returns_list(self):
+        result = chunk_markdown("# Hello\n\nSome text.", chunk_size=1000, overlap=0)
+        assert isinstance(result, list)
+
+    def test_empty_input(self):
+        result = chunk_markdown("", chunk_size=1000, overlap=0)
+        assert result == []
+
+    def test_non_empty_produces_chunks(self):
+        md = "# Title\n\nParagraph one.\n\n## Section\n\nParagraph two."
+        result = chunk_markdown(md, chunk_size=1000, overlap=0)
+        assert len(result) >= 1
+
+
+class TestCountTokens:
+    def test_returns_int(self):
+        result = count_tokens("Hello world")
+        assert isinstance(result, int)
+
+    def test_empty_string(self):
+        assert count_tokens("") == 0
+
+    def test_positive_for_nonempty(self):
+        assert count_tokens("Hello world, this is a test.") > 0
+
+
+class TestOutputFormatConsistency:
+    """Verify chunk functions return consistent formats regardless of backend."""
+
+    def test_chunk_text_returns_list_of_str(self):
+        chunks = chunk_text("Hello world. Another sentence.", chunk_size=100, overlap=0)
+        assert isinstance(chunks, list)
+        for c in chunks:
+            assert isinstance(c, str)
+
+    def test_chunk_code_returns_list_of_str(self):
+        chunks = chunk_code("def foo():\n    pass\n", chunk_size=1500)
+        assert isinstance(chunks, list)
+        for c in chunks:
+            assert isinstance(c, str)
+
+    def test_python_fallback_matches_public_api(self):
+        """Python fallback should produce same structure as public API."""
+        text = "Para one.\n\nPara two.\n\nPara three."
+        public = chunk_text(text, chunk_size=50, overlap=0)
+        fallback = _py_chunk_text(text, chunk_size=50, overlap=0)
+        # Both return list[str] with non-empty content
+        assert isinstance(public, list)
+        assert isinstance(fallback, list)
+        for c in public:
+            assert isinstance(c, str)
+        for c in fallback:
+            assert isinstance(c, str)

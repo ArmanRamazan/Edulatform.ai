@@ -13,6 +13,9 @@ dependencies = [
     "common",
 ]
 
+[project.optional-dependencies]
+rust = ["rag-chunker"]
+
 [dependency-groups]
 dev = [
     "pytest>=8.0",
@@ -27,3 +30,4 @@ asyncio_mode = "auto"
 
 [tool.uv.sources]
 common = { workspace = true }
+rag-chunker = { path = "../../../libs/rs/rag-chunker", editable = true }

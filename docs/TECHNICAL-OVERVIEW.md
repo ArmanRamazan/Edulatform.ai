@@ -81,7 +81,7 @@ Pipeline: `Strategist → Designer → Coach` (sequential, stateful).
 ```
 GitHub repo / Docs / Wiki
     → Ingest (clone, parse, extract) — GitHub adapter для repo ingestion
-    → Chunk (code: function-level, docs: section-level)
+    → Chunk (Rust FFI via rag-chunker, Python fallback; code: function-level, docs: section-level, markdown: heading-aware)
     → Embed (Gemini text-embedding-004 → pgvector)
     → Search (semantic similarity + entity filter)
     → Extract (functions, classes, concepts, dependencies)
@@ -96,7 +96,7 @@ Sprints 23-25. Rust-сервисы для performance-critical paths:
 | Сервис | Порт | Технологии | Назначение | Sprint |
 |--------|------|-----------|------------|--------|
 | API Gateway | 8080 | Axum, tower-http, jsonwebtoken, redis, reqwest, uuid, thiserror, tracing | Единая точка входа, JWT verification, Redis sliding window rate limiting, CORS (env-based origins), structured JSON request logging (X-Request-Id), reverse proxy routing to Python services | 23 (JWT + rate limit + proxy + CORS + logging done) |
-| RAG Chunker | — (FFI) | pyo3, maturin, regex, unicode-segmentation | CPU-bound text/code chunking from Python RAG | Done (11 tests) |
+| RAG Chunker | — (FFI) | pyo3, maturin, regex, unicode-segmentation | CPU-bound text/code/markdown chunking, integrated into RAG service with Python fallback | Done (26 Rust tests) |
 | Search Service | 8010 | Axum, tantivy, tower-http, serde, thiserror | Full-text search (BM25), org-scoped indexing, batch index, snippet highlighting | Done (10 tests) |
 | Embedding Orchestrator | 8009 | Axum, tokio, reqwest | Batch parallel embeddings | 25 |
 | WebSocket Gateway | 8011 | Axum, tokio-tungstenite | Real-time Coach chat, notifications | 25 |
@@ -141,10 +141,10 @@ cd services/py/payment     && uv run --package payment pytest tests/ -v      # 1
 cd services/py/notification && uv run --package notification pytest tests/ -v # 136 tests (+3 failing)
 cd services/py/ai          && uv run --package ai pytest tests/ -v           # 257 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 272 tests
-cd services/py/rag         && uv run --package rag pytest tests/ -v          # 161 tests
+cd services/py/rag         && uv run --package rag pytest tests/ -v          # 173 tests
 ```
 
-**Итого (Python):** 1331 passed, 6 failing по 8 сервисам.
+**Итого (Python):** 1343 passed, 6 failing по 8 сервисам.
 
 **Rust:**
 ```bash
