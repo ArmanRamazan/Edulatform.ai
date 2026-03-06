@@ -150,7 +150,7 @@ cd services/py/rag         && uv run --package rag pytest tests/ -v          # 1
 ```bash
 cd services/rs/api-gateway && cargo test && cargo clippy -- -D warnings  # 39 tests
 cd services/rs/search && cargo test && cargo clippy -- -D warnings       # 10 tests
-cd libs/rs/rag-chunker && cargo test && cargo clippy -- -D warnings      # 11 tests
+cd libs/rs/rag-chunker && cargo test && cargo clippy -- -D warnings      # 26 tests
 ```
 
 ## Инфраструктура
