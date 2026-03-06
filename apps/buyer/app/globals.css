@@ -188,6 +188,42 @@
   }
 }
 
+@keyframes confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translateY(0) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(400px) rotate(720deg);
+  }
+}
+
+/* Mission complete card entrance — overshoots slightly then settles */
+@keyframes mission-complete-in {
+  0%   { opacity: 0; transform: translateY(20px) scale(0.96); }
+  65%  { opacity: 1; transform: translateY(-3px) scale(1.005); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+/* Streaming → formatted view fade-in settle */
+@keyframes coach-stream-settle {
+  0%   { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* Ambient glow pulse for the TypingIndicator container */
+@keyframes typing-ambient-glow {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50%       { box-shadow: 0 0 14px 3px rgba(124, 92, 252, 0.07); }
+}
+
+/* Staggered list-item reveal for strengths/gaps */
+@keyframes list-item-in {
+  from { opacity: 0; transform: translateX(-6px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
 /* ─── React Flow — Dark Knowledge overrides ──────────────────────────────────
    These complement the CSS imported in KnowledgeGraphImpl.tsx and lock
    every React Flow surface to the dark-first design token palette.

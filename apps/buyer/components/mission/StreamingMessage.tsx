@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Check, Copy } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface StreamingMessageProps {
@@ -10,17 +11,44 @@ interface StreamingMessageProps {
 }
 
 /**
- * Code block with a language label strip — matches Dark Knowledge aesthetics.
- * Background uses the CSS variable so it stays in sync with the theme token.
+ * Code block with a language label strip and one-click copy button.
+ * Matches Dark Knowledge aesthetics — near-black bg, violet accent on copy confirm.
  */
 function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(() => {
+    void navigator.clipboard.writeText(code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [code]);
+
   return (
     <div className="my-2 overflow-hidden rounded-lg border border-[#ffffff08]">
-      {/* Top bar: language label + subtle separator */}
+      {/* Top bar: language label + copy button */}
       <div className="flex items-center justify-between border-b border-[#ffffff08] bg-[#07070b] px-3 py-1.5">
         <span className="font-mono text-[10px] tracking-widest text-[#6b6b80] uppercase">
           {lang || "code"}
         </span>
+        <button
+          type="button"
+          onClick={handleCopy}
+          aria-label={copied ? "Copied!" : "Copy code"}
+          className={cn(
+            "flex items-center gap-1 rounded px-1.5 py-0.5 font-mono text-[10px] transition-all duration-150",
+            copied
+              ? "text-[#34d399]"
+              : "text-[#6b6b80] hover:bg-[#ffffff08] hover:text-[#a0a0b0]",
+          )}
+        >
+          {copied ? (
+            <Check className="size-2.5" aria-hidden="true" />
+          ) : (
+            <Copy className="size-2.5" aria-hidden="true" />
+          )}
+          {copied ? "Copied" : "Copy"}
+        </button>
       </div>
       <pre className="overflow-x-auto bg-[#07070b] p-4 font-mono text-xs leading-relaxed text-[#e2e2e8]">
         <code>{code}</code>
@@ -90,8 +118,14 @@ export function StreamingMessage({ text, isStreaming, className }: StreamingMess
           />
         </p>
       ) : (
-        // Complete: full code-block rendering with JetBrains Mono for code
-        <div className="space-y-2">{renderCompleteText(text)}</div>
+        // Complete: full code-block rendering. Gentle fade-in settle so the
+        // transition from raw streaming text to formatted output feels intentional.
+        <div
+          className="space-y-2"
+          style={{ animation: "coach-stream-settle 0.35s ease-out both" }}
+        >
+          {renderCompleteText(text)}
+        </div>
       )}
       <div ref={endRef} />
     </div>
