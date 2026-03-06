@@ -108,7 +108,7 @@ Sprints 23-25. Rust-сервисы для performance-critical paths:
 | RAG Chunker | — (FFI) | pyo3, maturin, regex, unicode-segmentation | CPU-bound text/code/markdown chunking, integrated into RAG service with Python fallback | Done (26 Rust tests) |
 | Search Service | 8010 | Axum, tantivy, tower-http, serde, thiserror | Full-text search (BM25), org-scoped indexing, batch index, snippet highlighting | Done (10 tests) |
 | Embedding Orchestrator | 8009 | Axum, tokio, reqwest | Batch parallel embeddings | 25 |
-| WebSocket Gateway | 8011 | Axum, tokio-tungstenite | Real-time Coach chat, notifications | 25 |
+| WebSocket Gateway | 8011 | Axum (ws), dashmap, jsonwebtoken, tokio, futures, tower-http | Real-time Coach chat, notifications, org broadcast; DashMap concurrent connections, JWT auth on connect, heartbeat/keepalive, internal publish API | Done (30 tests) |
 
 Критерий: p99 < 50ms или > 10K RPS → Rust. IO-bound бизнес-логика → Python.
 
@@ -159,6 +159,7 @@ cd services/py/rag         && uv run --package rag pytest tests/ -v          # 1
 ```bash
 cd services/rs/api-gateway && cargo test && cargo clippy -- -D warnings  # 39 tests
 cd services/rs/search && cargo test && cargo clippy -- -D warnings       # 10 tests
+cd services/rs/ws-gateway && cargo test && cargo clippy -- -D warnings   # 30 tests
 cd libs/rs/rag-chunker && cargo test && cargo clippy -- -D warnings      # 26 tests
 ```
 

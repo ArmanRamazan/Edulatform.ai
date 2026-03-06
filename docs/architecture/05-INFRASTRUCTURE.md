@@ -229,6 +229,20 @@ Parallel embedding API caller with semaphore-based concurrency control. Accepts 
 | `REQUEST_TIMEOUT_SECS` | `30` | Per-request timeout in seconds |
 | `RUST_LOG` | `info` | Tracing env filter |
 
+### WebSocket Gateway (Rust)
+
+Real-time WebSocket gateway for Coach chat and notifications. JWT validated on connect (query param). DashMap for lock-free concurrent connection tracking. Heartbeat ping every 30s, disconnect on no pong within 10s. Max message size 64KB. Internal publish API for Python services to push messages.
+
+| Variable | Default | Описание |
+|----------|---------|----------|
+| `WS_PORT` | `8011` | WebSocket listen port |
+| `JWT_SECRET` | — (required) | Shared JWT secret |
+| `MAX_CONNECTIONS` | `10000` | Maximum concurrent WebSocket connections |
+| `HEARTBEAT_INTERVAL_SECS` | `30` | Server ping interval in seconds |
+| `HEARTBEAT_TIMEOUT_SECS` | `10` | Pong timeout before disconnect |
+| `MAX_MESSAGE_SIZE` | `65536` | Maximum incoming message size in bytes (64KB) |
+| `RUST_LOG` | `info` | Tracing env filter |
+
 ### Payment-specific
 
 | Variable | Default | Описание |
