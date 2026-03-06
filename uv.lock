@@ -1467,13 +1467,27 @@ version = "0.1.0"
 source = { editable = "tools/seed" }
 dependencies = [
     { name = "asyncpg" },
+    { name = "bcrypt" },
     { name = "faker" },
+]
+
+[package.dev-dependencies]
+dev = [
+    { name = "pytest" },
+    { name = "pytest-asyncio" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "asyncpg", specifier = ">=0.30" },
+    { name = "bcrypt", specifier = ">=4.0" },
     { name = "faker", specifier = ">=33" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pytest-asyncio", specifier = ">=0.25" },
 ]
 
 [[package]]
