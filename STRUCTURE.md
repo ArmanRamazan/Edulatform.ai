@@ -33,7 +33,8 @@ eduplatform/
 │   │   ├── notification/          #   In-app уведомления, email (lifecycle events), direct messaging
 │   │   ├── ai/                    #   Quiz generation, summary generation (Gemini Flash), Redis cache, configurable LLM provider per org (Gemini/self-hosted)
 │   │   ├── learning/              #   Quiz persistence, flashcards (FSRS), knowledge graph, streaks, leaderboard, XP, badges, discussions, activity feed, certificates, missions, trust levels
-│   │   └── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base, GitHub adapter
+│   │   ├── rag/                   #   Document ingestion, pgvector semantic search, LLM concept extraction, knowledge base, GitHub adapter
+│   │   └── mcp/                   #   MCP server for AI tool integration (Cursor, Claude Desktop), 17 tools + 4 resources
 │   └── rs/                        # Rust сервисы (performance-critical)
 │       ├── api-gateway/           #   Axum :8080, JWT auth, rate limiting, reverse proxy, CORS, Dockerfile (multi-stage)
 │       ├── search/                #   Axum :8010, tantivy full-text search, BM25 scoring, org-scoped indexing

@@ -18,7 +18,7 @@
 proto/               — protobuf контракты (source of truth для межсервисного API)
 libs/py/             — shared Python: config, logging, errors, db utils
 libs/rs/             — shared Rust: common types, proto codegen, rag-chunker (pyo3 FFI)
-services/py/         — Python сервисы: identity, course, enrollment, payment, notification, ai, learning, rag
+services/py/         — Python сервисы: identity, course, enrollment, payment, notification, ai, learning, rag, mcp
 services/rs/         — Rust сервисы: api-gateway, search, embedding-orchestrator, video-processor, payment-engine
 apps/                — Frontend: buyer (Next.js SSR/SSG), seller (Next.js dashboard)
 packages/            — Shared frontend: ui/ (UI Kit), api-client/ (codegen), shared/ (utils)
@@ -398,6 +398,7 @@ cd services/py/notification && uv run --package notification pytest tests/ -v
 cd services/py/ai          && uv run --package ai pytest tests/ -v
 cd services/py/learning    && uv run --package learning pytest tests/ -v
 cd services/py/rag         && uv run --package rag pytest tests/ -v
+cd services/py/mcp         && uv run --package mcp-server pytest tests/ -v
 cd services/rs/api-gateway && cargo test && cargo clippy -- -D warnings
 cd services/rs/ws-gateway && cargo test && cargo clippy -- -D warnings
 cd services/rs/embedding-orchestrator && cargo test && cargo clippy -- -D warnings

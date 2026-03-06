@@ -63,6 +63,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | AI | 8006 | — (Redis) | Tri-Agent System, LLM routing | ✅ Active |
 | Learning | 8007 | 5438 | Quizzes, FSRS, knowledge graph, missions | ✅ Active |
 | RAG | 8008 | 5439 | Document ingestion, semantic search, concept extraction, KB management | ✅ Active |
+| MCP Server | — (stdio) | — | MCP protocol server for AI tool integration (Cursor, Claude Desktop) | ✅ Active |
 
 ### Rust Performance Layer
 
@@ -151,9 +152,10 @@ cd services/py/notification && uv run --package notification pytest tests/ -v # 
 cd services/py/ai          && uv run --package ai pytest tests/ -v           # 267 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 272 tests
 cd services/py/rag         && uv run --package rag pytest tests/ -v          # 180 tests
+cd services/py/mcp         && uv run --package mcp-server pytest tests/ -v  # 42 tests
 ```
 
-**Итого (Python):** 1360 passed, 6 failing по 8 сервисам.
+**Итого (Python):** 1402 passed, 6 failing по 9 сервисам.
 
 **Rust:**
 ```bash
@@ -240,7 +242,7 @@ docker compose -f docker-compose.prod.yml up -d
 | **Sprint 22** | Knowledge Platform UI | 4 | 🔴 Следующий |
 | **Sprint 23-25** | Rust Performance Layer | 15 | 🔴 Planned |
 | **Sprint 26** | B2B Admin | — | 🔴 Planned |
-| **Sprint 27** | MCP Server | — | 🔴 Planned |
+| **Sprint 27** | MCP Server | — | ✅ Done (17 tools, 4 resources, 42 tests) |
 
 **Итого:** 30 задач B2B MVP + 15 задач Rust Performance Layer + B2B Admin + MCP.
 
