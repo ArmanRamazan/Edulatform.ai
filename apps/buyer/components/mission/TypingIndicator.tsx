@@ -1,29 +1,35 @@
 "use client";
 
+/**
+ * Animated typing indicator shown while coach is generating a response.
+ * Three violet dots with a staggered bounce + glow at peak opacity.
+ * Keyframes live in globals.css (coach-typing-dot, coach-indicator-in).
+ */
 export function TypingIndicator() {
   return (
-    <div className="flex items-center gap-1.5 px-3 py-2.5">
+    <div
+      role="status"
+      aria-label="Coach is thinking"
+      className="flex items-center gap-[5px] px-3 py-2.5"
+      style={{ animation: "coach-indicator-in 0.2s ease-out both" }}
+    >
+      {/* Screen-reader-only label so assistive tech announces the loading state */}
+      <span className="sr-only">Coach is thinking…</span>
+
       {[0, 1, 2].map((i) => (
         <div
           key={i}
           className="size-1.5 rounded-full bg-primary"
           style={{
-            animation: `coach-typing-dot 1.2s ease-in-out ${i * 0.18}s infinite`,
+            animationName: "coach-typing-dot",
+            animationDuration: "1.3s",
+            animationTimingFunction: "ease-in-out",
+            animationDelay: `${i * 0.16}s`,
+            animationIterationCount: "infinite",
+            animationFillMode: "both",
           }}
         />
       ))}
-      <style>{`
-        @keyframes coach-typing-dot {
-          0%, 60%, 100% {
-            opacity: 0.3;
-            transform: translateY(0);
-          }
-          30% {
-            opacity: 1;
-            transform: translateY(-3px);
-          }
-        }
-      `}</style>
     </div>
   );
 }
