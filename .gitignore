@@ -158,6 +158,11 @@ celerybeat.pid
 
 # Orchestrator state
 tools/orchestrator/.state/
+tools/orchestrator/.pid
+tools/orchestrator-v2/.state/
+tools/orchestrator-v2/.logs/
+tools/orchestrator-v2/.pid
+tools/orchestrator-v2/.stop
 
 # Database backups
 deploy/backups/
