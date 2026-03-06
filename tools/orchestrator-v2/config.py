@@ -44,14 +44,28 @@ QUOTA_PATTERNS = [
 # ---------------------------------------------------------------------------
 
 SCOPE_AGENT_MAP: dict[str, str] = {
-    "backend":  "backend-engineer",
-    "frontend": "frontend-engineer",
-    "core":     "core-engineer",
-    "ai":       "ml-engineer",
-    "ml":       "ml-engineer",
-    "infra":    "devops-engineer",
-    "devops":   "devops-engineer",
+    "backend":     "backend-engineer",
+    "frontend":    "frontend-engineer",
+    "core":        "core-engineer",
+    "ai":          "ml-engineer",
+    "ml":          "ml-engineer",
+    "infra":       "devops-engineer",
+    "devops":      "devops-engineer",
+    "ui":          "ui-designer",
+    "motion":      "motion-designer",
+    "dataviz":     "dataviz-designer",
+    "landing":     "landing-designer",
+    "interaction": "interaction-designer",
 }
+
+# Scopes that trigger a design review pass after implementation
+FRONTEND_SCOPES = {"frontend", "ui", "landing", "dataviz", "motion", "interaction"}
+
+# Design agents applied sequentially to frontend tasks after primary agent
+DESIGN_REVIEW_AGENTS: list[str] = [
+    "ui-designer",
+    "interaction-designer",
+]
 
 # Agents with fixed roles (not scope-driven)
 TECH_LEAD = "tech-lead"
