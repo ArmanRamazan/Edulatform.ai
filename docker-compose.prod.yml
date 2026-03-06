@@ -273,6 +273,20 @@ services:
     stop_grace_period: 30s
     restart: unless-stopped
 
+  mcp:
+    build:
+      context: .
+      dockerfile: deploy/docker/mcp.Dockerfile
+    environment:
+      MCP_API_BASE_URL: http://api-gateway:8080
+      MCP_AUTH_TOKEN: ${MCP_AUTH_TOKEN:-}
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    profiles:
+      - mcp
+    restart: unless-stopped
+
   seed:
     build:
       context: .
