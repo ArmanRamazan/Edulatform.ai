@@ -8,7 +8,7 @@ import structlog
 from app.domain.document import Document
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.embedding_client import EmbeddingClient
-from app.services.chunker import chunk_text, chunk_code
+from app.services.chunker import chunk_text, chunk_code, chunk_markdown, RUST_CHUNKER
 
 if TYPE_CHECKING:
     from app.services.extraction_service import ExtractionService
@@ -16,6 +16,16 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 _CODE_SOURCE_TYPES = frozenset({"github", "code"})
+_MARKDOWN_SOURCE_TYPES = frozenset({"markdown"})
+
+_EXT_TO_LANGUAGE: dict[str, str] = {
+    ".py": "python",
+    ".ts": "typescript",
+    ".tsx": "typescript",
+    ".js": "javascript",
+    ".jsx": "javascript",
+    ".rs": "rust",
+}
 
 
 class IngestionService:
@@ -50,7 +60,12 @@ class IngestionService:
         )
 
         if source_type in _CODE_SOURCE_TYPES:
-            text_chunks = chunk_code(content)
+            ext = "." + source_path.rsplit(".", 1)[-1] if "." in source_path else ""
+            language = _EXT_TO_LANGUAGE.get(ext, "python")
+            text_chunks = chunk_code(content, language=language)
+        elif source_type in _MARKDOWN_SOURCE_TYPES:
+            raw = chunk_markdown(content)
+            text_chunks = [c.text if hasattr(c, "text") else c for c in raw]
         else:
             text_chunks = chunk_text(content)
 
