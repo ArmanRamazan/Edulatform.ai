@@ -38,7 +38,7 @@ AI сервис зависит от `GEMINI_API_KEY`. Без ключа все A
 
 ### Задачи
 
-- [ ] **mock-llm-provider** — Реализовать `MockLLMProvider(LLMProvider)` в `services/py/ai/app/services/llm_provider.py`
+- [x] **mock-llm-provider** — Реализовать `MockLLMProvider(LLMProvider)` в `services/py/ai/app/services/llm_provider.py`
   - Метод `complete()` возвращает реалистичные ответы с задержкой 0.5-1.5с
   - Определяет тип запроса по ключевым словам в prompt (mission/quiz/summary/coach/search/moderation)
   - Для каждого типа — банк из 3-5 шаблонов ответов
@@ -60,7 +60,7 @@ AI сервис зависит от `GEMINI_API_KEY`. Без ключа все A
   - Логирование: `logger.info("Using mock LLM provider (no API key)")`
   - Без изменения продового кода — только добавление fallback
 
-- [ ] **mock-streaming** — SSE endpoint для coach streaming
+- [x] **mock-streaming** — SSE endpoint для coach streaming
   - `GET /ai/coach/stream/{session_id}` — Server-Sent Events
   - Mock режим: отдаёт заготовленный ответ по токенам (30-50ms между словами)
   - Prod режим: проксирует streaming от Gemini (когда ключ есть)
