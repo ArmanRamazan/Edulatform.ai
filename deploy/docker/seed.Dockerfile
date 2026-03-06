@@ -6,7 +6,7 @@ RUN tar -xzf /tmp/uv.tar.gz -C /tmp && mv /tmp/uv-x86_64-unknown-linux-gnu/uv /b
 WORKDIR /app
 
 RUN uv venv /app/.venv \
-    && uv pip install --python /app/.venv asyncpg faker
+    && uv pip install --python /app/.venv asyncpg bcrypt faker
 
 ENV PATH="/app/.venv/bin:$PATH"
 

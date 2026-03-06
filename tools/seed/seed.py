@@ -7,6 +7,7 @@ import uuid
 from datetime import date, datetime, timedelta, timezone
 
 import asyncpg
+import bcrypt
 from faker import Faker
 
 IDENTITY_DB_URL = os.environ["IDENTITY_DB_URL"]
@@ -1187,6 +1188,126 @@ async def seed_learning(
     print("Learning data seeding complete!")
 
 
+# ---------------------------------------------------------------------------
+# Demo B2B organization — fixed UUIDs for predictable cross-script references
+# ---------------------------------------------------------------------------
+
+DEMO_USER_ID = "00000000-0000-4000-a000-000000000001"
+DEMO_ORG_ID = "00000000-0000-4000-b000-000000000001"
+
+_DEMO_MEMBERS = [
+    ("Sarah Kim", "sarah"),
+    ("Mike Johnson", "mike"),
+    ("Priya Patel", "priya"),
+    ("James Wilson", "james"),
+    ("Yuki Tanaka", "yuki"),
+    ("Carlos Rodriguez", "carlos"),
+    ("Emma Davis", "emma"),
+    ("Ali Hassan", "ali"),
+    ("Lisa Chen", "lisa"),
+]
+
+
+def _hash_password(password: str) -> str:
+    """Hash a password with bcrypt (12 rounds). Returns utf-8 string."""
+    return bcrypt.hashpw(password.encode(), bcrypt.gensalt(rounds=12)).decode()
+
+
+async def seed_demo_org(identity_pool: asyncpg.Pool, payment_pool: asyncpg.Pool) -> None:
+    """Seed Acme Engineering demo B2B org with 10 members. Idempotent."""
+    existing = await identity_pool.fetchval(
+        "SELECT id FROM users WHERE id = $1",
+        DEMO_USER_ID,
+    )
+    if existing:
+        print("Demo org already seeded. Skipping.")
+        return
+
+    print("Seeding demo B2B organization (Acme Engineering)...")
+
+    # 1. Demo admin user: Alex Chen / demo@acme.com / demo123
+    await identity_pool.execute(
+        """
+        INSERT INTO users (id, email, password_hash, name, role, is_verified, email_verified)
+        VALUES ($1, $2, $3, $4, 'teacher', true, true)
+        ON CONFLICT DO NOTHING
+        """,
+        DEMO_USER_ID,
+        "demo@acme.com",
+        _hash_password("demo123"),
+        "Alex Chen",
+    )
+
+    # 2. Organization
+    await identity_pool.execute(
+        """
+        INSERT INTO organizations (id, name, slug)
+        VALUES ($1, $2, $3)
+        ON CONFLICT DO NOTHING
+        """,
+        DEMO_ORG_ID,
+        "Acme Engineering",
+        "acme",
+    )
+
+    # 3. Demo user as org admin
+    await identity_pool.execute(
+        """
+        INSERT INTO org_members (organization_id, user_id, role)
+        VALUES ($1, $2, 'admin')
+        ON CONFLICT (organization_id, user_id) DO NOTHING
+        """,
+        DEMO_ORG_ID,
+        DEMO_USER_ID,
+    )
+
+    # 4. Nine team members (students)
+    for name, prefix in _DEMO_MEMBERS:
+        email = f"{prefix}@acme.com"
+        # ON CONFLICT DO UPDATE SET email = EXCLUDED.email guarantees RETURNING always fires
+        member_id = await identity_pool.fetchval(
+            """
+            INSERT INTO users (email, password_hash, name, role, is_verified, email_verified)
+            VALUES ($1, $2, $3, 'student', true, true)
+            ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
+            RETURNING id
+            """,
+            email,
+            _hash_password(f"{prefix}123"),
+            name,
+        )
+        await identity_pool.execute(
+            """
+            INSERT INTO org_members (organization_id, user_id, role)
+            VALUES ($1, $2, 'member')
+            ON CONFLICT (organization_id, user_id) DO NOTHING
+            """,
+            DEMO_ORG_ID,
+            member_id,
+        )
+
+    print("  Created 1 admin (Alex Chen) + 9 members")
+
+    # 5. Enterprise subscription in payment DB
+    now = datetime.now(timezone.utc)
+    await payment_pool.execute(
+        """
+        INSERT INTO org_subscriptions (
+            organization_id, plan_tier, status, current_seats, max_seats, price_cents,
+            current_period_start, current_period_end
+        )
+        VALUES ($1, 'enterprise', 'active', 10, 50, 100000, $2, $3)
+        ON CONFLICT (organization_id) DO NOTHING
+        """,
+        DEMO_ORG_ID,
+        now,
+        now + timedelta(days=30),
+    )
+
+    print("  Created enterprise subscription ($1000/mo, 50 seats)")
+    print("Demo org seeding complete!")
+
+
 async def main() -> None:
     identity_pool = await asyncpg.create_pool(IDENTITY_DB_URL, min_size=2, max_size=5)
     course_pool = await asyncpg.create_pool(COURSE_DB_URL, min_size=2, max_size=5)
@@ -1203,6 +1324,7 @@ async def main() -> None:
             student_rows = await identity_pool.fetch("SELECT id FROM users WHERE role = 'student'")
             student_ids = [str(row["id"]) for row in student_rows]
             await seed_learning(learning_pool, course_pool, enrollment_pool, student_ids)
+            await seed_demo_org(identity_pool, payment_pool)
             return
 
         # Insert admin user before bulk COPY
@@ -1228,6 +1350,8 @@ async def main() -> None:
 
         # Seed learning data
         await seed_learning(learning_pool, course_pool, enrollment_pool, student_ids)
+
+        await seed_demo_org(identity_pool, payment_pool)
 
         print("Seeding complete!")
     finally:
