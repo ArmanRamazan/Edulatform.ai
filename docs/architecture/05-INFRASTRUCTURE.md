@@ -39,6 +39,8 @@ docker compose -f docker-compose.dev.yml up
 | learning | Dockerfile build | 8007 |
 | rag | Dockerfile build | 8008 |
 | api-gateway | Rust multi-stage build | 8080 |
+| embedding-orchestrator | Rust multi-stage build | 8009 |
+| ws-gateway | Rust multi-stage build | 8011 |
 | seed (profile) | Dockerfile build | — |
 
 ### Prod (`docker-compose.prod.yml`)
@@ -183,6 +185,7 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 | `GEMINI_API_KEY` | — (required) | Google Gemini API key для LLM вызовов |
 | `LEARNING_SERVICE_URL` | `http://learning:8007` | URL Learning Service для concept mastery |
 | `RAG_SERVICE_URL` | `http://rag:8008` | URL RAG Service для semantic search (NEW) |
+| `WS_GATEWAY_URL` | `""` (empty) | URL WebSocket Gateway для real-time push; empty = disabled |
 
 ### RAG-specific (NEW)
 
@@ -194,6 +197,7 @@ Endpoint-specific rate limits (Identity, не настраиваемые):
 | `EMBEDDING_MODEL` | `text-embedding-004` | Модель для генерации embeddings |
 | `CHUNK_SIZE` | `500` | Размер chunk в tokens |
 | `CHUNK_OVERLAP` | `50` | Overlap между chunks |
+| `EMBEDDING_SERVICE_URL` | `""` (empty) | URL embedding-orchestrator; empty = direct Gemini API |
 
 ### API Gateway (Rust) — NEW
 
@@ -257,6 +261,7 @@ Real-time WebSocket gateway for Coach chat and notifications. JWT validated on c
 | `RESEND_API_KEY` | `""` (empty) | Resend API key; empty = StubEmailClient (logs only) |
 | `EMAIL_FROM_ADDRESS` | `noreply@eduplatform.ru` | Sender address for outgoing emails |
 | `LEARNING_SERVICE_URL` | `http://learning:8007` | Learning service URL for smart reminders |
+| `WS_GATEWAY_URL` | `http://localhost:8011` | WebSocket gateway URL for real-time notification push |
 
 ### Dev compose values
 

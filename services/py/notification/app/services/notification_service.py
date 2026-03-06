@@ -6,6 +6,7 @@ import structlog
 
 from common.errors import NotFoundError
 from app.adapters.email import EmailClient
+from app.adapters.ws_client import WsPublisher
 from app.domain.notification import (
     EMAIL_SUBJECTS,
     EMAIL_TRIGGERING_TYPES,
@@ -22,9 +23,11 @@ class NotificationService:
         self,
         repo: NotificationRepository,
         email_adapter: EmailClient | None = None,
+        ws_publisher: WsPublisher | None = None,
     ) -> None:
         self._repo = repo
         self._email_adapter = email_adapter
+        self._ws_publisher = ws_publisher
 
     async def create(
         self,
@@ -65,6 +68,18 @@ class NotificationService:
             title=title,
             email_sent=email_sent,
         )
+
+        if self._ws_publisher:
+            await self._ws_publisher.publish_notification(
+                str(user_id),
+                {
+                    "id": str(notification.id),
+                    "notification_type": str(notification.type),
+                    "title": notification.title,
+                    "body": notification.body,
+                },
+            )
+
         return notification
 
     async def list_my(

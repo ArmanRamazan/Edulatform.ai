@@ -5,6 +5,7 @@ from uuid import UUID
 import structlog
 
 from common.errors import AppError, ForbiddenError, NotFoundError
+from app.adapters.ws_client import WsPublisher
 from app.domain.messaging import ConversationPreview, Message
 from app.repositories.conversation_repo import ConversationRepository
 from app.repositories.message_repo import MessageRepository
@@ -19,9 +20,11 @@ class MessagingService:
         self,
         conversation_repo: ConversationRepository,
         message_repo: MessageRepository,
+        ws_publisher: WsPublisher | None = None,
     ) -> None:
         self._conversation_repo = conversation_repo
         self._message_repo = message_repo
+        self._ws_publisher = ws_publisher
 
     async def send_message(
         self, sender_id: UUID, recipient_id: UUID, content: str,
@@ -44,6 +47,18 @@ class MessagingService:
             recipient_id=str(recipient_id),
             conversation_id=str(conversation.id),
         )
+
+        if self._ws_publisher:
+            await self._ws_publisher.publish_notification(
+                str(recipient_id),
+                {
+                    "id": str(message.id),
+                    "notification_type": "direct_message",
+                    "title": "New message",
+                    "body": message.content,
+                },
+            )
+
         return message
 
     async def get_conversations(

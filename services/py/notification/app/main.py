@@ -19,6 +19,7 @@ from app.repositories.notification_repo import NotificationRepository
 from app.repositories.conversation_repo import ConversationRepository
 from app.repositories.message_repo import MessageRepository
 from app.adapters.email import EmailClient, StubEmailClient, ResendEmailClient
+from app.adapters.ws_client import WsPublisher
 from app.services.notification_service import NotificationService
 from app.services.smart_reminder_service import SmartReminderService
 from app.services.messaging_service import MessagingService
@@ -94,13 +95,21 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     else:
         email_client = StubEmailClient()
         logger.info("email_client_initialized", type="stub")
-    _notification_service = NotificationService(repo, email_adapter=email_client)
+    ws_publisher = WsPublisher(
+        http_client=_http_client,
+        ws_gateway_url=app_settings.ws_gateway_url,
+    )
+
+    _notification_service = NotificationService(
+        repo, email_adapter=email_client, ws_publisher=ws_publisher,
+    )
 
     conversation_repo = ConversationRepository(_pool)
     message_repo = MessageRepository(_pool)
     _messaging_service = MessagingService(
         conversation_repo=conversation_repo,
         message_repo=message_repo,
+        ws_publisher=ws_publisher,
     )
 
     _smart_reminder_service = SmartReminderService(
