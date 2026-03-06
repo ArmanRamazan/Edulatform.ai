@@ -11,14 +11,16 @@ import { cn } from "@/lib/utils";
 import { getErrorMessage } from "@/lib/errors";
 import {
   useStartCoachSession,
-  useSendCoachMessage,
   useEndCoachSession,
   useCompleteMissionWithCoach,
   type CoachMessage,
   type CoachPhase,
 } from "@/hooks/use-coach";
+import { useCoachStream } from "@/hooks/use-coach-stream";
 import { PhaseIndicator } from "./PhaseIndicator";
 import { MissionComplete } from "./MissionComplete";
+import { TypingIndicator } from "./TypingIndicator";
+import { StreamingMessage } from "./StreamingMessage";
 import type { Mission, CoachEndResponse, MissionBlueprint } from "@/lib/api";
 
 interface MissionSessionProps {
@@ -32,22 +34,6 @@ function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function TypingIndicator() {
-  return (
-    <div className="flex items-center gap-1 px-3 py-2">
-      {[0, 1, 2].map((i) => (
-        <div
-          key={i}
-          className="size-1.5 rounded-full bg-muted-foreground"
-          style={{
-            animation: `typing-dot 1.2s ease-in-out ${i * 0.2}s infinite`,
-          }}
-        />
-      ))}
-    </div>
-  );
 }
 
 function CodeBlock({ code, language }: { code: string; language?: string }) {
@@ -216,16 +202,13 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const startSession = useStartCoachSession(token);
-  const sendMessage = useSendCoachMessage(token);
   const endSession = useEndCoachSession(token);
   const completeMission = useCompleteMissionWithCoach(token);
 
-  const isTyping = sendMessage.isPending || startSession.isPending;
-
-  // Auto-scroll
+  // Auto-scroll on new committed messages
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, isTyping]);
+  }, [messages]);
 
   // Session timer
   useEffect(() => {
@@ -258,31 +241,43 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
     [phase],
   );
 
+  // Streaming hook — SSE with automatic POST fallback on connection error
+  const coachStream = useCoachStream({
+    sessionId,
+    token,
+    onComplete: useCallback(
+      (text: string, newPhase?: CoachPhase) => {
+        setMessages((prev) => [...prev, { role: "coach", content: text, phase: newPhase }]);
+        if (newPhase) updatePhase(newPhase);
+      },
+      [updatePhase],
+    ),
+    onFallbackError: useCallback((err: Error) => {
+      setMessages((prev) => [
+        ...prev,
+        { role: "coach", content: `Error: ${getErrorMessage(err)}` },
+      ]);
+    }, []),
+  });
+
+  // True when input should be blocked
+  const isBusy =
+    startSession.isPending || coachStream.isPending || coachStream.isStreaming;
+
+  // Show TypingIndicator row (before first token or during initial session start)
+  const showTypingIndicator =
+    startSession.isPending || (coachStream.isPending && !coachStream.isStreaming);
+
+  // Show StreamingMessage row (tokens are actively flowing)
+  const showStreamingMessage = coachStream.isStreaming && coachStream.currentText.length > 0;
+
   function handleSend(text?: string) {
     const msg = (text ?? input).trim();
-    if (!msg || !sessionId || isTyping) return;
+    if (!msg || !sessionId || isBusy) return;
 
     setInput("");
     setMessages((prev) => [...prev, { role: "user", content: msg }]);
-
-    sendMessage.mutate(
-      { sessionId, message: msg },
-      {
-        onSuccess: (data) => {
-          setMessages((prev) => [
-            ...prev,
-            { role: "coach", content: data.reply, phase: data.phase },
-          ]);
-          updatePhase(data.phase);
-        },
-        onError: (err) => {
-          setMessages((prev) => [
-            ...prev,
-            { role: "coach", content: `Error: ${getErrorMessage(err)}` },
-          ]);
-        },
-      },
-    );
+    coachStream.startStream(msg);
   }
 
   function handleEnd() {
@@ -331,9 +326,7 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
             <h2 className="text-sm font-semibold text-card-foreground">
               {mission.blueprint?.concept_name ?? "Mission"}
             </h2>
-            <p className="text-xs text-muted-foreground">
-              {mission.mission_type}
-            </p>
+            <p className="text-xs text-muted-foreground">{mission.mission_type}</p>
           </div>
           <PhaseIndicator currentPhase={phase} completedPhases={completedPhases} />
         </div>
@@ -365,10 +358,14 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
           {/* Messages */}
           <ScrollArea className="flex-1 p-4">
             <div className="space-y-3">
+              {/* Committed messages */}
               {messages.map((msg, i) => (
                 <div
                   key={i}
-                  className={cn("flex gap-2", msg.role === "user" ? "justify-end" : "justify-start")}
+                  className={cn(
+                    "flex gap-2",
+                    msg.role === "user" ? "justify-end" : "justify-start",
+                  )}
                 >
                   {msg.role === "coach" && (
                     <Avatar className="size-7 shrink-0">
@@ -390,7 +387,8 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
                 </div>
               ))}
 
-              {isTyping && (
+              {/* Typing indicator — waiting for first token (or initial session start) */}
+              {showTypingIndicator && (
                 <div className="flex gap-2">
                   <Avatar className="size-7 shrink-0">
                     <AvatarFallback className="bg-primary/20 text-xs text-primary">
@@ -402,6 +400,24 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
                   </div>
                 </div>
               )}
+
+              {/* Streaming message — tokens actively flowing in */}
+              {showStreamingMessage && (
+                <div className="flex gap-2">
+                  <Avatar className="size-7 shrink-0">
+                    <AvatarFallback className="bg-primary/20 text-xs text-primary">
+                      AI
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="max-w-[85%] rounded-lg bg-card px-3 py-2 text-card-foreground">
+                    <StreamingMessage
+                      text={coachStream.currentText}
+                      isStreaming={coachStream.isStreaming}
+                    />
+                  </div>
+                </div>
+              )}
+
               <div ref={messagesEndRef} />
             </div>
           </ScrollArea>
@@ -414,7 +430,7 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
                 variant="ghost"
                 className="shrink-0 text-xs text-muted-foreground"
                 onClick={() => handleSend("I'm stuck, can you give me a hint?")}
-                disabled={isTyping || !sessionId}
+                disabled={isBusy || !sessionId}
               >
                 I&apos;m stuck
               </Button>
@@ -425,13 +441,13 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
                 onKeyDown={handleKeyDown}
                 placeholder="Ask the coach..."
                 rows={1}
-                disabled={isTyping || !sessionId}
+                disabled={isBusy || !sessionId}
                 className="flex-1 resize-none rounded-lg border border-border bg-secondary px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none disabled:opacity-50"
               />
               <Button
                 size="sm"
                 onClick={() => handleSend()}
-                disabled={!input.trim() || isTyping || !sessionId}
+                disabled={!input.trim() || isBusy || !sessionId}
               >
                 Send
               </Button>
@@ -439,21 +455,6 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
           </div>
         </div>
       </div>
-
-      <style jsx>{`
-        @keyframes typing-dot {
-          0%,
-          60%,
-          100% {
-            opacity: 0.3;
-            transform: scale(1);
-          }
-          30% {
-            opacity: 1;
-            transform: scale(1.3);
-          }
-        }
-      `}</style>
     </div>
   );
 }
