@@ -144,6 +144,50 @@
   }
 }
 
+/* ─── Coach streaming animations ─────────────────────────────────────────────
+   Defined globally to eliminate repeated <style> injections per render.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@keyframes coach-cursor-blink {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0; }
+}
+
+@keyframes coach-typing-dot {
+  0%, 60%, 100% {
+    opacity: 0.25;
+    transform: translateY(0) scale(1);
+    box-shadow: none;
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-4px) scale(1.2);
+    box-shadow: 0 0 6px 1px rgba(124, 92, 252, 0.55);
+  }
+}
+
+@keyframes coach-message-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes coach-indicator-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
 /* ─── React Flow — Dark Knowledge overrides ──────────────────────────────────
    These complement the CSS imported in KnowledgeGraphImpl.tsx and lock
    every React Flow surface to the dark-first design token palette.

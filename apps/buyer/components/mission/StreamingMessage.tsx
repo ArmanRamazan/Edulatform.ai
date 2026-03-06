@@ -9,11 +9,23 @@ interface StreamingMessageProps {
   className?: string;
 }
 
-function CodeBlock({ code }: { code: string }) {
+/**
+ * Code block with a language label strip — matches Dark Knowledge aesthetics.
+ * Background uses the CSS variable so it stays in sync with the theme token.
+ */
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
   return (
-    <pre className="my-2 overflow-x-auto rounded-lg bg-[#0a0a0f] p-4 font-mono text-xs leading-relaxed text-foreground">
-      <code>{code}</code>
-    </pre>
+    <div className="my-2 overflow-hidden rounded-lg border border-[#ffffff08]">
+      {/* Top bar: language label + subtle separator */}
+      <div className="flex items-center justify-between border-b border-[#ffffff08] bg-[#07070b] px-3 py-1.5">
+        <span className="font-mono text-[10px] tracking-widest text-[#6b6b80] uppercase">
+          {lang || "code"}
+        </span>
+      </div>
+      <pre className="overflow-x-auto bg-[#07070b] p-4 font-mono text-xs leading-relaxed text-[#e2e2e8]">
+        <code>{code}</code>
+      </pre>
+    </div>
   );
 }
 
@@ -24,10 +36,12 @@ function renderCompleteText(text: string) {
       const lines = part.slice(3, -3).split("\n");
       const lang = lines[0]?.trim();
       const code = lang ? lines.slice(1).join("\n") : lines.join("\n");
-      return <CodeBlock key={i} code={code} />;
+      return <CodeBlock key={i} code={code} lang={lang} />;
     }
-    return part ? (
-      <p key={i} className="whitespace-pre-wrap">
+    // Guard: skip empty segments that come from the split
+    const trimmed = part.trim();
+    return trimmed ? (
+      <p key={i} className="whitespace-pre-wrap text-[#e2e2e8]">
         {part}
       </p>
     ) : null;
@@ -37,7 +51,9 @@ function renderCompleteText(text: string) {
 /**
  * Renders a coach message that grows token by token during streaming.
  * Shows a blinking violet cursor while streaming; disappears on completion.
- * Once done, re-renders with full code-block formatting.
+ * Once done, re-renders with full code-block + language-badge formatting.
+ *
+ * Keyframes (coach-cursor-blink, coach-message-in) live in globals.css.
  */
 export function StreamingMessage({ text, isStreaming, className }: StreamingMessageProps) {
   const endRef = useRef<HTMLDivElement>(null);
@@ -48,28 +64,36 @@ export function StreamingMessage({ text, isStreaming, className }: StreamingMess
   }, [text]);
 
   return (
-    <div className={cn("text-sm", className)}>
+    <div
+      className={cn("text-sm", className)}
+      // Announce streaming content to screen readers as it updates
+      aria-live="polite"
+      aria-atomic="false"
+      aria-busy={isStreaming}
+      style={{ animation: "coach-message-in 0.18s ease-out both" }}
+    >
       {isStreaming ? (
-        // During streaming: plain pre-formatted text + blinking cursor
-        // Avoids layout jumps from mid-stream code block detection
-        <p className="whitespace-pre-wrap">
+        // During streaming: plain pre-wrap text + blinking violet cursor.
+        // We deliberately avoid mid-stream code-block detection to prevent
+        // layout thrashing while tokens arrive one word at a time.
+        <p className="whitespace-pre-wrap text-[#e2e2e8]">
           {text}
           <span
-            className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-px rounded-sm bg-primary align-text-bottom"
-            style={{ animation: "coach-cursor-blink 1s step-end infinite" }}
+            className="ml-0.5 inline-block h-[1em] w-[2px] translate-y-px rounded-[1px] bg-primary align-text-bottom"
+            aria-hidden="true"
+            style={{
+              animationName: "coach-cursor-blink",
+              animationDuration: "0.9s",
+              animationTimingFunction: "step-end",
+              animationIterationCount: "infinite",
+            }}
           />
         </p>
       ) : (
         // Complete: full code-block rendering with JetBrains Mono for code
-        <div className="space-y-1">{renderCompleteText(text)}</div>
+        <div className="space-y-2">{renderCompleteText(text)}</div>
       )}
       <div ref={endRef} />
-      <style>{`
-        @keyframes coach-cursor-blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 }
