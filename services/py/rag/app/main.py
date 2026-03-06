@@ -16,6 +16,7 @@ from app.config import Settings
 from app.repositories.embedding_client import (
     EmbeddingClient,
     GeminiEmbeddingClient,
+    OrchestratorEmbeddingClient,
     StubEmbeddingClient,
 )
 from app.repositories.document_repository import DocumentRepository
@@ -101,12 +102,26 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 
     _http_client = httpx.AsyncClient()
     if app_settings.openai_api_key:
-        _embedding_client = GeminiEmbeddingClient(
+        gemini_client: EmbeddingClient = GeminiEmbeddingClient(
             http_client=_http_client,
             api_key=app_settings.openai_api_key,
             model=app_settings.embedding_model,
         )
-        logger.info("embedding_client", mode="gemini", model=app_settings.embedding_model)
+        if app_settings.embedding_service_url:
+            _embedding_client = OrchestratorEmbeddingClient(
+                http_client=_http_client,
+                orchestrator_url=app_settings.embedding_service_url,
+                fallback=gemini_client,
+            )
+            logger.info(
+                "embedding_client",
+                mode="orchestrator",
+                url=app_settings.embedding_service_url,
+                fallback="gemini",
+            )
+        else:
+            _embedding_client = gemini_client
+            logger.info("embedding_client", mode="gemini", model=app_settings.embedding_model)
     else:
         _embedding_client = StubEmbeddingClient(dimensions=app_settings.embedding_dimensions)
         logger.info("embedding_client", mode="stub")

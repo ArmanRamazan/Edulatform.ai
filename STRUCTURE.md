@@ -128,9 +128,13 @@ services/py/{service}/
 │   │                    #   НЕ зависит от фреймворков, БД, HTTP
 │   │                    #   Чистый Python, максимум dataclasses
 │   │
-│   └── repositories/    # Доступ к данным (infrastructure layer)
-│       └──              #   Абстрактный интерфейс + SQL реализация
-│                        #   Маппинг domain entities ↔ DB rows
+│   ├── repositories/    # Доступ к данным (infrastructure layer)
+│   │   └──              #   Абстрактный интерфейс + SQL реализация
+│   │                    #   Маппинг domain entities ↔ DB rows
+│   │
+│   └── adapters/        # Внешние сервисы (infrastructure layer, optional)
+│       └──              #   HTTP клиенты к другим сервисам (fire-and-forget)
+│                        #   Пример: WsPublisher для WebSocket gateway
 │
 ├── tests/               # Тесты рядом с кодом
 │   └──                  #   Unit: мокают repositories
