@@ -1,12 +1,13 @@
 """
 Orchestrator v2 — Agile Sprint Pipeline.
 
-7-phase pipeline: PLANNING → DESIGN → IMPLEMENT → TEST → REVIEW → INTEGRATE → DOCUMENT.
+7-phase pipeline: PLANNING -> DESIGN -> IMPLEMENT -> TEST -> REVIEW -> INTEGRATE -> DOCUMENT.
 9 role-based agents simulate a development team.
 
 Usage:
     python main.py tasks/sprint.yaml              # run sprint
     python main.py tasks/sprint.yaml --dry-run    # preview
+    python main.py tasks/sprint.yaml --instance s32  # isolated instance (for parallel)
     python main.py --resume                       # continue
     python main.py --status                       # show progress
     python main.py --reset                        # clear state
@@ -27,9 +28,29 @@ if not sys.stdout.line_buffering:
     sys.stdout.reconfigure(line_buffering=True)  # type: ignore[attr-defined]
 
 from agent_runner import kill_all, log, request_shutdown
-from config import LOG_DIR, PID_FILE, STATE_DIR, STOP_FILE
+from config import LOG_DIR, ORCH_DIR, PID_FILE, STATE_DIR, STOP_FILE
 from pipeline import run_pipeline
-from state import SprintFile, SprintState
+from state import SprintFile, SprintState, set_state_dir
+
+# ---------------------------------------------------------------------------
+# Instance isolation
+# ---------------------------------------------------------------------------
+
+_pid_file = PID_FILE
+_state_dir = STATE_DIR
+_stop_file = STOP_FILE
+
+
+def _init_instance(instance_id: str) -> None:
+    """Set up isolated state/pid/stop paths for parallel execution."""
+    global _pid_file, _state_dir, _stop_file
+
+    _state_dir = ORCH_DIR / ".state" / instance_id
+    _pid_file = ORCH_DIR / f".pid-{instance_id}"
+    _stop_file = ORCH_DIR / f".stop-{instance_id}"
+
+    _state_dir.mkdir(parents=True, exist_ok=True)
+    set_state_dir(_state_dir)
 
 
 # ---------------------------------------------------------------------------
@@ -54,25 +75,25 @@ for sig in (signal.SIGINT, signal.SIGTERM, signal.SIGHUP):
 # ---------------------------------------------------------------------------
 
 def _write_pid() -> None:
-    PID_FILE.parent.mkdir(parents=True, exist_ok=True)
-    PID_FILE.write_text(str(os.getpid()))
+    _pid_file.parent.mkdir(parents=True, exist_ok=True)
+    _pid_file.write_text(str(os.getpid()))
 
 
 def _check_pid() -> bool:
-    if not PID_FILE.exists():
+    if not _pid_file.exists():
         return False
     try:
-        pid = int(PID_FILE.read_text().strip())
+        pid = int(_pid_file.read_text().strip())
         os.kill(pid, 0)
         return True
     except (ValueError, ProcessLookupError, PermissionError):
-        PID_FILE.unlink(missing_ok=True)
+        _pid_file.unlink(missing_ok=True)
         return False
 
 
 def _cleanup() -> None:
     kill_all()
-    PID_FILE.unlink(missing_ok=True)
+    _pid_file.unlink(missing_ok=True)
 
 
 atexit.register(_cleanup)
@@ -163,12 +184,12 @@ def cmd_status() -> int:
 
 
 def cmd_reset() -> int:
-    state_file = STATE_DIR / "state.json"
+    state_file = _state_dir / "state.json"
     if state_file.exists():
         state_file.unlink()
         log("  State cleared.")
-    PID_FILE.unlink(missing_ok=True)
-    STOP_FILE.unlink(missing_ok=True)
+    _pid_file.unlink(missing_ok=True)
+    _stop_file.unlink(missing_ok=True)
     log("  Reset complete.")
     return 0
 
@@ -187,8 +208,13 @@ def main() -> int:
     parser.add_argument("--resume", action="store_true", help="Resume from saved state")
     parser.add_argument("--status", action="store_true", help="Show sprint progress")
     parser.add_argument("--reset", action="store_true", help="Clear state and PID")
+    parser.add_argument("--instance", type=str, default="",
+                        help="Instance ID for parallel execution (isolates state/pid)")
 
     args = parser.parse_args()
+
+    if args.instance:
+        _init_instance(args.instance)
 
     if args.status:
         return cmd_status()

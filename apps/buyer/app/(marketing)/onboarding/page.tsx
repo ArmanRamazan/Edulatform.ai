@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { motion, AnimatePresence, MotionConfig } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   AlertCircle,
   ArrowRight,
@@ -47,8 +47,7 @@ interface StepIndicatorProps {
 }
 
 function StepIndicator({ current }: StepIndicatorProps) {
-  // Start at 20% on step 1 — immediately signals forward motion to the user
-  const progress = (current / TOTAL_STEPS) * 100;
+  const progress = ((current - 1) / (TOTAL_STEPS - 1)) * 100;
 
   return (
     <div
@@ -70,7 +69,7 @@ function StepIndicator({ current }: StepIndicatorProps) {
               <div className="flex shrink-0 flex-col items-center gap-2">
                 <motion.div
                   className={cn(
-                    "flex h-9 w-9 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors duration-300",
+                    "flex h-8 w-8 items-center justify-center rounded-full border-2 text-xs font-semibold transition-colors duration-300",
                     isCompleted && "border-success bg-success text-white",
                     isActive &&
                       "border-primary bg-primary text-white",
@@ -108,16 +107,16 @@ function StepIndicator({ current }: StepIndicatorProps) {
 
               {/* Connector line */}
               {i < TOTAL_STEPS - 1 && (
-                <div className="relative mx-2 h-0.5 flex-1 rounded-full">
-                  <div className="absolute inset-0 rounded-full bg-border" />
+                <div className="relative mx-1 h-px flex-1">
+                  <div className="absolute inset-0 bg-border" />
                   <motion.div
-                    className="absolute inset-y-0 left-0 rounded-full"
+                    className="absolute inset-y-0 left-0"
                     style={{
                       background: "linear-gradient(90deg, #7c5cfc, #a78bfa)",
-                      boxShadow: "0 0 6px rgba(124,92,252,0.6)",
+                      boxShadow: "0 0 4px rgba(124,92,252,0.5)",
                     }}
                     animate={{ width: s < current ? "100%" : "0%" }}
-                    transition={{ duration: 0.45, ease: "easeOut" }}
+                    transition={{ duration: 0.4, ease: "easeInOut" }}
                   />
                 </div>
               )}
@@ -296,7 +295,7 @@ function StepRole({ value, onChange, onNext, onBack }: StepRoleProps) {
         animate={{ opacity: 1, y: 0 }}
         className="mb-8 text-center"
       >
-        <h2 id="role-heading" className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
+        <h2 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
           Кто вы в команде?
         </h2>
         <p className="text-muted-foreground">
@@ -305,8 +304,6 @@ function StepRole({ value, onChange, onNext, onBack }: StepRoleProps) {
       </motion.div>
 
       <motion.div
-        role="radiogroup"
-        aria-labelledby="role-heading"
         className="mx-auto grid max-w-lg gap-3 sm:grid-cols-2"
         initial="hidden"
         animate="visible"
@@ -319,8 +316,6 @@ function StepRole({ value, onChange, onNext, onBack }: StepRoleProps) {
           <motion.button
             key={id}
             type="button"
-            role="radio"
-            aria-checked={value === id}
             onClick={() => onChange(id)}
             variants={{ hidden: { opacity: 0, y: 12 }, visible: { opacity: 1, y: 0 } }}
             whileHover={{ y: -2 }}
@@ -356,30 +351,19 @@ function StepRole({ value, onChange, onNext, onBack }: StepRoleProps) {
         ))}
       </motion.div>
 
-      <div className="mt-8 flex flex-col items-center gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={onBack} className="gap-1">
-            <ChevronLeft className="h-4 w-4" />
-            Назад
-          </Button>
-          <Button
-            onClick={onNext}
-            disabled={!value}
-            className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
-          >
-            Продолжить
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-        {value && (
-          <p className="text-xs text-muted-foreground">
-            Нажмите{" "}
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd>{" "}
-            для продолжения ·{" "}
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd>{" "}
-            для возврата
-          </p>
-        )}
+      <div className="mt-8 flex items-center justify-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1">
+          <ChevronLeft className="h-4 w-4" />
+          Назад
+        </Button>
+        <Button
+          onClick={onNext}
+          disabled={!value}
+          className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
+        >
+          Продолжить
+          <ArrowRight className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
@@ -419,8 +403,6 @@ function CoursePickCard({ course, selected, onSelect }: CoursePickCardProps) {
   return (
     <motion.button
       type="button"
-      role="radio"
-      aria-checked={selected}
       onClick={onSelect}
       whileHover={{ y: -2 }}
       whileTap={{ scale: 0.97 }}
@@ -556,8 +538,6 @@ function StepPickCourse({ token, onNext, onBack }: StepPickCourseProps) {
         </motion.div>
       ) : (
         <motion.div
-          role="radiogroup"
-          aria-label="Выберите курс"
           className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
           initial="hidden"
           animate="visible"
@@ -596,15 +576,13 @@ function StepPickCourse({ token, onNext, onBack }: StepPickCourseProps) {
             {!enroll.isPending && <ArrowRight className="h-4 w-4" />}
           </Button>
         </div>
-        <Button
+        <button
           type="button"
-          variant="ghost"
-          size="sm"
           onClick={() => onNext(null)}
-          className="h-auto text-xs text-muted-foreground hover:bg-transparent hover:text-foreground"
+          className="text-xs text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
         >
           Пропустить этот шаг
-        </Button>
+        </button>
       </div>
     </div>
   );
@@ -645,7 +623,7 @@ function StepGoal({ value, onChange, onNext, onBack }: StepGoalProps) {
         animate={{ opacity: 1, y: 0 }}
         className="mb-8 text-center"
       >
-        <h2 id="goal-heading" className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
+        <h2 className="mb-2 text-2xl font-semibold tracking-tight text-foreground">
           Сколько времени готовы уделять?
         </h2>
         <p className="text-muted-foreground">
@@ -654,8 +632,6 @@ function StepGoal({ value, onChange, onNext, onBack }: StepGoalProps) {
       </motion.div>
 
       <motion.div
-        role="radiogroup"
-        aria-labelledby="goal-heading"
         className="mx-auto grid max-w-lg gap-3 sm:grid-cols-2"
         initial="hidden"
         animate="visible"
@@ -668,8 +644,6 @@ function StepGoal({ value, onChange, onNext, onBack }: StepGoalProps) {
           <motion.button
             key={id}
             type="button"
-            role="radio"
-            aria-checked={value === id}
             onClick={() => onChange(id)}
             variants={{ hidden: { opacity: 0, scale: 0.95 }, visible: { opacity: 1, scale: 1 } }}
             whileHover={{ y: -2 }}
@@ -700,30 +674,19 @@ function StepGoal({ value, onChange, onNext, onBack }: StepGoalProps) {
         ))}
       </motion.div>
 
-      <div className="mt-8 flex flex-col items-center gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={onBack} className="gap-1">
-            <ChevronLeft className="h-4 w-4" />
-            Назад
-          </Button>
-          <Button
-            onClick={onNext}
-            disabled={!value}
-            className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
-          >
-            Завершить настройку
-            <ArrowRight className="h-4 w-4" />
-          </Button>
-        </div>
-        {value && (
-          <p className="text-xs text-muted-foreground">
-            Нажмите{" "}
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Enter</kbd>{" "}
-            для продолжения ·{" "}
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">Esc</kbd>{" "}
-            для возврата
-          </p>
-        )}
+      <div className="mt-8 flex items-center justify-center gap-3">
+        <Button variant="ghost" size="sm" onClick={onBack} className="gap-1">
+          <ChevronLeft className="h-4 w-4" />
+          Назад
+        </Button>
+        <Button
+          onClick={onNext}
+          disabled={!value}
+          className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
+        >
+          Завершить настройку
+          <ArrowRight className="h-4 w-4" />
+        </Button>
       </div>
     </div>
   );
@@ -770,24 +733,14 @@ function StepDone({ enrolledCourseId }: StepDoneProps) {
 
   return (
     <div className="text-center">
-      {/* Success icon — spring scale-in + pulsing outer ring */}
-      <div className="relative mx-auto mb-6 flex h-16 w-16 items-center justify-center">
-        {/* Outer pulse ring */}
-        <motion.div
-          className="absolute inset-0 rounded-full ring-2 ring-success/40"
-          animate={{ scale: [1, 1.35, 1], opacity: [0.6, 0, 0.6] }}
-          transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-        />
-        {/* Icon container */}
-        <motion.div
-          initial={{ opacity: 0, scale: 0.4 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ type: "spring", stiffness: 220, damping: 14, delay: 0.05 }}
-          className="flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/30"
-        >
-          <CheckCircle2 className="h-8 w-8 text-success" />
-        </motion.div>
-      </div>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.5 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ type: "spring", stiffness: 200, damping: 14 }}
+        className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/30"
+      >
+        <CheckCircle2 className="h-8 w-8 text-success" />
+      </motion.div>
 
       <motion.div
         initial={{ opacity: 0, y: 12 }}
@@ -814,12 +767,10 @@ function StepDone({ enrolledCourseId }: StepDoneProps) {
           <motion.div
             key={href}
             variants={{ hidden: { opacity: 0, x: -12 }, visible: { opacity: 1, x: 0 } }}
-            whileHover={{ y: -2, transition: { duration: 0.15 } }}
-            whileTap={{ scale: 0.98 }}
           >
             <Link
               href={href}
-              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/50 hover:bg-muted/30 hover:shadow-[0_4px_16px_rgba(124,92,252,0.12)]"
+              className="flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left transition-all hover:border-primary/50 hover:bg-muted/30"
             >
               <div className={cn("shrink-0 rounded-lg p-2", bgClass)}>
                 <Icon className={cn("h-5 w-5", iconClass)} />
@@ -866,7 +817,7 @@ function OnboardingPageSkeleton() {
         {[1, 2, 3, 4, 5].map((i, idx) => (
           <React.Fragment key={i}>
             <div className="flex shrink-0 flex-col items-center gap-2">
-              <Skeleton className="h-9 w-9 rounded-full" />
+              <Skeleton className="h-8 w-8 rounded-full" />
               <Skeleton className="hidden h-2.5 w-14 sm:block" />
             </div>
             {idx < 4 && <Skeleton className="mx-1 h-px flex-1" />}
@@ -917,7 +868,7 @@ const stepVariants = {
 export default function OnboardingPage() {
   const router = useRouter();
   const { user, token, loading } = useAuth();
-  const { data: enrollmentsData } = useMyEnrollments(token, { limit: 1, offset: 0 });
+  const { data: enrollmentsData } = useMyEnrollments(token, { limit: 1, offset: 4 });
 
   const [step, setStep] = useState(1);
   const [direction, setDirection] = useState(1);
@@ -968,7 +919,6 @@ export default function OnboardingPage() {
   }
 
   return (
-    <MotionConfig reducedMotion="user">
     <>
       {/* Ambient background glows */}
       <div
@@ -1045,6 +995,5 @@ export default function OnboardingPage() {
         </AnimatePresence>
       </main>
     </>
-    </MotionConfig>
   );
 }
