@@ -59,7 +59,7 @@ B2B AI-powered engineering onboarding platform. Tri-Agent System (Strategist →
 | Course | 8002 | 5434 | CRUD курсов, search | ⏸ Dormant |
 | Enrollment | 8003 | 5435 | Запись, прогресс | ⏸ Dormant |
 | Payment | 8004 | 5436 | Платежи, subscriptions | ⏸ Dormant (реактивация в Sprint 22) |
-| Notification | 8005 | 5437 | In-app, email, DMs | ✅ Active |
+| Notification | 8005 | 5437 | In-app, email, DMs, WS push | ✅ Active |
 | AI | 8006 | — (Redis) | Tri-Agent System, LLM routing | ✅ Active |
 | Learning | 8007 | 5438 | Quizzes, FSRS, knowledge graph, missions | ✅ Active |
 | RAG | 8008 | 5439 | Document ingestion, semantic search, concept extraction, KB management | ✅ Active |
@@ -147,13 +147,13 @@ cd services/py/identity    && uv run --package identity pytest tests/ -v     # 1
 cd services/py/course      && uv run --package course pytest tests/ -v       # 129 tests
 cd services/py/enrollment  && uv run --package enrollment pytest tests/ -v   # 39 tests (+3 failing)
 cd services/py/payment     && uv run --package payment pytest tests/ -v      # 181 tests
-cd services/py/notification && uv run --package notification pytest tests/ -v # 136 tests (+3 failing)
-cd services/py/ai          && uv run --package ai pytest tests/ -v           # 257 tests
+cd services/py/notification && uv run --package notification pytest tests/ -v # 145 tests (+3 failing)
+cd services/py/ai          && uv run --package ai pytest tests/ -v           # 267 tests
 cd services/py/learning    && uv run --package learning pytest tests/ -v     # 272 tests
-cd services/py/rag         && uv run --package rag pytest tests/ -v          # 173 tests
+cd services/py/rag         && uv run --package rag pytest tests/ -v          # 180 tests
 ```
 
-**Итого (Python):** 1343 passed, 6 failing по 8 сервисам.
+**Итого (Python):** 1360 passed, 6 failing по 8 сервисам.
 
 **Rust:**
 ```bash
