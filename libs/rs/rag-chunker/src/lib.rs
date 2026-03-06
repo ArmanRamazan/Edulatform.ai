@@ -1,6 +1,8 @@
 #![deny(clippy::all)]
 
 mod chunking;
+mod markdown;
+mod metadata;
 
 use pyo3::prelude::*;
 
@@ -25,11 +27,33 @@ fn count_tokens(text: &str) -> usize {
     chunking::count_tokens(text)
 }
 
+/// Split markdown into chunks respecting heading structure and code blocks.
+#[pyfunction]
+fn chunk_markdown(md: &str, chunk_size: usize, overlap: usize) -> Vec<markdown::MarkdownChunk> {
+    markdown::chunk_markdown(md, chunk_size, overlap)
+}
+
+/// Extract metadata from a chunk of text.
+#[pyfunction]
+#[pyo3(signature = (chunk, source_path, line_start=0, line_end=0))]
+fn extract_chunk_metadata(
+    chunk: &str,
+    source_path: &str,
+    line_start: usize,
+    line_end: usize,
+) -> metadata::ChunkMetadata {
+    metadata::extract_chunk_metadata(chunk, source_path, line_start, line_end)
+}
+
 /// Python module exposed via pyo3.
 #[pymodule]
 fn rag_chunker(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(chunk_text, m)?)?;
     m.add_function(wrap_pyfunction!(chunk_code, m)?)?;
     m.add_function(wrap_pyfunction!(count_tokens, m)?)?;
+    m.add_function(wrap_pyfunction!(chunk_markdown, m)?)?;
+    m.add_function(wrap_pyfunction!(extract_chunk_metadata, m)?)?;
+    m.add_class::<markdown::MarkdownChunk>()?;
+    m.add_class::<metadata::ChunkMetadata>()?;
     Ok(())
 }

@@ -22,7 +22,7 @@ eduplatform/
 │   └── rs/
 │       ├── common/src/            #   Error types, config, tracing setup
 │       ├── proto-gen/src/         #   Сгенерированный код из proto/
-│       └── rag-chunker/           #   pyo3 chunker: text/code splitting for RAG (maturin build)
+│       └── rag-chunker/           #   pyo3 chunker: text/code/markdown splitting + metadata for RAG (maturin build)
 │
 ├── services/                      # Deployable сервисы
 │   ├── py/                        # Python сервисы (бизнес-логика)
