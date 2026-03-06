@@ -3,17 +3,17 @@
 import { useState, use } from "react";
 import Link from "next/link";
 import { payments, notifications, enrollments, type DiscountResult } from "@/lib/api";
-import { CouponInput } from "@/components/CouponInput";
-import { PriceDisplay } from "@/components/PriceDisplay";
+import { CouponInput } from "@/components/_deprecated/CouponInput";
+import { PriceDisplay } from "@/components/_deprecated/PriceDisplay";
 import { useAuth } from "@/hooks/use-auth";
 import { useCourse, useCurriculum } from "@/hooks/use-courses";
 import { useMyEnrollments, useEnrollmentCount, useEnroll } from "@/hooks/use-enrollments";
-import { useCourseReviews, useCreateReview } from "@/hooks/use-reviews";
+import { useCourseReviews, useCreateReview } from "@/hooks/_deprecated/use-reviews";
 import { useCourseProgress, useCompletedLessons } from "@/hooks/use-progress";
 import { useCourseMastery } from "@/hooks/use-concepts";
 import { usePretestResults } from "@/hooks/use-pretest";
 import { StudyGroupsSection } from "@/components/StudyGroupsSection";
-import { SimilarCourses } from "@/components/SimilarCourses";
+import { SimilarCourses } from "@/components/_deprecated/SimilarCourses";
 import { getErrorMessage } from "@/lib/errors";
 
 const LEVEL_LABELS: Record<string, string> = {

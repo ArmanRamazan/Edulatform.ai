@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Header } from "@/components/Header";
-import { useBundleList } from "@/hooks/use-bundles";
+import { useBundleList } from "@/hooks/_deprecated/use-bundles";
 import type { CourseBundle } from "@/lib/api";
 
 function BundleCard({ bundle }: { bundle: CourseBundle }) {

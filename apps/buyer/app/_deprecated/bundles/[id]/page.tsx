@@ -3,7 +3,7 @@
 import { use } from "react";
 import Link from "next/link";
 import { Header } from "@/components/Header";
-import { useBundle } from "@/hooks/use-bundles";
+import { useBundle } from "@/hooks/_deprecated/use-bundles";
 import type { Course } from "@/lib/api";
 
 const LEVEL_LABELS: Record<string, string> = {
