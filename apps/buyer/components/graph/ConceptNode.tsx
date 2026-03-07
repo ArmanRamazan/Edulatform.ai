@@ -56,13 +56,13 @@ export const ConceptNode = memo(function ConceptNode({
   return (
     <motion.div
       style={{ width: size, height: size, position: "relative" }}
-      whileHover={{ scale: 1.1 }}
+      whileHover={{ scale: 1.08 }}
       animate={{
         boxShadow: selected
-          ? `0 0 20px ${color}60, 0 0 40px ${color}20`
-          : "none",
+          ? `0 0 0 2px ${color}, 0 0 24px ${color}50`
+          : `0 0 0 0px ${color}00`,
       }}
-      transition={{ duration: 0.15, ease: "easeOut" }}
+      transition={{ duration: 0.18, ease: "easeOut" }}
     >
       {/* ── Circular node body ── */}
       <div
@@ -146,7 +146,7 @@ export const ConceptNode = memo(function ConceptNode({
             bottom: -9,
             right: -6,
             backgroundColor: color,
-            color: mastery >= 30 ? "#ffffff" : "#0a0a0f",
+            color: "#ffffff",
             fontSize: 9,
             fontWeight: 700,
             borderRadius: 4,
@@ -164,17 +164,11 @@ export const ConceptNode = memo(function ConceptNode({
         </div>
       </div>
 
-      {/* ── React Flow connection handles (invisible, structural) ── */}
-      <Handle
-        type="target"
-        position={Position.Top}
-        style={{ opacity: 0, top: 0 }}
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        style={{ opacity: 0, bottom: 0 }}
-      />
+      {/* ── React Flow connection handles (invisible, structural — all 4 sides) ── */}
+      <Handle type="target" position={Position.Top}    style={{ opacity: 0, top: 0 }} />
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, bottom: 0 }} />
+      <Handle type="target" position={Position.Left}   style={{ opacity: 0, left: 0 }} />
+      <Handle type="source" position={Position.Right}  style={{ opacity: 0, right: 0 }} />
     </motion.div>
   );
 });

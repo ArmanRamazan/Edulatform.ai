@@ -25,14 +25,14 @@ function sourceTypeBadge(sourceType: string | null) {
   }
   if (type.includes("config") || type.includes("yaml") || type.includes("json")) {
     return (
-      <Badge className="bg-amber-500/15 text-amber-600 border-amber-500/30">
+      <Badge className="border-[#fbbf24]/30 bg-[#fbbf24]/10 text-[#fbbf24]">
         <Settings className="mr-1 size-3" />
         config
       </Badge>
     );
   }
   return (
-    <Badge className="bg-blue-500/15 text-blue-600 border-blue-500/30">
+    <Badge className="border-[#38bdf8]/30 bg-[#38bdf8]/10 text-[#38bdf8]">
       <FileText className="mr-1 size-3" />
       doc
     </Badge>

@@ -88,9 +88,9 @@ export function MissionsBlock({ conceptId, index }: MissionsBlockProps) {
                 {completed.map((m) => (
                   <div
                     key={m.id}
-                    className="flex items-center gap-3 rounded-lg border border-border p-3"
+                    className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-secondary/50"
                   >
-                    <CheckCircle2 className="size-5 shrink-0 text-emerald-500" />
+                    <CheckCircle2 className="size-5 shrink-0 text-[#34d399]" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-card-foreground">
                         {m.blueprint?.concept_name ?? "Mission"}
@@ -116,7 +116,7 @@ export function MissionsBlock({ conceptId, index }: MissionsBlockProps) {
                 {available.map((m) => (
                   <div
                     key={m.id}
-                    className="flex items-center gap-3 rounded-lg border border-border p-3"
+                    className="flex items-center gap-3 rounded-lg border border-border p-3 transition-colors hover:bg-secondary/50"
                   >
                     <Zap className="size-5 shrink-0 text-primary" />
                     <div className="min-w-0 flex-1">

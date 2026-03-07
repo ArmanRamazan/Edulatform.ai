@@ -129,7 +129,21 @@ export function RelatedGraphBlock({
                 role="img"
                 aria-label="Related concepts graph"
               >
-                {/* Edges */}
+                <defs>
+                  {/* Arrowhead marker for edges */}
+                  <marker
+                    id="arrow-neighbor"
+                    markerWidth="6"
+                    markerHeight="6"
+                    refX="5"
+                    refY="3"
+                    orient="auto"
+                  >
+                    <path d="M0,0 L0,6 L6,3 z" fill="#3a3a55" />
+                  </marker>
+                </defs>
+
+                {/* Edges — dashed, subtle, with arrowheads */}
                 {edges.map((edge, i) => (
                   <line
                     key={i}
@@ -137,65 +151,78 @@ export function RelatedGraphBlock({
                     y1={edge.from.y}
                     x2={edge.to.x}
                     y2={edge.to.y}
-                    stroke="hsl(var(--muted-foreground))"
+                    stroke="#3a3a55"
                     strokeWidth="1.5"
-                    strokeOpacity="0.3"
+                    strokeDasharray="5 4"
+                    markerEnd="url(#arrow-neighbor)"
                   />
                 ))}
 
                 {/* Nodes */}
-                {nodes.map((node) => (
-                  <g
-                    key={node.id}
-                    className={node.isCurrent ? "" : "cursor-pointer"}
-                    onClick={() => {
-                      if (!node.isCurrent) {
-                        router.push(`/graph/${node.id}`);
-                      }
-                    }}
-                  >
-                    <circle
-                      cx={node.x}
-                      cy={node.y}
-                      r={node.isCurrent ? 24 : 18}
-                      fill={
-                        node.isCurrent
-                          ? "hsl(var(--primary))"
-                          : "hsl(var(--secondary))"
-                      }
-                      stroke={
-                        node.isCurrent
-                          ? "hsl(var(--primary))"
-                          : "hsl(var(--border))"
-                      }
-                      strokeWidth="2"
-                    />
-                    <text
-                      x={node.x}
-                      y={node.y + (node.isCurrent ? 40 : 34)}
-                      textAnchor="middle"
-                      fontSize="11"
-                      fill="hsl(var(--muted-foreground))"
-                      className="pointer-events-none select-none"
+                {nodes.map((node) => {
+                  const initials = node.name.slice(0, 2).toUpperCase();
+                  return (
+                    <g
+                      key={node.id}
+                      className={node.isCurrent ? "" : "cursor-pointer group"}
+                      onClick={() => {
+                        if (!node.isCurrent) {
+                          router.push(`/graph/${node.id}`);
+                        }
+                      }}
                     >
-                      {node.name.length > 16
-                        ? node.name.slice(0, 14) + "..."
-                        : node.name}
-                    </text>
-                    {node.isCurrent && (
+                      {/* Hover glow ring for neighbor nodes */}
+                      {!node.isCurrent && (
+                        <circle
+                          cx={node.x}
+                          cy={node.y}
+                          r={22}
+                          fill="none"
+                          stroke="#7c5cfc"
+                          strokeWidth="1.5"
+                          style={{ opacity: 0, transition: "opacity 0.15s ease" }}
+                          className="group-hover:opacity-50"
+                        />
+                      )}
+                      <circle
+                        cx={node.x}
+                        cy={node.y}
+                        r={node.isCurrent ? 24 : 18}
+                        fill={node.isCurrent ? "#7c5cfc" : "#18182a"}
+                        stroke={node.isCurrent ? "#9b80fd" : "#2a2a45"}
+                        strokeWidth="1.5"
+                        className={node.isCurrent ? "" : "transition-colors duration-150 group-hover:stroke-[#7c5cfc]"}
+                      />
+                      {/* Initials inside node */}
                       <text
                         x={node.x}
                         y={node.y + 4}
                         textAnchor="middle"
-                        fontSize="10"
-                        fill="hsl(var(--primary-foreground))"
-                        className="pointer-events-none select-none font-medium"
+                        fontSize={node.isCurrent ? "11" : "9"}
+                        fontWeight="600"
+                        fill={node.isCurrent ? "#ffffff" : "#a0a0b0"}
+                        fontFamily="var(--font-sans, ui-sans-serif, system-ui)"
+                        className="pointer-events-none select-none"
                       >
-                        You
+                        {initials}
                       </text>
-                    )}
-                  </g>
-                ))}
+                      {/* Label below node */}
+                      <text
+                        x={node.x}
+                        y={node.y + (node.isCurrent ? 40 : 34)}
+                        textAnchor="middle"
+                        fontSize="10"
+                        fill={node.isCurrent ? "#e2e2e8" : "#6b6b80"}
+                        fontFamily="var(--font-sans, ui-sans-serif, system-ui)"
+                        className="pointer-events-none select-none"
+                      >
+                        {node.name.length > 16
+                          ? node.name.slice(0, 14) + "…"
+                          : node.name}
+                      </text>
+                    </g>
+                  );
+                })}
               </svg>
             )}
           </CardContent>

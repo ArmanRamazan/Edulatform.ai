@@ -190,6 +190,9 @@ def _build_implement_prompt(task: Task, design_context: str) -> str:
 # ---------------------------------------------------------------------------
 
 def _commit_in_worktree(task: Task, wt_path: Path) -> tuple[int, str]:
+    if not wt_path.exists():
+        return 1, f"Worktree missing: {wt_path}"
+
     scope = task.scope.split(":")[-1] if ":" in task.scope else task.scope
     commit_type = task.type or "feat"
     msg = f"{commit_type}({scope}): {task.title.lower()}"
@@ -254,8 +257,8 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
             task.error = "Timeout"
             break
 
-        # No changes
-        if not has_git_changes(wt_path):
+        # No changes (guard: worktree may vanish)
+        if not wt_path.exists() or not has_git_changes(wt_path):
             log("X NO CODE CHANGES", tid)
             task.error = "No code changes"
             if attempt < MAX_RETRIES:
@@ -283,6 +286,16 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
                     log(f"  ! {designer} exited {d_exit} (non-fatal)", tid)
                 else:
                     log(f"  V {designer} done", tid)
+
+        # Guard: worktree may have been removed externally
+        if not wt_path.exists():
+            log("X Worktree disappeared (external cleanup?)", tid)
+            task.status = "failed"
+            task.error = "Worktree removed during execution"
+            task.finished_at = _now()
+            with _state_lock:
+                state.save()
+            return
 
         # Commit any uncommitted changes (agent may have already committed)
         _commit_in_worktree(task, wt_path)
