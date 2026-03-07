@@ -18,7 +18,9 @@ RUN uv venv /app/.venv \
         "pyjwt>=2.10" \
         "pydantic-settings>=2.7" \
         "prometheus-fastapi-instrumentator>=7.0" \
-        "redis>=5.0"
+        "redis>=5.0" \
+        "stripe>=8.0" \
+        "reportlab>=4.0"
 
 ENV PATH="/app/.venv/bin:$PATH"
 
