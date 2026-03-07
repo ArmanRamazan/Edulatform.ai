@@ -5,6 +5,11 @@ class Settings(BaseAppSettings):
     database_url: str = "postgresql://unused:unused@localhost:5432/unused"
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash-lite"
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4o-mini"
+    anthropic_api_key: str = ""
+    claude_model: str = "claude-sonnet-4-20250514"
+    llm_provider: str = ""
     quiz_cache_ttl: int = 86400
     summary_cache_ttl: int = 86400
     tutor_session_ttl: int = 3600

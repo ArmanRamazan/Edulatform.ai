@@ -1,10 +1,10 @@
 # AI Service
 
-Port 8006 | No dedicated DB (Redis only) | Package: ai | 294 tests
+Port 8006 | No dedicated DB (Redis only) | Package: ai | 316 tests
 
 ## Domain
 
-LLM orchestrator using Gemini Flash. Strategist -> Designer -> Coach pipeline.
+LLM orchestrator (Gemini, OpenAI, Claude, or Mock). Strategist -> Designer -> Coach pipeline.
 Missions (daily/complete), AI credits, unified search (query router + RAG/external).
 
 ## Services
@@ -26,11 +26,13 @@ ai, coach_routes, orchestrator_routes, llm_config_routes, search_routes
 
 ## Key patterns
 
-- LLM client: GeminiClient (httpx-based), all mocked in tests via AsyncMock
+- LLM providers: `GeminiProvider` (httpx), `OpenAIProvider` (openai SDK), `ClaudeProvider` (anthropic SDK), `SelfHostedProvider` (httpx OpenAI-compat), `MockLLMProvider` (dev/no-key)
+- Provider selection via `LLMResolver._make_default_provider()`: `LLM_PROVIDER` env var → API key auto-detect (gemini > openai > anthropic) → mock
+- Per-org override: `self_hosted` internal provider via org LLM config in Redis cache
 - AICache: Redis-backed caching layer
 - No database — stateless orchestrator, state lives in Redis cache
 - httpx.AsyncClient for inter-service HTTP calls
-- Custom health check (no common health router) — checks Redis + Gemini API key
+- Custom health check (no common health router) — checks Redis + LLM provider key
 - **Push mastery model**: Learning pushes mastery data in POST /ai/mission/daily body.
   AI never calls Learning back for mastery — eliminates circular HTTP dependency.
 

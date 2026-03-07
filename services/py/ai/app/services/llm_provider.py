@@ -1,10 +1,11 @@
-"""Abstract LLM provider and concrete implementations (Gemini, self-hosted OpenAI-compatible)."""
+"""Abstract LLM provider and concrete implementations (Gemini, OpenAI, Claude, self-hosted)."""
 from __future__ import annotations
 
 import asyncio
 import json
 import random
 from abc import ABC, abstractmethod
+from typing import Any
 
 import httpx
 import structlog
@@ -158,6 +159,60 @@ class SelfHostedProvider(LLMProvider):
                 await asyncio.sleep(wait)
 
         raise AppError(f"Self-hosted LLM unavailable after 3 retries: {last_exc}", status_code=502)
+
+
+class OpenAIProvider(LLMProvider):
+    """OpenAI API provider (chat completions)."""
+
+    def __init__(self, client: Any, model: str) -> None:
+        self._client = client
+        self._model = model
+
+    async def complete(self, prompt: str, system: str = "") -> tuple[str, int, int]:
+        messages: list[dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        try:
+            response = await self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                temperature=0.3,
+                max_tokens=4096,
+            )
+            text: str = response.choices[0].message.content
+            tokens_in: int = response.usage.prompt_tokens
+            tokens_out: int = response.usage.completion_tokens
+            return text, tokens_in, tokens_out
+        except Exception as exc:
+            raise AppError(f"OpenAI API error: {exc}", status_code=502) from exc
+
+
+class ClaudeProvider(LLMProvider):
+    """Anthropic Claude API provider (messages API)."""
+
+    def __init__(self, client: Any, model: str) -> None:
+        self._client = client
+        self._model = model
+
+    async def complete(self, prompt: str, system: str = "") -> tuple[str, int, int]:
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "max_tokens": 4096,
+            "messages": [{"role": "user", "content": prompt}],
+        }
+        if system:
+            kwargs["system"] = system
+
+        try:
+            response = await self._client.messages.create(**kwargs)
+            text: str = response.content[0].text
+            tokens_in: int = response.usage.input_tokens
+            tokens_out: int = response.usage.output_tokens
+            return text, tokens_in, tokens_out
+        except Exception as exc:
+            raise AppError(f"Claude API error: {exc}", status_code=502) from exc
 
 
 # ---------------------------------------------------------------------------
