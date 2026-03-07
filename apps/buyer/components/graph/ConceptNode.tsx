@@ -58,17 +58,28 @@ export const ConceptNode = memo(function ConceptNode({
   return (
     <motion.div
       style={{ width: size, height: size, position: "relative" }}
-      // Spring physics for a snappier, more tactile hover
-      whileHover={{ scale: 1.1 }}
-      transition={{ type: "spring", stiffness: 400, damping: 20 }}
-      // Declare initial so Framer Motion doesn't animate from undefined on mount
-      initial={{ boxShadow: `0 0 0 0px ${color}00` }}
+      aria-label={`${label}, ${mastery}% mastery`}
+      // Mount entrance: scale up from centre with spring
+      initial={{ scale: 0.55, opacity: 0 }}
       animate={{
+        scale: 1,
+        opacity: 1,
         boxShadow: selected
           ? `0 0 0 2px ${color}, 0 0 24px ${color}50`
           : `0 0 0 0px ${color}00`,
-        // Override the component-level spring for glow: smooth fade instead of bounce
-        transition: { boxShadow: { duration: 0.25, ease: "easeOut" } },
+      }}
+      // Hover overrides scale independently via whileHover
+      whileHover={{ scale: 1.1 }}
+      whileTap={{ scale: 0.96 }}
+      transition={{
+        // Default spring for entrance + hover
+        type: "spring",
+        stiffness: 380,
+        damping: 22,
+        // Opacity fades in faster than scale
+        opacity: { duration: 0.18, ease: "easeOut" },
+        // Glow transitions smoothly — not bouncy
+        boxShadow: { duration: 0.25, ease: "easeOut" },
       }}
     >
       {/* ── Circular node body ── */}
