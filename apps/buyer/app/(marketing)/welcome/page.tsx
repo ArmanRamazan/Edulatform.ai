@@ -430,7 +430,7 @@ function CoursePickCard({ course, selected, onSelect }: CoursePickCardProps) {
         {course.avg_rating != null && (
           <span className="flex items-center gap-1 text-xs text-warning">
             <Star className="h-3 w-3 fill-current" />
-            {course.avg_rating.toFixed(1)}
+            {Number(course.avg_rating).toFixed(1)}
           </span>
         )}
       </div>

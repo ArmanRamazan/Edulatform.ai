@@ -107,7 +107,7 @@ export function MissionComplete({ results }: MissionCompleteProps) {
               variant="default"
               className="bg-success/15 font-mono text-success"
             >
-              +{results.mastery_delta.toFixed(2)} mastery
+              +{Number(results.mastery_delta).toFixed(2)} mastery
             </Badge>
           </div>
 
