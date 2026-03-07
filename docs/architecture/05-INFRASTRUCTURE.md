@@ -119,6 +119,7 @@ API Gateway: `GET /health/live`, `GET /health/ready`
 | `GEMINI_MODEL` | ai | Model name (default: gemini-2.0-flash-lite) |
 | `CORS_ORIGINS` | api-gateway | Allowed origins (comma-separated) |
 | `LOG_LEVEL` | all | Logging level (default: info) |
+| `RAG_DB_URL` | seed script | RAG DB connection (postgresql://rag:rag@localhost:5439/rag) |
 
 ### Staging
 
@@ -140,6 +141,24 @@ API Gateway: `GET /health/live`, `GET /health/ready`
 Фиксированные UUID для предсказуемых ссылок:
 - `DEMO_USER_ID` = `00000000-0000-4000-a000-000000000001`
 - `DEMO_ORG_ID`  = `00000000-0000-4000-b000-000000000001`
+
+### Demo RAG Documents — Acme Engineering Knowledge Base
+
+Технические документы для RAG-демонстрации (5 документов, ~50 чанков, 47 концептов):
+
+| Документ | Slug | Fixed UUID |
+|----------|------|------------|
+| Python Best Practices for Production Systems | `python_best_practices` | `00000000-0000-4001-c000-000000000001` |
+| Rust Ownership, Borrowing, and Memory Safety | `rust_ownership` | `00000000-0000-4001-c000-000000000002` |
+| TypeScript Patterns for Scalable Applications | `typescript_patterns` | `00000000-0000-4001-c000-000000000003` |
+| System Design Fundamentals for Distributed Systems | `system_design` | `00000000-0000-4001-c000-000000000004` |
+| API Design Guide: Building Developer-Friendly APIs | `api_design_guide` | `00000000-0000-4001-c000-000000000005` |
+
+- Исходные файлы: `tools/seed/demo_documents/`
+- Чанки: ~10 на документ по 200 слов, случайные нормализованные 768-мерные эмбеддинги
+- Концепты: 47 штук (Python×10, Rust×10, TypeScript×9, System Design×9, API×9)
+- Связи: 23 prerequisite-отношения (DAG: ownership→borrowing→lifetimes и т.д.)
+- `RAG_DB_URL` env var обязателен для запуска seed-скрипта
 
 Тесты seed-скрипта: `cd tools/seed && uv run --package seed pytest tests/ -v`
 

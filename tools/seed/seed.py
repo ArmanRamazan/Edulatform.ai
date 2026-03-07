@@ -1,10 +1,12 @@
 import asyncio
 import json
+import math
 import os
 import random
 import io
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
 
 import asyncpg
 import bcrypt
@@ -16,6 +18,7 @@ ENROLLMENT_DB_URL = os.environ["ENROLLMENT_DB_URL"]
 PAYMENT_DB_URL = os.environ["PAYMENT_DB_URL"]
 NOTIFICATION_DB_URL = os.environ["NOTIFICATION_DB_URL"]
 LEARNING_DB_URL = os.environ["LEARNING_DB_URL"]
+RAG_DB_URL = os.environ["RAG_DB_URL"]
 
 USER_COUNT = 50_000
 COURSE_COUNT = 100_000
@@ -1308,12 +1311,234 @@ async def seed_demo_org(identity_pool: asyncpg.Pool, payment_pool: asyncpg.Pool)
     print("Demo org seeding complete!")
 
 
+# ---------------------------------------------------------------------------
+# RAG demo documents — fixed UUIDs for predictable cross-script references
+# ---------------------------------------------------------------------------
+
+DEMO_DOC_IDS: dict[str, str] = {
+    "python_best_practices": "00000000-0000-4001-c000-000000000001",
+    "rust_ownership":        "00000000-0000-4001-c000-000000000002",
+    "typescript_patterns":   "00000000-0000-4001-c000-000000000003",
+    "system_design":         "00000000-0000-4001-c000-000000000004",
+    "api_design_guide":      "00000000-0000-4001-c000-000000000005",
+}
+
+_DEMO_DOCS_DIR = Path(__file__).parent / "demo_documents"
+
+_DEMO_DOCS: list[dict] = [
+    {"slug": "python_best_practices", "title": "Python Best Practices for Production Systems"},
+    {"slug": "rust_ownership",        "title": "Rust Ownership, Borrowing, and Memory Safety"},
+    {"slug": "typescript_patterns",   "title": "TypeScript Patterns for Scalable Applications"},
+    {"slug": "system_design",         "title": "System Design Fundamentals for Distributed Systems"},
+    {"slug": "api_design_guide",      "title": "API Design Guide: Building Developer-Friendly APIs"},
+]
+
+_DEMO_CONCEPTS: list[dict] = [
+    # Python (10)
+    {"name": "type_hints",           "description": "Static type annotations for Python functions and variables using PEP 484 syntax.", "slug": "python_best_practices"},
+    {"name": "async_await",          "description": "Python's cooperative concurrency model for non-blocking I/O using asyncio.", "slug": "python_best_practices"},
+    {"name": "testing",              "description": "Unit and integration testing patterns in Python with pytest and AsyncMock.", "slug": "python_best_practices"},
+    {"name": "decorators",           "description": "Higher-order functions that wrap other functions to add cross-cutting behavior.", "slug": "python_best_practices"},
+    {"name": "generators",           "description": "Memory-efficient iterators that yield values lazily using the yield keyword.", "slug": "python_best_practices"},
+    {"name": "context_managers",     "description": "Resource lifecycle management via __enter__/__exit__ or contextlib.", "slug": "python_best_practices"},
+    {"name": "dataclasses",          "description": "Auto-generated Python classes with type-annotated fields and optional immutability.", "slug": "python_best_practices"},
+    {"name": "logging",              "description": "Structured, JSON-formatted operational logging using Python's logging module.", "slug": "python_best_practices"},
+    {"name": "error_handling",       "description": "Exception hierarchies, domain-specific error types, and boundary error conversion.", "slug": "python_best_practices"},
+    {"name": "virtual_environments", "description": "Isolated Python environments per project managed with uv or venv.", "slug": "python_best_practices"},
+    # Rust (10)
+    {"name": "ownership",            "description": "Rust's single-owner memory model that prevents double-free and use-after-free.", "slug": "rust_ownership"},
+    {"name": "borrowing",            "description": "Temporary references to owned values without transferring ownership.", "slug": "rust_ownership"},
+    {"name": "lifetimes",            "description": "Compile-time annotations ensuring references are valid for their entire use.", "slug": "rust_ownership"},
+    {"name": "traits",               "description": "Rust's shared behavior abstractions, similar to interfaces in other languages.", "slug": "rust_ownership"},
+    {"name": "enums",                "description": "Algebraic data types in Rust where each variant can carry different data.", "slug": "rust_ownership"},
+    {"name": "pattern_matching",     "description": "Exhaustive, compile-verified branching over enum variants and data shapes.", "slug": "rust_ownership"},
+    {"name": "error_handling_rust",  "description": "Result<T,E> and ? operator for propagating errors as values in Rust.", "slug": "rust_ownership"},
+    {"name": "async_runtime",        "description": "Tokio-based async execution model for non-blocking I/O in Rust.", "slug": "rust_ownership"},
+    {"name": "smart_pointers",       "description": "Box, Rc, Arc, and RefCell for heap allocation and shared ownership in Rust.", "slug": "rust_ownership"},
+    {"name": "unsafe_rust",          "description": "Opt-in escape hatch that disables borrow checker guarantees for low-level code.", "slug": "rust_ownership"},
+    # TypeScript (9)
+    {"name": "generics",             "description": "Type parameters that let functions and interfaces work across multiple types.", "slug": "typescript_patterns"},
+    {"name": "type_guards",          "description": "Narrowing union types at runtime with typeof, instanceof, or user-defined predicates.", "slug": "typescript_patterns"},
+    {"name": "utility_types",        "description": "Built-in TypeScript transformations: Partial, Pick, Omit, Record, Readonly.", "slug": "typescript_patterns"},
+    {"name": "react_hooks",          "description": "Typed custom hooks with generics for data fetching, reducers, and state.", "slug": "typescript_patterns"},
+    {"name": "module_patterns",      "description": "Barrel files, type-only imports, and namespace organization in TypeScript.", "slug": "typescript_patterns"},
+    {"name": "strict_mode",          "description": "TypeScript compiler strictness flags eliminating implicit any and null unsafety.", "slug": "typescript_patterns"},
+    {"name": "type_inference",       "description": "Automatic type deduction by the TypeScript compiler without explicit annotation.", "slug": "typescript_patterns"},
+    {"name": "discriminated_unions", "description": "Tagged union types with a shared literal discriminant for exhaustive pattern matching.", "slug": "typescript_patterns"},
+    {"name": "mapped_types",         "description": "Type-level iteration over keys to transform object types systematically.", "slug": "typescript_patterns"},
+    # System Design (9)
+    {"name": "microservices",        "description": "Independently deployable services each owning a bounded context and its database.", "slug": "system_design"},
+    {"name": "api_gateway",          "description": "Single entry point that handles auth, rate limiting, and routing for all services.", "slug": "system_design"},
+    {"name": "caching",              "description": "Cache-aside, write-through, and write-behind strategies for reducing DB load.", "slug": "system_design"},
+    {"name": "load_balancing",       "description": "Distributing requests across instances using round-robin, least-connections, or hashing.", "slug": "system_design"},
+    {"name": "database_sharding",    "description": "Horizontal partitioning of data across multiple database instances by shard key.", "slug": "system_design"},
+    {"name": "event_driven",         "description": "Async service communication via durable event streams (NATS, Kafka).", "slug": "system_design"},
+    {"name": "circuit_breaker",      "description": "Failure isolation pattern that stops requests to unhealthy downstream services.", "slug": "system_design"},
+    {"name": "rate_limiting",        "description": "Token-bucket and sliding-window algorithms to throttle API traffic per client.", "slug": "system_design"},
+    {"name": "monitoring",           "description": "Metrics, logs, and distributed traces for observing system health and diagnosing issues.", "slug": "system_design"},
+    # API Design (9)
+    {"name": "rest_conventions",     "description": "Resource-oriented URL design and correct HTTP method semantics for REST APIs.", "slug": "api_design_guide"},
+    {"name": "versioning",           "description": "URL and header-based API versioning strategies for backward-compatible evolution.", "slug": "api_design_guide"},
+    {"name": "pagination",           "description": "Cursor-based and offset-based strategies for returning large collections safely.", "slug": "api_design_guide"},
+    {"name": "authentication",       "description": "JWT access tokens, refresh token rotation, and API key patterns for API auth.", "slug": "api_design_guide"},
+    {"name": "error_formats",        "description": "Consistent machine-readable error codes and HTTP status mapping for API errors.", "slug": "api_design_guide"},
+    {"name": "idempotency",          "description": "Idempotency keys for safe retry of payment and mutation endpoints.", "slug": "api_design_guide"},
+    {"name": "rate_limiting_api",    "description": "Per-user and per-org rate limit headers and 429 responses for public APIs.", "slug": "api_design_guide"},
+    {"name": "documentation",        "description": "OpenAPI-driven developer documentation with examples, changelogs, and migration guides.", "slug": "api_design_guide"},
+    {"name": "openapi",              "description": "Machine-readable API specification used for SDK generation and interactive docs.", "slug": "api_design_guide"},
+]
+
+# (prerequisite_name, dependent_name) — prerequisite must be learned before dependent
+_DEMO_PREREQUISITES: list[tuple[str, str]] = [
+    ("ownership",        "borrowing"),
+    ("borrowing",        "lifetimes"),
+    ("ownership",        "smart_pointers"),
+    ("ownership",        "unsafe_rust"),
+    ("type_inference",   "generics"),
+    ("generics",         "type_guards"),
+    ("generics",         "mapped_types"),
+    ("generics",         "utility_types"),
+    ("type_inference",   "discriminated_unions"),
+    ("error_handling",   "async_await"),
+    ("context_managers", "generators"),
+    ("rest_conventions", "pagination"),
+    ("rest_conventions", "versioning"),
+    ("rest_conventions", "error_formats"),
+    ("authentication",   "idempotency"),
+    ("authentication",   "rate_limiting_api"),
+    ("microservices",    "api_gateway"),
+    ("microservices",    "circuit_breaker"),
+    ("microservices",    "event_driven"),
+    ("load_balancing",   "caching"),
+    ("load_balancing",   "database_sharding"),
+    ("api_gateway",      "rate_limiting"),
+    ("openapi",          "documentation"),
+]
+
+
+def _split_into_chunks(content: str, target_words: int = 200) -> list[str]:
+    """Split text into chunks of approximately target_words words each."""
+    words = content.split()
+    chunks: list[str] = []
+    for i in range(0, len(words), target_words):
+        chunk = " ".join(words[i : i + target_words])
+        if chunk:
+            chunks.append(chunk)
+    return chunks
+
+
+def _random_embedding(dim: int = 768) -> list[float]:
+    """Generate a random unit vector of the given dimension."""
+    vec = [random.gauss(0.0, 1.0) for _ in range(dim)]
+    magnitude = math.sqrt(sum(v * v for v in vec))
+    return [v / magnitude for v in vec]
+
+
+async def seed_rag_documents(rag_pool: asyncpg.Pool) -> None:
+    """Seed 5 technical documents with chunks, concepts, and prerequisites for demo org. Idempotent."""
+    first_doc_id = next(iter(DEMO_DOC_IDS.values()))
+    existing = await rag_pool.fetchval(
+        "SELECT id FROM documents WHERE id = $1",
+        first_doc_id,
+    )
+    if existing:
+        print("RAG documents already seeded. Skipping.")
+        return
+
+    print("Seeding RAG demo documents for Acme Engineering...")
+
+    # 1. Insert documents and their chunks
+    for doc_meta in _DEMO_DOCS:
+        slug = doc_meta["slug"]
+        doc_id = DEMO_DOC_IDS[slug]
+        title = doc_meta["title"]
+        source_path = f"demo_documents/{slug}.md"
+        content = (_DEMO_DOCS_DIR / f"{slug}.md").read_text()
+
+        await rag_pool.execute(
+            """
+            INSERT INTO documents (id, organization_id, source_type, source_path, title, content, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6, '{}')
+            ON CONFLICT (id) DO NOTHING
+            """,
+            doc_id,
+            DEMO_ORG_ID,
+            "file",
+            source_path,
+            title,
+            content,
+        )
+
+        chunks = _split_into_chunks(content)
+        for chunk_index, chunk_text in enumerate(chunks):
+            embedding = _random_embedding()
+            embedding_str = "[" + ",".join(f"{v:.6f}" for v in embedding) + "]"
+            await rag_pool.execute(
+                """
+                INSERT INTO chunks (document_id, content, chunk_index, embedding, metadata)
+                VALUES ($1, $2, $3, $4, '{}')
+                """,
+                doc_id,
+                chunk_text,
+                chunk_index,
+                embedding_str,
+            )
+
+    print(f"  Inserted {len(_DEMO_DOCS)} documents with chunks")
+
+    # 2. Upsert concepts and collect their IDs for relationship wiring
+    concept_ids: dict[str, str] = {}
+    slug_to_doc_id: dict[str, str] = {doc["slug"]: DEMO_DOC_IDS[doc["slug"]] for doc in _DEMO_DOCS}
+
+    for concept in _DEMO_CONCEPTS:
+        source_doc_id = slug_to_doc_id[concept["slug"]]
+        concept_id = await rag_pool.fetchval(
+            """
+            INSERT INTO org_concepts (organization_id, name, description, source_document_id)
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (organization_id, name)
+            DO UPDATE SET description = EXCLUDED.description,
+                          source_document_id = COALESCE(EXCLUDED.source_document_id, org_concepts.source_document_id)
+            RETURNING id
+            """,
+            DEMO_ORG_ID,
+            concept["name"],
+            concept["description"],
+            source_doc_id,
+        )
+        concept_ids[concept["name"]] = str(concept_id)
+
+    print(f"  Upserted {len(_DEMO_CONCEPTS)} concepts")
+
+    # 3. Insert prerequisite relationships
+    rel_count = 0
+    for prereq_name, dependent_name in _DEMO_PREREQUISITES:
+        prereq_id = concept_ids.get(prereq_name)
+        dependent_id = concept_ids.get(dependent_name)
+        if prereq_id and dependent_id:
+            await rag_pool.execute(
+                """
+                INSERT INTO concept_relationships (concept_id, related_concept_id, relationship_type)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (concept_id, related_concept_id) DO NOTHING
+                """,
+                prereq_id,
+                dependent_id,
+                "prerequisite",
+            )
+            rel_count += 1
+
+    print(f"  Inserted {rel_count} prerequisite relationships")
+    print("RAG documents seeding complete!")
+
+
 async def main() -> None:
     identity_pool = await asyncpg.create_pool(IDENTITY_DB_URL, min_size=2, max_size=5)
     course_pool = await asyncpg.create_pool(COURSE_DB_URL, min_size=2, max_size=5)
     enrollment_pool = await asyncpg.create_pool(ENROLLMENT_DB_URL, min_size=2, max_size=5)
     payment_pool = await asyncpg.create_pool(PAYMENT_DB_URL, min_size=2, max_size=5)
     learning_pool = await asyncpg.create_pool(LEARNING_DB_URL, min_size=2, max_size=5)
+    rag_pool = await asyncpg.create_pool(RAG_DB_URL, min_size=2, max_size=5)
 
     try:
         # Check if already seeded
@@ -1325,6 +1550,7 @@ async def main() -> None:
             student_ids = [str(row["id"]) for row in student_rows]
             await seed_learning(learning_pool, course_pool, enrollment_pool, student_ids)
             await seed_demo_org(identity_pool, payment_pool)
+            await seed_rag_documents(rag_pool)
             return
 
         # Insert admin user before bulk COPY
@@ -1352,6 +1578,7 @@ async def main() -> None:
         await seed_learning(learning_pool, course_pool, enrollment_pool, student_ids)
 
         await seed_demo_org(identity_pool, payment_pool)
+        await seed_rag_documents(rag_pool)
 
         print("Seeding complete!")
     finally:
@@ -1360,6 +1587,7 @@ async def main() -> None:
         await enrollment_pool.close()
         await payment_pool.close()
         await learning_pool.close()
+        await rag_pool.close()
 
 
 if __name__ == "__main__":
