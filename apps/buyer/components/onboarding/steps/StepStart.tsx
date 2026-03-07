@@ -62,14 +62,38 @@ export function StepStart({ data }: StepProps) {
 
   return (
     <div className="text-center">
-      {/* Success icon */}
+      {/* Success icon — spring-in with layered outward burst rings */}
       <motion.div
-        initial={{ opacity: 0, scale: 0.4 }}
+        initial={{ opacity: 0, scale: 0.3 }}
         animate={{ opacity: 1, scale: 1 }}
-        transition={{ type: "spring", stiffness: 220, damping: 14 }}
-        className="mx-auto mb-6 flex h-16 w-16 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/30"
+        transition={{ type: "spring", stiffness: 260, damping: 15 }}
+        className="relative mx-auto mb-6 h-20 w-20"
       >
-        <CheckCircle2 className="h-8 w-8 text-success" />
+        {/* Primary burst — expands and fades */}
+        <motion.div
+          className="absolute inset-0 rounded-full bg-success/25"
+          initial={{ scale: 1, opacity: 0.8 }}
+          animate={{ scale: 2.4, opacity: 0 }}
+          transition={{ delay: 0.2, duration: 1.1, ease: "easeOut" }}
+        />
+        {/* Secondary burst — offset for layered feel */}
+        <motion.div
+          className="absolute inset-0 rounded-full bg-success/15"
+          initial={{ scale: 1, opacity: 0.6 }}
+          animate={{ scale: 1.75, opacity: 0 }}
+          transition={{ delay: 0.38, duration: 0.9, ease: "easeOut" }}
+        />
+        {/* Persistent outer ring — settles into place */}
+        <motion.div
+          className="absolute -inset-2 rounded-full border border-success/20"
+          initial={{ opacity: 0, scale: 0.5 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.15, type: "spring", stiffness: 200, damping: 16 }}
+        />
+        {/* Icon container */}
+        <div className="flex h-20 w-20 items-center justify-center rounded-full bg-success/15 ring-1 ring-success/30">
+          <CheckCircle2 className="h-10 w-10 text-success" />
+        </div>
       </motion.div>
 
       {/* Text */}
@@ -107,18 +131,18 @@ export function StepStart({ data }: StepProps) {
             <Link
               href={href}
               className={cn(
-                "flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left",
-                "transition-all hover:border-primary/40 hover:bg-muted/20",
+                "group flex items-center gap-3 rounded-xl border border-border bg-card p-4 text-left",
+                "transition-all duration-200 hover:border-primary/40 hover:bg-primary/[0.03]",
               )}
             >
-              <div className={cn("shrink-0 rounded-lg p-2", bgClass)}>
+              <div className={cn("shrink-0 rounded-lg p-2 transition-transform duration-200 group-hover:scale-110", bgClass)}>
                 <Icon className={cn("h-4 w-4", iconClass)} />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-foreground">{label}</p>
                 <p className="text-xs text-muted-foreground">{desc}</p>
               </div>
-              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200 group-hover:translate-x-0.5 group-hover:text-primary" />
             </Link>
           </motion.div>
         ))}

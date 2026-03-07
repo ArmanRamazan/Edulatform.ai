@@ -32,9 +32,8 @@ interface StepIndicatorProps {
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function StepIndicator({ currentStep }: StepIndicatorProps) {
-  // Progress bar fills proportionally: step 1 = 0%, step 5 = 100%
-  const progressPct =
-    ((currentStep - 1) / (ONBOARDING_TOTAL_STEPS - 1)) * 100;
+  // Each completed step fills its share: step 1 → 20%, step 5 → 100%
+  const progressPct = (currentStep / ONBOARDING_TOTAL_STEPS) * 100;
 
   return (
     <div
@@ -66,7 +65,7 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
                     isActive &&
                       "border-primary bg-primary text-white",
                     isUpcoming &&
-                      "border-border bg-background text-muted-foreground",
+                      "border-border bg-muted/30 text-muted-foreground",
                   )}
                   // Pulse ring only on the active circle
                   animate={
@@ -107,9 +106,12 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
                 </span>
               </div>
 
-              {/* Connector line (not after the last step) */}
+              {/* Connector line (not after the last step) — decorative, aria-hidden */}
               {index < ONBOARDING_TOTAL_STEPS - 1 && (
-                <div className="relative mx-1 h-px flex-1">
+                <div
+                  className="relative mx-2 h-[1.5px] flex-1"
+                  aria-hidden="true"
+                >
                   {/* Base track */}
                   <div className="absolute inset-0 bg-border" />
                   {/* Filled portion — slides in when step is completed */}
@@ -132,18 +134,32 @@ export function StepIndicator({ currentStep }: StepIndicatorProps) {
         })}
       </div>
 
-      {/* ── Thin overall progress bar ── */}
-      <div className="mt-4 h-0.5 w-full overflow-hidden rounded-full bg-border">
-        <motion.div
-          className="h-full rounded-full"
-          style={{
-            background:
-              "linear-gradient(90deg, var(--primary) 0%, #a78bfa 100%)",
-            boxShadow: "0 0 6px rgba(124,92,252,0.4)",
-          }}
-          animate={{ width: `${progressPct}%` }}
-          transition={{ duration: 0.5, ease: "easeInOut" }}
-        />
+      {/* ── Thin overall progress bar + step counter ── */}
+      <div className="mt-4" aria-hidden="true">
+        <div className="h-0.5 w-full overflow-hidden rounded-full bg-border">
+          <motion.div
+            className="h-full rounded-full"
+            style={{
+              background:
+                "linear-gradient(90deg, var(--primary) 0%, #a78bfa 100%)",
+              boxShadow: "0 0 6px rgba(124,92,252,0.4)",
+            }}
+            animate={{ width: `${progressPct}%` }}
+            transition={{ duration: 0.5, ease: "easeInOut" }}
+          />
+        </div>
+        {/* Step counter — right-aligned, helps orient mobile users without visible labels */}
+        <div className="mt-1.5 flex justify-end">
+          <motion.span
+            key={currentStep}
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="font-mono text-[10px] tabular-nums text-muted-foreground/50"
+          >
+            {currentStep} / {ONBOARDING_TOTAL_STEPS}
+          </motion.span>
+        </div>
       </div>
     </div>
   );

@@ -85,6 +85,7 @@ export function StepAssessment({ data, setData }: StepProps) {
                   <motion.button
                     key={skill}
                     type="button"
+                    aria-pressed={isSelected}
                     onClick={() => toggleSkill(skill)}
                     whileTap={{ scale: 0.94 }}
                     className={cn(

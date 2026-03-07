@@ -85,6 +85,7 @@ export function StepPlan({ data, setData }: StepProps) {
             <motion.button
               key={id}
               type="button"
+              aria-pressed={isSelected}
               onClick={() => setData({ ...data, goal: id })}
               variants={{
                 hidden: { opacity: 0, scale: 0.96 },
