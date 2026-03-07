@@ -10,6 +10,7 @@ import structlog
 from common.errors import AppError, ForbiddenError, NotFoundError
 from app.domain.mission import Mission
 from app.repositories.mission_repo import MissionRepository
+from app.services.concept_service import ConceptService
 from app.services.trust_level_service import TrustLevelService
 
 if TYPE_CHECKING:
@@ -25,12 +26,14 @@ class MissionService:
         trust_level_service: TrustLevelService,
         http_client: httpx.AsyncClient,
         settings: object,
+        concept_service: ConceptService,
         review_generator: ReviewGenerator | None = None,
     ) -> None:
         self._repo = mission_repo
         self._trust = trust_level_service
         self._http = http_client
         self._ai_url: str = settings.ai_service_url  # type: ignore[attr-defined]
+        self._concept_service = concept_service
         self._review_generator = review_generator
 
     async def get_or_create_today(
@@ -40,10 +43,16 @@ class MissionService:
         if existing is not None:
             return existing
 
+        mastery_response = await self._concept_service.get_course_mastery(user_id, org_id)
+        mastery_data = [
+            {"concept_id": str(item.concept_id), "mastery": item.mastery}
+            for item in mastery_response.items
+        ]
+
         try:
-            resp = await self._http.get(
+            resp = await self._http.post(
                 f"{self._ai_url}/ai/mission/daily",
-                params={"org_id": str(org_id)},
+                json={"org_id": str(org_id), "mastery": mastery_data},
                 headers={"Authorization": f"Bearer {token}"},
             )
             resp.raise_for_status()
@@ -116,6 +125,18 @@ class MissionService:
         )
 
         await self._trust.record_mission_completed(user_id, mission.organization_id)
+
+        if mission.concept_id is not None and mastery_delta:
+            try:
+                await self._concept_service.apply_mastery_delta(
+                    user_id, mission.concept_id, mastery_delta,
+                )
+            except Exception:
+                logger.warning(
+                    "mastery_delta_failed",
+                    mission_id=str(mission_id),
+                    concept_id=str(mission.concept_id),
+                )
 
         if self._review_generator is not None:
             try:

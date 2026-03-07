@@ -199,8 +199,14 @@ class MissionCompleteResponse(BaseModel):
     mastery_delta: float
 
 
+class MasteryItem(BaseModel):
+    concept_id: UUID
+    mastery: float
+
+
 class MissionDailyRequest(BaseModel):
     org_id: UUID
+    mastery: list[MasteryItem] = []
 
 
 class UnifiedSearchRequest(BaseModel):

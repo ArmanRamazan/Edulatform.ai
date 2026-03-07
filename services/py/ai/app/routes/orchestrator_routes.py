@@ -4,13 +4,14 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import APIRouter, Depends, Header, Query
+from fastapi import APIRouter, Depends, Header
 
 from common.errors import AppError
 from app.domain.models import (
     DailyMissionResponse,
     MissionCompleteRequest,
     MissionCompleteResponse,
+    MissionDailyRequest,
 )
 from app.services.credit_service import CreditService
 from app.services.orchestrator_service import AgentOrchestrator
@@ -47,9 +48,9 @@ def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
         raise AppError("Invalid token", status_code=401) from exc
 
 
-@router.get("/daily", response_model=DailyMissionResponse)
+@router.post("/daily", response_model=DailyMissionResponse)
 async def get_daily_mission(
-    org_id: Annotated[UUID, Query()],
+    body: MissionDailyRequest,
     claims: Annotated[dict, Depends(_get_current_user_claims)],
     orchestrator: Annotated[AgentOrchestrator, Depends(_get_orchestrator_service)],
     credit_service: Annotated[CreditService, Depends(_get_credit_service)],
@@ -58,9 +59,14 @@ async def get_daily_mission(
         user_id=str(claims["user_id"]),
         tier=claims["subscription_tier"],
     )
+    mastery_data = [
+        {"concept_id": str(item.concept_id), "mastery": item.mastery}
+        for item in body.mastery
+    ]
     mission = await orchestrator.get_daily_mission(
         user_id=claims["user_id"],
-        org_id=org_id,
+        org_id=body.org_id,
+        mastery_data=mastery_data,
     )
     return DailyMissionResponse(
         concept_name=mission.concept_name,

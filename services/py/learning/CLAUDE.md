@@ -1,6 +1,6 @@
 # Learning Service
 
-Port 8007 | DB port 5438 | Package: learning | 272 tests (largest service)
+Port 8007 | DB port 5438 | Package: learning | 277 tests
 
 ## Domain
 
@@ -30,10 +30,12 @@ certificates, internal_certificates, trust_levels, missions, daily_routes
 - FSRS algorithm: scheduling flashcard reviews in FlashcardService
 - Concepts: knowledge graph nodes, linked to courses/lessons
 - ActivityService: injected into many services for activity feed tracking
-- MissionService: calls AI service (8006) via httpx for mission generation
+- MissionService: fetches mastery locally → POSTs to AI with mastery in body (push model)
+  Avoids circular HTTP dependency (Learning → AI → Learning)
+- MissionService applies mastery_delta locally after mission completion via ConceptService
+- ConceptService.apply_mastery_delta — delta applied per concept after AI coach session
 - DailyService: aggregates missions + trust + flashcards + streaks
 - Internal certificates route: service-to-service endpoint (no user auth)
-- Largest test suite — always run full suite before committing
 
 ## Test command
 

@@ -165,7 +165,23 @@ class ConceptService:
         ]
         return CourseMasteryResponse(course_id=course_id, items=items)
 
-    # --- Mastery updates (called from quiz/flashcard services) ---
+    # --- Mastery updates (called from quiz/flashcard/mission services) ---
+
+    async def apply_mastery_delta(
+        self, student_id: UUID, concept_id: UUID, delta: float
+    ) -> None:
+        """Apply a mastery delta to a specific concept. Called by MissionService after completion."""
+        current = await self._repo.get_mastery(student_id, concept_id)
+        current_val = current.mastery if current else 0.0
+        new_val = current_val + delta
+        await self._repo.upsert_mastery(student_id, concept_id, new_val)
+        logger.debug(
+            "mission_mastery_updated",
+            student_id=str(student_id),
+            concept_id=str(concept_id),
+            old_value=current_val,
+            new_value=new_val,
+        )
 
     async def update_mastery_for_lesson(
         self, student_id: UUID, lesson_id: UUID, score_delta: float
