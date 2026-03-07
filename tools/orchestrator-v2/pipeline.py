@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from agent_runner import is_shutdown, log
+from agent_runner import emit_event, is_shutdown, log
 from config import MAX_RETRIES, PHASES
 from executor import run_implement
 from integrator import run_document, run_integrate
@@ -47,6 +47,7 @@ def run_pipeline(state: SprintState) -> bool:
     log(f"  Tasks: {len(state.tasks)}")
     log(f"  Pipeline: {' → '.join(PHASES)}")
     log(f"{'#' * 60}")
+    emit_event("sprint_start", extra={"phase": state.phase, "tasks": len(state.tasks)})
 
     # Determine starting phase (for resume)
     start_idx = 0
@@ -100,6 +101,12 @@ def run_pipeline(state: SprintState) -> bool:
                 _print_report(state)
                 return False
 
+    passed = sum(1 for t in state.tasks if t.status == "passed")
+    failed = sum(1 for t in state.tasks if t.status == "failed")
+    skipped = sum(1 for t in state.tasks if t.status == "skipped")
+    emit_event("sprint_done", extra={
+        "phase": state.phase, "passed": passed, "failed": failed, "skipped": skipped,
+    })
     log(f"\n{'#' * 60}")
     log(f"  SPRINT COMPLETE: {state.phase}")
     log(f"{'#' * 60}")

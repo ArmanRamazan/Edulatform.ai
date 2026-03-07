@@ -49,6 +49,7 @@ class Task:
     started_at: str = ""
     finished_at: str = ""
     error: str = ""
+    diff_summary: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -118,6 +119,7 @@ class SprintState:
                     "depends_on": t.depends_on, "status": t.status,
                     "attempts": t.attempts, "started_at": t.started_at,
                     "finished_at": t.finished_at, "error": t.error,
+                    "diff_summary": t.diff_summary,
                 }
                 for t in self.tasks
             ],

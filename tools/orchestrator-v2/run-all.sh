@@ -6,7 +6,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 SPRINTS=(
-    tasks/sprint-32-onboarding.yaml
     tasks/sprint-33-knowledge-graph.yaml
     tasks/sprint-34-realtime.yaml
     tasks/sprint-35-seed-data.yaml
