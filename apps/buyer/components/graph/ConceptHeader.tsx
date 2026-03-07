@@ -23,8 +23,8 @@ function MasteryRing({ mastery }: { mastery: number }) {
     <svg width="128" height="128" viewBox="0 0 128 128" className="shrink-0">
       <defs>
         <linearGradient id="mastery-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="hsl(var(--primary))" />
-          <stop offset="100%" stopColor="hsl(263, 90%, 70%)" />
+          <stop offset="0%" stopColor="#7c5cfc" />
+          <stop offset="100%" stopColor="#9b80fd" />
         </linearGradient>
       </defs>
       <circle
@@ -32,7 +32,7 @@ function MasteryRing({ mastery }: { mastery: number }) {
         cy="64"
         r={radius}
         fill="none"
-        stroke="hsl(var(--muted))"
+        stroke="#22223a"
         strokeWidth="8"
       />
       <circle
@@ -50,10 +50,13 @@ function MasteryRing({ mastery }: { mastery: number }) {
       />
       <text
         x="64"
-        y="60"
+        y="62"
         textAnchor="middle"
-        className="fill-card-foreground font-mono text-2xl font-bold"
-        fontSize="24"
+        fill="#e2e2e8"
+        fontSize="22"
+        fontWeight="600"
+        fontFamily="var(--font-mono, ui-monospace, monospace)"
+        letterSpacing="-0.02em"
       >
         {mastery}%
       </text>
@@ -61,10 +64,13 @@ function MasteryRing({ mastery }: { mastery: number }) {
         x="64"
         y="80"
         textAnchor="middle"
-        className="fill-muted-foreground text-xs"
-        fontSize="11"
+        fill="#6b6b80"
+        fontSize="10"
+        fontWeight="400"
+        letterSpacing="0.06em"
+        fontFamily="var(--font-sans, ui-sans-serif, system-ui)"
       >
-        mastery
+        MASTERY
       </text>
     </svg>
   );
@@ -123,7 +129,7 @@ export function ConceptHeader({
             <MasteryRing mastery={mastery} />
 
             <div className="flex-1 min-w-0">
-              <h1 className="mb-2 text-2xl font-bold text-card-foreground">
+              <h1 className="mb-2 text-2xl font-semibold tracking-tight text-card-foreground">
                 {concept.name}
               </h1>
               {concept.description && (
@@ -143,7 +149,7 @@ export function ConceptHeader({
                       <Link key={p.id} href={`/graph/${p.id}`}>
                         <Badge
                           variant="outline"
-                          className="cursor-pointer hover:bg-secondary transition-colors"
+                          className="cursor-pointer transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary"
                         >
                           {p.name}
                         </Badge>
@@ -164,7 +170,7 @@ export function ConceptHeader({
                       <Link key={d.id} href={`/graph/${d.id}`}>
                         <Badge
                           variant="secondary"
-                          className="cursor-pointer hover:bg-primary/10 transition-colors"
+                          className="cursor-pointer transition-colors hover:bg-success/10 hover:text-success"
                         >
                           {d.name}
                         </Badge>

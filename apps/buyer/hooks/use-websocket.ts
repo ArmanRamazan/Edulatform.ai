@@ -13,6 +13,8 @@ export interface WsMessage {
 
 export interface UseWebSocketReturn {
   isConnected: boolean;
+  /** True while the socket handshake is in flight (between new WebSocket() and onopen/onclose) */
+  isConnecting: boolean;
   lastMessage: WsMessage | null;
   notificationCount: number;
 }
@@ -21,9 +23,14 @@ export interface UseWebSocketReturn {
  * Connects to the ws-gateway and tracks live notification events.
  * Silently falls back to REST polling when the socket is unavailable.
  * Auto-reconnects with exponential backoff (1 s → 2 s → 4 s … 30 s cap).
+ *
+ * Handles two server-push message types:
+ *   { type: "notification" }              — increments local counter by 1
+ *   { type: "notification_count", count } — syncs counter to authoritative value
  */
 export function useWebSocket(token: string | null): UseWebSocketReturn {
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [lastMessage, setLastMessage] = useState<WsMessage | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
 
@@ -56,13 +63,17 @@ export function useWebSocket(token: string | null): UseWebSocketReturn {
     if (!token || !mountedRef.current) return;
 
     destroySocket();
+    setIsConnecting(true);
 
     let ws: WebSocket;
     try {
       ws = new WebSocket(`${WS_BASE}?token=${encodeURIComponent(token)}`);
     } catch {
-      // WebSocket constructor can throw in some environments
-      console.log("WebSocket unavailable, using polling");
+      // WebSocket constructor can throw in some environments (e.g. SSR guard)
+      setIsConnecting(false);
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[ws] WebSocket unavailable, using polling");
+      }
       return;
     }
 
@@ -71,6 +82,7 @@ export function useWebSocket(token: string | null): UseWebSocketReturn {
     ws.onopen = () => {
       if (!mountedRef.current) return;
       setIsConnected(true);
+      setIsConnecting(false);
       backoffRef.current = INITIAL_BACKOFF_MS; // Reset backoff on successful connect
     };
 
@@ -79,8 +91,16 @@ export function useWebSocket(token: string | null): UseWebSocketReturn {
       try {
         const msg = JSON.parse(event.data as string) as WsMessage;
         setLastMessage(msg);
+
         if (msg.type === "notification") {
+          // Incremental: a new notification just arrived
           setNotificationCount((prev) => prev + 1);
+        } else if (msg.type === "notification_count") {
+          // Full sync: server pushed the authoritative unread count
+          const count = msg.count;
+          if (typeof count === "number") {
+            setNotificationCount(count);
+          }
         }
       } catch {
         // Ignore malformed frames silently
@@ -90,6 +110,7 @@ export function useWebSocket(token: string | null): UseWebSocketReturn {
     ws.onclose = () => {
       if (!mountedRef.current) return;
       setIsConnected(false);
+      setIsConnecting(false);
       wsRef.current = null;
 
       // Schedule reconnect with current backoff, then double it (capped at max)
@@ -102,8 +123,10 @@ export function useWebSocket(token: string | null): UseWebSocketReturn {
     };
 
     ws.onerror = () => {
-      // onerror is always followed by onclose — log once here, let onclose handle retry
-      console.log("WebSocket unavailable, using polling");
+      // onerror is always followed by onclose — let onclose handle retry
+      if (process.env.NODE_ENV !== "production") {
+        console.log("[ws] WebSocket error, will retry via onclose");
+      }
     };
   }, [token, clearRetryTimer, destroySocket]);
 
@@ -121,5 +144,5 @@ export function useWebSocket(token: string | null): UseWebSocketReturn {
     };
   }, [token, connect, clearRetryTimer, destroySocket]);
 
-  return { isConnected, lastMessage, notificationCount };
+  return { isConnected, isConnecting, lastMessage, notificationCount };
 }

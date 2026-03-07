@@ -10,10 +10,10 @@ import {
   Background,
   BackgroundVariant,
   type Node,
-  type Edge,
   type NodeMouseHandler,
   type NodeTypes,
 } from "@xyflow/react";
+import { GitMerge } from "lucide-react";
 import { ConceptNode } from "./ConceptNode";
 import { defaultEdgeOptions, minimapNodeColor } from "./graphTheme";
 import type { KnowledgeGraphProps } from "./KnowledgeGraph";
@@ -40,6 +40,20 @@ export function KnowledgeGraphImpl({
   const backgroundVariant =
     viewMode === "mindmap" ? BackgroundVariant.Lines : BackgroundVariant.Dots;
 
+  // Empty state — render a placeholder canvas rather than a blank rect
+  if (nodes.length === 0) {
+    return (
+      <div
+        className="flex h-full min-h-[480px] w-full flex-col items-center justify-center gap-3 rounded-xl"
+        style={{ background: "#0a0a0f" }}
+      >
+        <GitMerge className="size-10 text-[#22223a]" strokeWidth={1.5} />
+        <p className="text-sm font-medium text-[#6b6b80]">No concepts in graph</p>
+        <p className="text-xs text-[#4a4a5a]">Add concepts to the knowledge base to see them here</p>
+      </div>
+    );
+  }
+
   return (
     <ReactFlow
       nodes={nodes}
@@ -54,10 +68,11 @@ export function KnowledgeGraphImpl({
       deleteKeyCode={null}
       style={{ background: "#0a0a0f" }}
     >
-      {/* Subtle dot/line grid background */}
+      {/* Subtle dot/line grid — very low opacity to avoid competing with nodes.
+          'mindmap': dim line grid | 'map': near-invisible white dots */}
       <Background
-        color="#1e1e2e"
-        gap={24}
+        color={viewMode === "mindmap" ? "#2a2a3e" : "#2a2a3e"}
+        gap={28}
         size={1}
         variant={backgroundVariant}
       />
@@ -73,7 +88,7 @@ export function KnowledgeGraphImpl({
         nodeColor={(node: Node) =>
           minimapNodeColor((node.data?.mastery as number) ?? 0)
         }
-        maskColor="rgba(10, 10, 15, 0.75)"
+        maskColor="rgba(10, 10, 15, 0.82)"
         pannable
         zoomable
       />

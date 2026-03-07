@@ -30,7 +30,18 @@ export const KnowledgeGraph = dynamic<KnowledgeGraphProps>(
   {
     ssr: false,
     loading: () => (
-      <Skeleton className="h-full w-full rounded-xl" />
+      <div className="relative h-full min-h-[480px] w-full overflow-hidden rounded-xl">
+        <Skeleton className="absolute inset-0 h-full w-full" />
+        {/* Ghost nodes hint at the graph structure below */}
+        <div className="absolute inset-0 flex items-center justify-center gap-16 opacity-25">
+          <Skeleton className="size-16 rounded-full" />
+          <div className="flex flex-col gap-10">
+            <Skeleton className="size-12 rounded-full" />
+            <Skeleton className="size-12 rounded-full" />
+          </div>
+          <Skeleton className="size-14 rounded-full" />
+        </div>
+      </div>
     ),
   },
 );

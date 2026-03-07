@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { SendHorizontal, AlertCircle, Lightbulb, LogOut } from "lucide-react";
+import { SendHorizontal, AlertCircle, Lightbulb } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,6 +29,8 @@ interface MissionSessionProps {
   token: string;
 }
 
+const PHASE_ORDER: CoachPhase[] = ["recap", "reading", "questions", "code_case", "wrap_up"];
+
 function formatElapsed(seconds: number): string {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
@@ -38,7 +40,7 @@ function formatElapsed(seconds: number): string {
 function CodeBlock({ code, language }: { code: string; language?: string }) {
   return (
     <div className="overflow-hidden rounded-lg border border-[#ffffff08]">
-      {/* Language label strip */}
+      {/* Language header strip */}
       <div className="flex items-center border-b border-[#ffffff08] bg-[#07070b] px-3 py-1.5">
         <span className="font-mono text-[10px] uppercase tracking-widest text-[#6b6b80]">
           {language || "code"}
@@ -60,12 +62,11 @@ function renderMessageContent(content: string) {
       const code = lang ? lines.slice(1).join("\n") : lines.join("\n");
       return <CodeBlock key={i} code={code} language={lang} />;
     }
-    const trimmed = part.trim();
-    return trimmed ? (
-      <p key={i} className="whitespace-pre-wrap text-[#e2e2e8]">
+    return (
+      <p key={i} className="whitespace-pre-wrap">
         {part}
       </p>
-    ) : null;
+    );
   });
 }
 
@@ -96,9 +97,9 @@ function ContentArea({
           {blueprint.recap_questions.length > 0 ? (
             <div className="space-y-3">
               {(blueprint.recap_questions as string[]).map((q, i) => (
-                <Card key={i} className="border-[#ffffff08] bg-[#14141f]">
+                <Card key={i} className="border-border/50">
                   <CardContent className="p-4">
-                    <p className="text-sm text-[#e2e2e8]">{q}</p>
+                    <p className="text-sm text-card-foreground">{q}</p>
                   </CardContent>
                 </Card>
               ))}
@@ -133,15 +134,15 @@ function ContentArea({
           <div className="space-y-3">
             {(blueprint.check_questions as Array<{ question: string; options?: string[] }>).map(
               (q, i) => (
-                <Card key={i} className="border-[#ffffff08] bg-[#14141f]">
+                <Card key={i} className="border-border/50">
                   <CardContent className="p-4">
-                    <p className="mb-2 text-sm font-medium text-[#e2e2e8]">{q.question}</p>
+                    <p className="mb-2 text-sm font-medium text-card-foreground">{q.question}</p>
                     {q.options && (
                       <div className="space-y-1.5">
                         {q.options.map((opt, j) => (
                           <div
                             key={j}
-                            className="cursor-pointer rounded-lg bg-[#1a1a2e] px-3 py-2 text-xs text-[#a0a0b0] transition-colors hover:bg-primary/10 hover:text-[#e2e2e8]"
+                            className="rounded-md bg-secondary px-3 py-2 text-xs text-muted-foreground transition-colors hover:bg-primary/10 hover:text-foreground"
                           >
                             {opt}
                           </div>
@@ -279,22 +280,11 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
   // Show StreamingMessage row (tokens are actively flowing)
   const showStreamingMessage = coachStream.isStreaming && coachStream.currentText.length > 0;
 
-  // Auto-focus the input when the session becomes ready
-  useEffect(() => {
-    if (sessionId && !isBusy) {
-      inputRef.current?.focus();
-    }
-  }, [sessionId, isBusy]);
-
   function handleSend(text?: string) {
     const msg = (text ?? input).trim();
     if (!msg || !sessionId || isBusy) return;
 
     setInput("");
-    // Reset textarea height after clearing
-    if (inputRef.current) {
-      inputRef.current.style.height = "auto";
-    }
     setMessages((prev) => [...prev, { role: "user", content: msg }]);
     coachStream.startStream(msg);
   }
@@ -310,23 +300,10 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
     });
   }
 
-  /** Auto-grow textarea up to ~5 lines; Escape clears the draft. */
-  function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
-    setInput(e.target.value);
-    e.target.style.height = "auto";
-    e.target.style.height = `${Math.min(e.target.scrollHeight, 120)}px`;
-  }
-
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
-    }
-    if (e.key === "Escape") {
-      setInput("");
-      if (inputRef.current) {
-        inputRef.current.style.height = "auto";
-      }
     }
   }
 
@@ -360,30 +337,29 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-[#ffffff08] px-6 py-3">
+      <div className="flex items-center justify-between border-b border-border px-6 py-3">
         <div className="flex items-center gap-4">
           <div>
-            <h2 className="text-sm font-semibold text-[#e2e2e8]">
+            <h2 className="text-sm font-semibold text-card-foreground">
               {mission.blueprint?.concept_name ?? "Mission"}
             </h2>
-            <p className="text-xs text-[#6b6b80]">{mission.mission_type}</p>
+            <p className="text-xs text-muted-foreground">{mission.mission_type}</p>
           </div>
           <PhaseIndicator currentPhase={phase} completedPhases={completedPhases} />
         </div>
 
         <div className="flex items-center gap-3">
-          <Badge variant="secondary" className="font-mono text-xs tabular-nums">
+          <Badge variant="secondary" className="font-mono text-xs">
             {formatElapsed(elapsed)}
           </Badge>
           <Button
             size="sm"
             variant="outline"
             aria-label="End the coaching session"
-            className="gap-1.5 border-[#ffffff12] text-[#a0a0b0] transition-colors hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive"
+            className="border-[#ffffff12] text-[#a0a0b0] hover:border-[#ffffff20] hover:text-[#e2e2e8]"
             onClick={handleEnd}
             disabled={endSession.isPending || !sessionId}
           >
-            <LogOut className="size-3.5" aria-hidden="true" />
             {endSession.isPending ? "Ending…" : "End Session"}
           </Button>
         </div>
@@ -392,7 +368,7 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
       {/* Two-panel layout */}
       <div className="flex min-h-0 flex-1 flex-col md:flex-row">
         {/* Left panel — Content */}
-        <div className="flex-[3] overflow-y-auto border-b border-[#ffffff08] md:border-b-0 md:border-r">
+        <div className="flex-[3] overflow-y-auto border-b border-border md:border-b-0 md:border-r">
           <ContentArea phase={phase} blueprint={mission.blueprint} />
         </div>
 
@@ -401,20 +377,6 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
           {/* Messages */}
           <ScrollArea className="flex-1 p-4">
             <div className="space-y-3">
-              {/* Initial loading skeleton — shown before the session greeting arrives */}
-              {messages.length === 0 && startSession.isPending && (
-                <div className="space-y-3" aria-hidden="true">
-                  <div className="flex gap-2">
-                    <Skeleton className="size-7 shrink-0 rounded-full" />
-                    <div className="space-y-1.5">
-                      <Skeleton className="h-4 w-48" />
-                      <Skeleton className="h-4 w-64" />
-                      <Skeleton className="h-4 w-40" />
-                    </div>
-                  </div>
-                </div>
-              )}
-
               {/* Committed messages */}
               {messages.map((msg, i) => (
                 <div
@@ -497,39 +459,23 @@ export function MissionSession({ mission, token }: MissionSessionProps) {
 
             {/* Main input row */}
             <div className="flex items-end gap-2">
-              <div className="relative flex-1">
-                <textarea
-                  ref={inputRef}
-                  value={input}
-                  onChange={handleInputChange}
-                  onKeyDown={handleKeyDown}
-                  placeholder="Ask the coach… (Enter to send, Shift+Enter for newline, Esc to clear)"
-                  rows={1}
-                  aria-label="Message the coach"
-                  aria-keyshortcuts="Enter"
-                  disabled={isBusy || !sessionId}
-                  className={cn(
-                    "w-full resize-none rounded-xl border bg-[#0a0a0f] px-3 py-2 text-sm text-[#e2e2e8]",
-                    "placeholder:text-[#4a4a5a]",
-                    "transition-colors duration-150",
-                    "border-[#1e1e2e] focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20",
-                    "disabled:cursor-not-allowed disabled:opacity-40",
-                    "max-h-[120px] overflow-y-auto",
-                  )}
-                />
-                {/* Character count — appears only when approaching limit */}
-                {input.length > 400 && (
-                  <span
-                    className={cn(
-                      "absolute right-2.5 bottom-2 select-none font-mono text-[9px] tabular-nums",
-                      input.length > 500 ? "text-destructive" : "text-muted-foreground",
-                    )}
-                    aria-live="polite"
-                  >
-                    {input.length}/500
-                  </span>
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Ask the coach…"
+                rows={1}
+                aria-label="Message the coach"
+                disabled={isBusy || !sessionId}
+                className={cn(
+                  "flex-1 resize-none rounded-xl border bg-[#0a0a0f] px-3 py-2 text-sm text-[#e2e2e8]",
+                  "placeholder:text-[#6b6b80]",
+                  "transition-colors duration-150",
+                  "border-[#1e1e2e] focus:border-primary/60 focus:outline-none focus:ring-2 focus:ring-primary/20",
+                  "disabled:cursor-not-allowed disabled:opacity-40",
                 )}
-              </div>
+              />
               <Button
                 size="sm"
                 aria-label="Send message"

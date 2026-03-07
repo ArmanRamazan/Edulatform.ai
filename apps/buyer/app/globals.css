@@ -12,8 +12,16 @@
   100% { transform: scale(1); }
 }
 
+/* Outward ring pulse for the WebSocket live-connected indicator dot */
+@keyframes ws-live-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0.55); }
+  70%  { box-shadow: 0 0 0 4px rgba(52, 211, 153, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(52, 211, 153, 0); }
+}
+
 @theme inline {
     --animate-badge-pop: badge-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    --animate-ws-live-pulse: ws-live-pulse 2s ease-out infinite;
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
@@ -188,42 +196,6 @@
   }
 }
 
-@keyframes confetti-fall {
-  0% {
-    opacity: 1;
-    transform: translateY(0) rotate(0deg);
-  }
-  100% {
-    opacity: 0;
-    transform: translateY(400px) rotate(720deg);
-  }
-}
-
-/* Mission complete card entrance — overshoots slightly then settles */
-@keyframes mission-complete-in {
-  0%   { opacity: 0; transform: translateY(20px) scale(0.96); }
-  65%  { opacity: 1; transform: translateY(-3px) scale(1.005); }
-  100% { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-/* Streaming → formatted view fade-in settle */
-@keyframes coach-stream-settle {
-  0%   { opacity: 0.5; }
-  100% { opacity: 1; }
-}
-
-/* Ambient glow pulse for the TypingIndicator container */
-@keyframes typing-ambient-glow {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50%       { box-shadow: 0 0 14px 3px rgba(124, 92, 252, 0.07); }
-}
-
-/* Staggered list-item reveal for strengths/gaps */
-@keyframes list-item-in {
-  from { opacity: 0; transform: translateX(-6px); }
-  to   { opacity: 1; transform: translateX(0); }
-}
-
 /* ─── React Flow — Dark Knowledge overrides ──────────────────────────────────
    These complement the CSS imported in KnowledgeGraphImpl.tsx and lock
    every React Flow surface to the dark-first design token palette.
@@ -297,4 +269,45 @@
 
 .react-flow__minimap-svg {
   border-radius: 6px;
+}
+
+/* ── Panel (top-right React Flow branding area) — dark surface ── */
+.react-flow__panel {
+  background: transparent;
+}
+
+/* ── Node selected state — remove React Flow's default blue outline ── */
+.react-flow__node.selected,
+.react-flow__node:focus,
+.react-flow__node:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+/* ── Edge selected — violet highlight instead of blue ── */
+.react-flow__edge.selected .react-flow__edge-path,
+.react-flow__edge:focus .react-flow__edge-path {
+  stroke: #9b80fd;
+  filter: drop-shadow(0 0 4px rgba(124, 92, 252, 0.6));
+}
+
+/* ── Viewport — hide default scrollbars inside the canvas ── */
+.react-flow__renderer {
+  scrollbar-width: none;
+}
+.react-flow__renderer::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── Node toolbar — dark surface ── */
+.react-flow__node-toolbar {
+  background: #1a1a2e;
+  border: 1px solid #1e1e2e;
+  border-radius: 8px;
+}
+
+/* ── Resize handle — violet on hover ── */
+.react-flow__resize-control.handle:hover {
+  background: #7c5cfc;
+  border-color: #7c5cfc;
 }

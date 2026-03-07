@@ -249,21 +249,19 @@ def run_git(args: list[str], cwd: Path | None = None) -> tuple[int, str]:
 
 
 def has_git_changes(cwd: Path | None = None) -> bool:
-    """Check for uncommitted changes OR new commits vs origin HEAD."""
+    """Check for uncommitted changes OR new commits on worktree branch."""
     # 1. Uncommitted changes
     code, output = run_git(["status", "--porcelain"], cwd=cwd)
     if output.strip():
         return True
 
-    # 2. New commits on this branch vs where worktree branched from
-    #    (worktree branches are created from HEAD of main)
-    code, log_output = run_git(
-        ["log", "HEAD", "--not", "--remotes", "--not", "main", "--oneline"],
-        cwd=cwd,
-    )
-    if log_output.strip():
-        return True
+    # 2. New commits: compare HEAD of worktree branch vs merge-base with main
+    code, base = run_git(["merge-base", "HEAD", "main"], cwd=cwd)
+    if code == 0 and base.strip():
+        code2, diff = run_git(["diff", "--stat", base.strip(), "HEAD"], cwd=cwd)
+        if diff.strip():
+            return True
 
-    # 3. Fallback: diff against main
-    code, diff_output = run_git(["diff", "main", "--stat"], cwd=cwd)
-    return bool(diff_output.strip())
+    # 3. Fallback: any commits on this branch not on main
+    code, log_out = run_git(["log", "main..HEAD", "--oneline"], cwd=cwd)
+    return bool(log_out.strip())
