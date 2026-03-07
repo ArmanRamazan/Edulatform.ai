@@ -1,6 +1,6 @@
 # 01 — System Overview
 
-> Последнее обновление: 2026-03-06
+> Последнее обновление: 2026-03-08
 
 ## System Diagram
 
@@ -12,7 +12,7 @@
                                  │                    │
                                  ▼                    ▼
                     ┌────────────────────────────────────┐
-                    │      api-gateway:8000 (Rust/axum)  │
+                    │      api-gateway:8080 (Rust/axum)  │
                     │      JWT validation + reverse proxy │
                     └──┬──┬──┬──┬──┬──┬──┬──┬──┬────────┘
                        │  │  │  │  │  │  │  │  │
@@ -47,21 +47,28 @@
                     │   Redis :6379    │
                     │ (cache, sessions)│
                     └──────────────────┘
+
+          ┌───────────────────┐   ┌──────────────────────────┐
+          │ ws-gateway :8011  │   │ embedding-orchestrator   │
+          │ (Rust, WebSocket) │   │ :8009 (Rust, Gemini API) │
+          └───────────────────┘   └──────────────────────────┘
 ```
 
 ## Service Inventory
 
 | Service | Language | Framework | Port | DB Port | Tests | Purpose |
 |---------|----------|-----------|------|---------|-------|---------|
-| api-gateway | Rust | axum | 8000 | — | cargo test | JWT validation, reverse proxy to all backends |
+| api-gateway | Rust | axum | 8080 | — | cargo test | JWT validation, reverse proxy to all backends |
+| ws-gateway | Rust | axum | 8011 | — | cargo test | WebSocket real-time notifications |
+| embedding-orchestrator | Rust | axum | 8009 | — | cargo test | Concurrent embedding API proxy |
 | identity | Python | FastAPI | 8001 | 5433 | 156 | Auth, users, profiles, follows, referrals, organizations |
 | course | Python | FastAPI | 8002 | 5434 | 129 | Courses, modules, lessons, reviews, bundles, promotions, wishlist, categories, analytics |
 | enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations |
-| payment | Python | FastAPI | 8004 | 5436 | 151 | Payments, subscriptions, earnings, coupons, refunds, gifts, org subscriptions |
-| notification | Python | FastAPI | 8005 | 5437 | 136 | Notifications, streak/flashcard reminders, direct messaging |
-| ai | Python | FastAPI | 8006 | — | 257 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, credits, unified search |
+| payment | Python | FastAPI | 8004 | 5436 | 190 | Payments, subscriptions, earnings, coupons, refunds, gifts, org subscriptions, MockStripeClient |
+| notification | Python | FastAPI | 8005 | 5437 | 145 | Notifications, streak/flashcard reminders, direct messaging, StubEmailClient |
+| ai | Python | FastAPI | 8006 | — | 291 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, credits, unified search, MockLLMProvider |
 | learning | Python | FastAPI | 8007 | 5438 | 272 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity feed, study groups, missions, daily summary, certificates, trust levels |
-| rag | Python | FastAPI | 8008 | 5439 | 173 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, KB management |
+| rag | Python | FastAPI | 8008 | 5439 | 180 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, KB management, StubEmbeddingClient |
 | search | Rust | axum + tantivy | 9000 | — | cargo test | Full-text search index |
 
 ## Frontend
@@ -99,7 +106,7 @@ All client requests go through the Rust **api-gateway** which validates JWT and 
 
 ## Testing
 
-**Total: 1343 tests passed, 6 pre-existing failures** across 10 services.
+**Total: 1402 tests passed, 6 pre-existing failures** across 8 Python + 4 Rust services.
 
 ```bash
 cd services/py/<name> && uv run --package <name> pytest tests/ -v

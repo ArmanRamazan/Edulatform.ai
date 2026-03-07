@@ -10,34 +10,42 @@ Monorepo: **Python** (business logic) + **Rust** (performance-critical) + **Type
 
 | Service | Lang | Port | Tests | Purpose |
 |---------|------|------|-------|---------|
-| api-gateway | Rust | 8000 | + | JWT proxy, routing |
+| api-gateway | Rust | 8080 | + | JWT proxy, routing |
+| ws-gateway | Rust | 8011 | + | WebSocket real-time notifications |
+| embedding-orchestrator | Rust | 8009 | + | Concurrent embedding API proxy |
 | identity | Python | 8001 | 156 | Auth, profiles, organizations |
 | course | Python | 8002 | 129 | Courses, modules, lessons, reviews, bundles |
 | enrollment | Python | 8003 | 39 | Enrollments, progress |
-| payment | Python | 8004 | 151 | Payments, subscriptions, earnings, gifts, org billing |
-| notification | Python | 8005 | 136 | Notifications, messaging |
-| ai | Python | 8006 | 291 | LLM orchestrator, tri-agent coaching, missions, unified search, MockLLMProvider, SSE streaming |
-| learning | Python | 8007 | 272 | Quizzes, flashcards, concepts, gamification, certificates |
-| rag | Python | 8008 | 173 | pgvector, ingestion, semantic search, concept extraction |
+| payment | Python | 8004 | 190 | Payments, subscriptions, earnings, gifts, org billing, MockStripeClient |
+| notification | Python | 8005 | 145 | Notifications, messaging, StubEmailClient |
+| ai | Python | 8006 | 291 | LLM orchestrator, tri-agent coaching, missions, unified search, MockLLMProvider |
+| learning | Python | 8007 | 272 | Quizzes, flashcards (FSRS), concepts, gamification, certificates, trust levels |
+| rag | Python | 8008 | 180 | pgvector, ingestion, semantic search, concept extraction, GitHub adapter |
 | search | Rust | 9000 | + | Full-text search (tantivy) |
 
-**Frontend**: buyer (Next.js 15, port 3001) + seller (Next.js 15, port 3002)
+**Frontend**: buyer (Next.js 15, port 3001, 28 pages) + seller (Next.js 15, port 3002)
 
-**Total: 1367 tests passed** across 10 services.
+**Total: 1402 tests passed, 6 pre-existing failures** across 8 Python services.
 
 ## Quick Start
 
 ```bash
-# Start all backends + databases
-docker compose -f docker-compose.dev.yml up
+cp .env.example .env                                      # Configure env vars
+docker compose -f docker-compose.dev.yml up -d --build    # All backends + DBs
+docker compose -f docker-compose.dev.yml --profile seed up seed  # Seed demo data
+cd apps/buyer && pnpm install && pnpm dev                 # http://localhost:3001
 
-# Seed test data
-docker compose -f docker-compose.dev.yml --profile seed up seed
-
-# Frontend
-cd apps/buyer && pnpm install && pnpm dev    # http://localhost:3001
-cd apps/seller && pnpm install && pnpm dev   # http://localhost:3002
+# Demo login: demo@acme.com / demo123
 ```
+
+## Mock Mode (no API keys required)
+
+| Dependency | Without key | Behavior |
+|------------|-------------|----------|
+| Gemini API (`GEMINI_API_KEY`) | MockLLMProvider | AI returns realistic mock responses |
+| Stripe (`STRIPE_SECRET_KEY`) | MockStripeClient | Payments return fake success data |
+| Resend (`RESEND_API_KEY`) | StubEmailClient | Emails logged but not sent |
+| Embeddings (`GEMINI_API_KEY`) | StubEmbeddingClient | Random vectors (search degraded) |
 
 ## Testing
 
