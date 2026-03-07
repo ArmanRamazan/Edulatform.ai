@@ -26,6 +26,11 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { OrgSwitcher } from "@/components/layout/OrgSwitcher";
 
 const STORAGE_KEY = "sidebar-collapsed";
@@ -51,37 +56,50 @@ function SidebarNav({
     <nav className="flex flex-col gap-1 px-2">
       {items.map((item) => {
         const isActive = pathname === item.href || pathname.startsWith(item.href + "/");
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            className={cn(
-              "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150",
-              isActive
-                ? "border-l-2 border-sidebar-primary bg-sidebar-accent text-sidebar-primary-foreground"
-                : "border-l-2 border-transparent text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
-              collapsed && "justify-center px-2",
-            )}
-            title={collapsed ? item.label : undefined}
-          >
-            <item.icon className="h-5 w-5 shrink-0" />
-            {!collapsed && (
-              <>
-                <span className="truncate">{item.label}</span>
-                {item.shortcut && (
-                  <kbd className="ml-auto rounded border border-sidebar-border bg-sidebar px-1.5 py-0.5 text-[10px] text-sidebar-foreground/50">
-                    {item.shortcut}
-                  </kbd>
-                )}
+        const linkCls = cn(
+          "group relative flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors duration-150",
+          isActive
+            ? "border-l-2 border-sidebar-primary bg-sidebar-accent text-sidebar-primary-foreground"
+            : "border-l-2 border-transparent text-sidebar-foreground/70 hover:bg-sidebar-accent/50 hover:text-sidebar-foreground",
+          collapsed && "justify-center px-2",
+        );
+
+        if (collapsed) {
+          return (
+            <Tooltip key={item.href}>
+              <TooltipTrigger asChild>
+                <Link href={item.href} className={linkCls}>
+                  <item.icon className="h-5 w-5 shrink-0" />
+                  {item.badge != null && item.badge > 0 && (
+                    <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground">
+                      {item.badge > 99 ? "99+" : item.badge}
+                    </span>
+                  )}
+                </Link>
+              </TooltipTrigger>
+              <TooltipContent side="right" className="flex items-center gap-1.5 text-xs">
+                {item.label}
                 {item.badge != null && item.badge > 0 && (
-                  <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">
+                  <span className="rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-semibold text-primary-foreground">
                     {item.badge > 99 ? "99+" : item.badge}
                   </span>
                 )}
-              </>
+              </TooltipContent>
+            </Tooltip>
+          );
+        }
+
+        return (
+          <Link key={item.href} href={item.href} className={linkCls}>
+            <item.icon className="h-5 w-5 shrink-0" />
+            <span className="truncate">{item.label}</span>
+            {item.shortcut && (
+              <kbd className="ml-auto rounded border border-sidebar-border bg-sidebar px-1.5 py-0.5 text-[10px] text-sidebar-foreground/50">
+                {item.shortcut}
+              </kbd>
             )}
-            {collapsed && item.badge != null && item.badge > 0 && (
-              <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground">
+            {item.badge != null && item.badge > 0 && (
+              <span className="ml-auto flex h-5 min-w-[20px] items-center justify-center rounded-full bg-primary px-1 text-[10px] font-semibold text-primary-foreground">
                 {item.badge > 99 ? "99+" : item.badge}
               </span>
             )}
@@ -105,6 +123,7 @@ function SidebarContent({
   bottomItems: NavItem[];
   user: { name: string; role: string } | null;
 }) {
+  const pathname = usePathname();
   return (
     <div className="flex h-full flex-col bg-sidebar">
       {/* Header: logo + toggle */}
@@ -139,7 +158,7 @@ function SidebarContent({
 
       {/* Main nav */}
       <div className="mt-2 flex-1 overflow-y-auto">
-        <SidebarNav items={navItems} pathname={usePathname()} collapsed={collapsed} />
+        <SidebarNav items={navItems} pathname={pathname} collapsed={collapsed} />
       </div>
 
       {/* Separator */}
@@ -147,7 +166,7 @@ function SidebarContent({
 
       {/* Bottom nav */}
       <div className="py-2">
-        <SidebarNav items={bottomItems} pathname={usePathname()} collapsed={collapsed} />
+        <SidebarNav items={bottomItems} pathname={pathname} collapsed={collapsed} />
       </div>
 
       {/* User */}

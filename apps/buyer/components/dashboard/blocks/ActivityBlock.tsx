@@ -3,6 +3,7 @@
 import Link from "next/link";
 import {
   Activity,
+  AlertCircle,
   BookOpen,
   Brain,
   Award,
@@ -13,6 +14,7 @@ import {
 import { motion } from "framer-motion";
 import type { Variants } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { useMyActivity } from "@/hooks/use-activity";
@@ -85,7 +87,7 @@ function activityDescription(type: string): string {
 
 export function ActivityBlock() {
   const { token } = useAuth();
-  const { data, isLoading, error } = useMyActivity(token, { limit: 5 });
+  const { data, isLoading, error, refetch } = useMyActivity(token, { limit: 5 });
 
   if (isLoading) {
     return (
@@ -110,9 +112,14 @@ export function ActivityBlock() {
 
   if (error) {
     return (
-      <Card className="border-destructive/30">
-        <CardContent className="py-5 text-sm text-destructive">
-          Failed to load activity
+      <Card className="border-destructive/30 bg-destructive/5" role="alert">
+        <CardContent className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" strokeWidth={1.5} />
+          <p className="text-sm font-medium text-destructive">Something went wrong</p>
+          <p className="text-xs text-muted-foreground">Couldn&apos;t load recent activity.</p>
+          <Button variant="outline" size="sm" className="mt-1" onClick={() => void refetch()}>
+            Try again
+          </Button>
         </CardContent>
       </Card>
     );

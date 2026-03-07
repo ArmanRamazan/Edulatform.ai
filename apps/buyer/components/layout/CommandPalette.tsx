@@ -89,7 +89,7 @@ export function CommandPalette() {
             <button
               type="button"
               onClick={() => searchFor(trimmedInput)}
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-[#6b6b80] hover:text-[#e2e2e8]"
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
               <Search className="h-4 w-4" />
               Search for &ldquo;{trimmedInput}&rdquo;
