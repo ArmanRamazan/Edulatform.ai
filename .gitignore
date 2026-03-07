@@ -21,6 +21,8 @@ out/
 **/target/
 **/*.rs.bk
 Cargo.lock
+# Binary application crates must commit Cargo.lock for reproducible Docker builds
+!services/rs/*/Cargo.lock
 
 # ==================== Python ====================
 

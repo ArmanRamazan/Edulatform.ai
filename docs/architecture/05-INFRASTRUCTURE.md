@@ -16,15 +16,17 @@
 
 PostgreSQL 16-alpine. Каждый сервис — своя БД:
 
-| Service | DB Name | Dev Port | Staging Port |
-|---------|---------|----------|-------------|
-| identity | identity | 5433 | 5443 |
-| course | course | 5434 | 5444 |
-| enrollment | enrollment | 5435 | 5445 |
-| payment | payment | 5436 | 5446 |
-| notification | notification | 5437 | 5447 |
-| learning | learning | 5438 | 5448 |
-| rag | rag | 5439 | — |
+| Service | DB Name | Image | Dev Port | Staging Port |
+|---------|---------|-------|----------|-------------|
+| identity | identity | postgres:16-alpine | 5433 | 5443 |
+| course | course | postgres:16-alpine | 5434 | 5444 |
+| enrollment | enrollment | postgres:16-alpine | 5435 | 5445 |
+| payment | payment | postgres:16-alpine | 5436 | 5446 |
+| notification | notification | postgres:16-alpine | 5437 | 5447 |
+| learning | learning | postgres:16-alpine | 5438 | 5448 |
+| rag | rag | **pgvector/pgvector:pg16** | 5439 | — |
+
+> `rag-db` использует `pgvector/pgvector:pg16` (не plain postgres) — требует расширение `vector` для хранения эмбеддингов.
 
 **Redis 7-alpine** на порту 6379 — кэш и rate limiting.
 
@@ -54,6 +56,24 @@ CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "800X"]
 ```
 
 Production override: `--workers 4 --timeout-graceful-shutdown 25`
+
+Паттерн для Rust сервисов:
+```dockerfile
+FROM rust:1.88-slim AS builder
+WORKDIR /app
+COPY Cargo.toml Cargo.lock ./
+RUN mkdir src && echo 'fn main() {}' > src/main.rs
+RUN cargo build --release && rm -rf src
+COPY src/ src/
+RUN touch src/main.rs && cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
+COPY --from=builder /app/target/release/{binary} /usr/local/bin/
+```
+
+> Rust сервисы требуют `Cargo.lock` рядом с `Cargo.toml` (генерируется через `cargo generate-lockfile`).
+> Версия `rust:1.88-slim` — минимум для зависимостей (time v0.3.47+ требует Rust 1.88.0).
 
 ## Monitoring (Production)
 
