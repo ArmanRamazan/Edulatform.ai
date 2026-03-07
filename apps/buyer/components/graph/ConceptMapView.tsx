@@ -3,7 +3,7 @@
 import { useMemo, useState, useCallback, useEffect } from "react";
 import { type Node, type Edge, MarkerType } from "@xyflow/react";
 import { Upload, ChevronDown, AlertTriangle, RefreshCw, Network } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, LayoutGroup } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
 import { useCourseGraph, useCourseMastery } from "@/hooks/use-concepts";
 import { KnowledgeGraph } from "./KnowledgeGraph";
@@ -310,34 +310,61 @@ export function ConceptMapView({ courseId, onNodeClick, onUpload }: ConceptMapVi
         <span style={{ color: "#f87171" }}>
           {stats.gaps} gap{stats.gaps !== 1 ? "s" : ""}
         </span>
-        {/* Mini mastery progress bar */}
+        {/* Mastery percentage + mini progress bar */}
         <span
           aria-hidden="true"
           style={{
             display: "inline-flex",
             alignItems: "center",
+            gap: 5,
             marginLeft: 2,
-            width: 40,
-            height: 3,
-            borderRadius: 2,
-            background: "rgba(255,255,255,0.06)",
-            overflow: "hidden",
           }}
         >
+          {/* Numeric % — monospaced so it doesn't jump width */}
           <span
             style={{
-              height: "100%",
-              width: `${stats.masteryPct}%`,
-              background:
+              color:
                 stats.masteryPct >= 80
                   ? "#34d399"
                   : stats.masteryPct >= 40
                     ? "#7c5cfc"
                     : "#f87171",
-              borderRadius: 2,
-              transition: "width 0.8s cubic-bezier(0.16, 1, 0.3, 1)",
+              fontSize: 10,
+              fontWeight: 600,
+              fontFamily: "var(--font-mono, ui-monospace, monospace)",
+              minWidth: "2.6ch",
+              textAlign: "right",
             }}
-          />
+          >
+            {stats.masteryPct}%
+          </span>
+          {/* Bar */}
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              width: 36,
+              height: 3,
+              borderRadius: 2,
+              background: "rgba(255,255,255,0.06)",
+              overflow: "hidden",
+            }}
+          >
+            <span
+              style={{
+                height: "100%",
+                width: `${stats.masteryPct}%`,
+                background:
+                  stats.masteryPct >= 80
+                    ? "#34d399"
+                    : stats.masteryPct >= 40
+                      ? "#7c5cfc"
+                      : "#f87171",
+                borderRadius: 2,
+                transition: "width 0.8s cubic-bezier(0.16, 1, 0.3, 1)",
+              }}
+            />
+          </span>
         </span>
       </motion.div>
 
@@ -359,29 +386,73 @@ export function ConceptMapView({ courseId, onNodeClick, onUpload }: ConceptMapVi
         role="group"
         aria-label="Filter knowledge graph concepts (press F to cycle)"
       >
-        {(["all", "gaps", "mastered"] as const).map((mode) => {
-          const isActive = filterMode === mode;
-          return (
-            <motion.button
-              key={mode}
-              type="button"
-              onClick={() => setFilterMode(mode)}
-              className={cn(
-                "rounded-lg px-2.5 py-1 text-xs font-medium",
-                "outline-none focus-visible:ring-2 focus-visible:ring-[#7c5cfc]",
-                "focus-visible:ring-offset-1 focus-visible:ring-offset-[#0a0a0f]",
-                isActive
-                  ? "bg-[#7c5cfc] text-white"
-                  : "bg-transparent text-[#6b6b80] hover:bg-white/5 hover:text-[#a0a0b0]",
-                "transition-colors duration-150",
-              )}
-              whileTap={{ scale: 0.92 }}
-              aria-pressed={isActive}
-            >
-              {mode === "all" ? "All" : mode === "gaps" ? "Gaps <30%" : "Mastered >80%"}
-            </motion.button>
-          );
-        })}
+        {/* LayoutGroup scopes the layoutId sliding pill to this filter group only */}
+        <LayoutGroup id="concept-map-filter">
+          {(["all", "gaps", "mastered"] as const).map((mode) => {
+            const isActive = filterMode === mode;
+            // Short display label + accessible full description in title/aria-label
+            const shortLabel =
+              mode === "all" ? "All" : mode === "gaps" ? "Gaps" : "Mastered";
+            const fullLabel =
+              mode === "all"
+                ? "Show all concepts"
+                : mode === "gaps"
+                  ? "Show gaps — mastery < 30%"
+                  : "Show mastered — mastery ≥ 80%";
+            return (
+              <motion.button
+                key={mode}
+                type="button"
+                onClick={() => setFilterMode(mode)}
+                title={fullLabel}
+                className={cn(
+                  "relative rounded-[6px] px-2.5 py-1 text-xs font-medium",
+                  "outline-none focus-visible:ring-2 focus-visible:ring-[#7c5cfc]",
+                  "focus-visible:ring-offset-1 focus-visible:ring-offset-[#0a0a0f]",
+                  isActive
+                    ? "text-white"
+                    : "text-[#6b6b80] hover:text-[#a0a0b0]",
+                  "transition-colors duration-150 cursor-pointer",
+                )}
+                whileTap={{ scale: 0.92 }}
+                aria-pressed={isActive}
+                aria-label={fullLabel}
+              >
+                {/* Sliding active-pill indicator — animates between siblings via layoutId */}
+                {isActive && (
+                  <motion.span
+                    layoutId="filter-active-pill"
+                    className="absolute inset-0 rounded-[6px] bg-[#7c5cfc]"
+                    style={{ zIndex: 0 }}
+                    transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                    aria-hidden="true"
+                  />
+                )}
+                <span className="relative z-10">{shortLabel}</span>
+              </motion.button>
+            );
+          })}
+        </LayoutGroup>
+
+        {/* Keyboard shortcut hint — "F" to cycle filters */}
+        <div
+          aria-hidden="true"
+          className="mx-0.5 h-4 w-px"
+          style={{ background: "rgba(255,255,255,0.07)" }}
+        />
+        <span
+          className="rounded px-1.5 py-0.5 text-[9px] font-medium"
+          style={{
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(255,255,255,0.08)",
+            color: "#6b6b80",
+            fontFamily: "var(--font-mono, ui-monospace, monospace)",
+          }}
+          aria-hidden="true"
+          title="Press F to cycle filters"
+        >
+          F
+        </span>
 
         {/* Category dropdown — only rendered when at least one category exists */}
         {categories.length > 0 && (
@@ -721,8 +792,10 @@ function ConceptMapEmpty({ onUpload }: { onUpload?: () => void }) {
         <p className="text-sm font-semibold" style={{ color: "#a0a0b0" }}>
           No concepts yet
         </p>
-        <p className="mt-1 text-xs" style={{ color: "#6b6b80" }}>
-          Upload documents to build your knowledge graph — concepts and relationships appear automatically
+        <p className="mt-1 max-w-[260px] text-xs leading-relaxed" style={{ color: "#6b6b80" }}>
+          {onUpload
+            ? "Upload documents to build your knowledge graph — concepts and relationships appear automatically"
+            : "Concepts will appear here once documents are added to the knowledge base"}
         </p>
       </div>
 
