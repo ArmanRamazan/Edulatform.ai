@@ -1,6 +1,6 @@
 # 05 — Infrastructure
 
-> Последнее обновление: 2026-03-07
+> Последнее обновление: 2026-03-08
 
 ## Docker Compose
 
@@ -107,7 +107,7 @@ API Gateway: `GET /health/live`, `GET /health/ready`
 
 | Script | Purpose |
 |--------|---------|
-| `deploy/scripts/backup-all-dbs.sh` | Параллельный pg_dump всех 6 БД → `deploy/backups/` |
+| `deploy/scripts/backup-all-dbs.sh` | Параллельный pg_dump всех 7 БД → `deploy/backups/` |
 | `deploy/scripts/restore-db.sh` | Восстановление из бэкапа (требует `--confirm`) |
 | `deploy/scripts/list-backups.sh` | Список доступных бэкапов |
 
@@ -133,13 +133,25 @@ API Gateway: `GET /health/live`, `GET /health/ready`
 
 | Variable | Service | Description |
 |----------|---------|-------------|
-| `STRIPE_SECRET_KEY` | payment | Stripe API key |
+| `STRIPE_SECRET_KEY` | payment | Stripe API key (empty → MockStripeClient) |
 | `STRIPE_WEBHOOK_SECRET` | payment | Stripe webhook signing secret |
-| `GEMINI_API_KEY` | ai | Google Gemini API key |
+| `GEMINI_API_KEY` | ai, embedding-orchestrator | Google Gemini API key (empty → MockLLMProvider) |
 | `GEMINI_MODEL` | ai | Model name (default: gemini-2.0-flash-lite) |
+| `RESEND_API_KEY` | notification | Resend email API key (empty → StubEmailClient) |
 | `CORS_ORIGINS` | api-gateway | Allowed origins (comma-separated) |
 | `LOG_LEVEL` | all | Logging level (default: info) |
 | `RAG_DB_URL` | seed script | RAG DB connection (postgresql://rag:rag@localhost:5439/rag) |
+
+### Mock Mode
+
+All external API dependencies are optional. Without API keys, services use mock providers:
+
+| Provider | Env Var | Mock | Behavior |
+|----------|---------|------|----------|
+| Gemini LLM | `GEMINI_API_KEY` | `MockLLMProvider` | Returns realistic mock responses for all AI endpoints |
+| Stripe | `STRIPE_SECRET_KEY` | `MockStripeClient` | Returns fake success data (cus_mock_xxx, sub_mock_xxx) |
+| Resend | `RESEND_API_KEY` | `StubEmailClient` | Emails logged but not sent |
+| Gemini Embeddings | `GEMINI_API_KEY` | `StubEmbeddingClient` | Random 768-dim vectors (search degraded) |
 
 ### Staging
 
@@ -179,6 +191,25 @@ API Gateway: `GET /health/live`, `GET /health/ready`
 - Концепты: 47 штук (Python×10, Rust×10, TypeScript×9, System Design×9, API×9)
 - Связи: 23 prerequisite-отношения (DAG: ownership→borrowing→lifetimes и т.д.)
 - `RAG_DB_URL` env var обязателен для запуска seed-скрипта
+
+### Demo Learning Data (for demo@acme.com)
+
+| Entity | Count | Details |
+|--------|-------|---------|
+| Concepts | 47 | Python, Rust, TypeScript, System Design, API Design |
+| Concept mastery (demo) | 47 | 10 mastered, 15 in-progress, 22 gaps |
+| Concept mastery (team) | 9×47 | Per-member specializations |
+| Missions | 16 | 15 completed + 1 pending, realistic blueprints |
+| Flashcards | 25 | 10 due today, 15 future, FSRS state |
+| Trust levels | 10 | Demo=4, team members=1-3 |
+| Streak | 1 | current=7, longest=14 |
+| XP events | 20 | ~2450 total XP |
+| Badges | 3 | first_enrollment, streak_7, quiz_ace |
+| Activity feed | 20 | Over 14 days |
+| Notifications | 10 | 2 read + 8 unread (welcome, reminders, achievements) |
+| Enrollments | 5 | 2 completed, 2 in-progress, 1 enrolled + lesson progress |
+
+Team member UUIDs are deterministic (`uuid5(NAMESPACE_DNS, email)`) — consistent across identity-db and learning-db.
 
 Тесты seed-скрипта: `cd tools/seed && uv run --package seed pytest tests/ -v`
 
