@@ -135,5 +135,24 @@ class PlatformClient:
             json={"concept_id": concept_id, "prerequisite_id": prerequisite_id},
         )
 
+    async def search_knowledge_base(self, org_id: str, query: str) -> dict[str, Any]:
+        return await self._request("POST", f"/kb/{org_id}/search", json={"query": query})
+
+    async def get_concept_by_name(self, concept_name: str, org_id: str) -> dict[str, Any]:
+        return await self._request(
+            "GET", "/concepts", params={"org_id": org_id, "name": concept_name}
+        )
+
+    async def get_team_mastery(self, org_id: str) -> dict[str, Any]:
+        return await self._request("GET", f"/concepts/mastery/course/{org_id}")
+
+    async def get_user_missions(self) -> dict[str, Any]:
+        return await self._request("GET", "/missions/me")
+
+    async def ask_coach(self, question: str, context: str) -> dict[str, Any]:
+        return await self._request(
+            "POST", "/coach/session", json={"question": question, "context": context}
+        )
+
     async def close(self) -> None:
         await self._http.aclose()

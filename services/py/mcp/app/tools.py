@@ -17,6 +17,7 @@ def _format_error(e: Exception) -> str:
 
 
 def register_tools(mcp: FastMCP, client: PlatformClient) -> None:
+    register_knowledge_tools(mcp, client)
     # --- Read tools ---
 
     @mcp.tool(name="search_knowledge", description="Search your organization's knowledge base")
@@ -155,6 +156,63 @@ def register_tools(mcp: FastMCP, client: PlatformClient) -> None:
     async def add_prerequisite(concept_id: str, prerequisite_id: str) -> str:
         try:
             result = await client.add_prerequisite(concept_id, prerequisite_id)
+            return _format_result(result)
+        except Exception as e:
+            return _format_error(e)
+
+
+def register_knowledge_tools(mcp: FastMCP, client: PlatformClient) -> None:
+    @mcp.tool(
+        name="search_knowledge_base",
+        description="Search the organization knowledge base by natural language query",
+    )
+    async def search_knowledge_base(query: str, org_id: str) -> str:
+        try:
+            result = await client.search_knowledge_base(org_id, query)
+            return _format_result(result)
+        except Exception as e:
+            return _format_error(e)
+
+    @mcp.tool(
+        name="get_concept_by_name",
+        description="Look up a concept in the knowledge graph by name within an organization",
+    )
+    async def get_concept_by_name(concept_name: str, org_id: str) -> str:
+        try:
+            result = await client.get_concept_by_name(concept_name, org_id)
+            return _format_result(result)
+        except Exception as e:
+            return _format_error(e)
+
+    @mcp.tool(
+        name="get_team_mastery",
+        description="Get per-member mastery levels for all concepts in an organization",
+    )
+    async def get_team_mastery(org_id: str) -> str:
+        try:
+            result = await client.get_team_mastery(org_id)
+            return _format_result(result)
+        except Exception as e:
+            return _format_error(e)
+
+    @mcp.tool(
+        name="get_user_missions",
+        description="Get active and completed missions for the authenticated user",
+    )
+    async def get_user_missions(user_id: str) -> str:
+        try:
+            result = await client.get_user_missions()
+            return _format_result(result)
+        except Exception as e:
+            return _format_error(e)
+
+    @mcp.tool(
+        name="ask_coach",
+        description="Ask the AI coach a question with optional context for coaching advice",
+    )
+    async def ask_coach(question: str, context: str) -> str:
+        try:
+            result = await client.ask_coach(question, context)
             return _format_result(result)
         except Exception as e:
             return _format_error(e)

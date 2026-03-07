@@ -37,6 +37,12 @@ class TestToolRegistration:
             "update_concept",
             "delete_concept",
             "add_prerequisite",
+            # new knowledge tools
+            "search_knowledge_base",
+            "get_concept_by_name",
+            "get_team_mastery",
+            "get_user_missions",
+            "ask_coach",
         }
         assert tool_names == expected
 
@@ -248,6 +254,102 @@ class TestToolErrorHandling:
         )
         result_text = str(result)
         assert "error" in result_text.lower()
+
+
+class TestNewKnowledgeTools:
+    async def test_search_knowledge_base(self, mock_client: AsyncMock) -> None:
+        mock_client.search_knowledge_base.return_value = {
+            "results": [{"title": "Doc", "snippet": "...", "score": 0.9}]
+        }
+        from mcp.server.fastmcp import FastMCP
+
+        mcp = FastMCP("test")
+        register_tools(mcp, mock_client)
+        result = await mcp.call_tool(
+            "search_knowledge_base", {"query": "asyncio patterns", "org_id": "org-1"}
+        )
+        mock_client.search_knowledge_base.assert_called_once_with("org-1", "asyncio patterns")
+
+    async def test_get_concept_by_name(self, mock_client: AsyncMock) -> None:
+        mock_client.get_concept_by_name.return_value = {
+            "name": "Python",
+            "description": "A language",
+            "prerequisites": [],
+            "related": [],
+        }
+        from mcp.server.fastmcp import FastMCP
+
+        mcp = FastMCP("test")
+        register_tools(mcp, mock_client)
+        result = await mcp.call_tool(
+            "get_concept_by_name", {"concept_name": "Python", "org_id": "org-1"}
+        )
+        mock_client.get_concept_by_name.assert_called_once_with("Python", "org-1")
+
+    async def test_get_team_mastery(self, mock_client: AsyncMock) -> None:
+        mock_client.get_team_mastery.return_value = {
+            "members": [{"user_id": "u1", "score": 0.8}]
+        }
+        from mcp.server.fastmcp import FastMCP
+
+        mcp = FastMCP("test")
+        register_tools(mcp, mock_client)
+        result = await mcp.call_tool("get_team_mastery", {"org_id": "org-1"})
+        mock_client.get_team_mastery.assert_called_once_with("org-1")
+
+    async def test_get_user_missions(self, mock_client: AsyncMock) -> None:
+        mock_client.get_user_missions.return_value = {
+            "missions": [{"id": "m1", "status": "active", "title": "Learn Python"}]
+        }
+        from mcp.server.fastmcp import FastMCP
+
+        mcp = FastMCP("test")
+        register_tools(mcp, mock_client)
+        result = await mcp.call_tool("get_user_missions", {"user_id": "user-1"})
+        mock_client.get_user_missions.assert_called_once()
+
+    async def test_ask_coach(self, mock_client: AsyncMock) -> None:
+        mock_client.ask_coach.return_value = {
+            "response": "Great question! Here is my advice...",
+            "session_id": "s1",
+        }
+        from mcp.server.fastmcp import FastMCP
+
+        mcp = FastMCP("test")
+        register_tools(mcp, mock_client)
+        result = await mcp.call_tool(
+            "ask_coach",
+            {"question": "How do I use asyncio?", "context": "Python concurrency"},
+        )
+        mock_client.ask_coach.assert_called_once_with(
+            "How do I use asyncio?", "Python concurrency"
+        )
+
+    async def test_search_knowledge_base_returns_error_on_failure(
+        self, mock_client: AsyncMock
+    ) -> None:
+        mock_client.search_knowledge_base.side_effect = Exception("Timeout")
+        from mcp.server.fastmcp import FastMCP
+
+        mcp = FastMCP("test")
+        register_tools(mcp, mock_client)
+        result = await mcp.call_tool(
+            "search_knowledge_base", {"query": "test", "org_id": "org-1"}
+        )
+        assert "error" in str(result).lower()
+
+    async def test_ask_coach_returns_error_on_failure(
+        self, mock_client: AsyncMock
+    ) -> None:
+        mock_client.ask_coach.side_effect = Exception("LLM unavailable")
+        from mcp.server.fastmcp import FastMCP
+
+        mcp = FastMCP("test")
+        register_tools(mcp, mock_client)
+        result = await mcp.call_tool(
+            "ask_coach", {"question": "test", "context": "ctx"}
+        )
+        assert "error" in str(result).lower()
 
 
 class TestResourceRegistration:

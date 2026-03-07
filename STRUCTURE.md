@@ -65,10 +65,18 @@
 │   │   │   ├── migrations/       # 015 migrations
 │   │   │   └── tests/            # 272 tests
 │   │   │
-│   │   └── rag/                  # Port 8008, DB 5439 — RAG & knowledge base
-│   │       ├── app/routes/       # ingestion, search, knowledge_base, concepts, github
-│   │       ├── migrations/       # 002 migrations
-│   │       └── tests/            # 173 tests
+│   │   ├── rag/                  # Port 8008, DB 5439 — RAG & knowledge base
+│   │   │   ├── app/routes/       # ingestion, search, knowledge_base, concepts, github
+│   │   │   ├── migrations/       # 002 migrations
+│   │   │   └── tests/            # 173 tests
+│   │   │
+│   │   └── mcp/                  # MCP server — AI agent tool interface
+│   │       ├── app/
+│   │       │   ├── client.py     # PlatformClient: typed HTTP wrapper to api-gateway
+│   │       │   ├── config.py     # Settings (MCP_API_BASE_URL, MCP_AUTH_TOKEN)
+│   │       │   ├── main.py       # FastMCP entry point
+│   │       │   └── tools.py      # register_tools, register_knowledge_tools, register_resources
+│   │       └── tests/            # 59 tests
 │   │
 │   └── rs/
 │       ├── api-gateway/          # Port 8000 — Rust reverse proxy (axum, JWT)

@@ -240,6 +240,107 @@ class TestAddPrerequisite:
         assert result == {"status": "created"}
 
 
+class TestSearchKnowledgeBase:
+    async def test_calls_correct_endpoint(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(200, json={"results": [{"title": "Doc", "score": 0.9}]})
+        )
+        result = await client.search_knowledge_base("org-1", "python async")
+        client._http.request.assert_called_once_with(
+            "POST", "/kb/org-1/search", json={"query": "python async"}
+        )
+        assert result == {"results": [{"title": "Doc", "score": 0.9}]}
+
+    async def test_raises_on_http_error(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(404, json={"detail": "KB not found"})
+        )
+        with pytest.raises(Exception, match="404"):
+            await client.search_knowledge_base("org-1", "query")
+
+
+class TestGetConceptByName:
+    async def test_calls_correct_endpoint(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(
+                200,
+                json={"name": "Python", "description": "A language", "prerequisites": []},
+            )
+        )
+        result = await client.get_concept_by_name("Python", "org-1")
+        client._http.request.assert_called_once_with(
+            "GET", "/concepts", params={"org_id": "org-1", "name": "Python"}
+        )
+        assert result == {"name": "Python", "description": "A language", "prerequisites": []}
+
+    async def test_raises_on_http_error(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(404, json={"detail": "Not found"})
+        )
+        with pytest.raises(Exception, match="404"):
+            await client.get_concept_by_name("Unknown", "org-1")
+
+
+class TestGetTeamMastery:
+    async def test_calls_correct_endpoint(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(200, json={"members": [{"user_id": "u1", "score": 0.8}]})
+        )
+        result = await client.get_team_mastery("org-1")
+        client._http.request.assert_called_once_with(
+            "GET", "/concepts/mastery/course/org-1"
+        )
+        assert result == {"members": [{"user_id": "u1", "score": 0.8}]}
+
+    async def test_raises_on_http_error(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(403, json={"detail": "Forbidden"})
+        )
+        with pytest.raises(Exception, match="403"):
+            await client.get_team_mastery("org-1")
+
+
+class TestGetUserMissions:
+    async def test_calls_correct_endpoint(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(
+                200,
+                json={"missions": [{"id": "m1", "status": "active"}]},
+            )
+        )
+        result = await client.get_user_missions()
+        client._http.request.assert_called_once_with("GET", "/missions/me")
+        assert result == {"missions": [{"id": "m1", "status": "active"}]}
+
+    async def test_raises_on_http_error(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(401, json={"detail": "Unauthorized"})
+        )
+        with pytest.raises(Exception, match="401"):
+            await client.get_user_missions()
+
+
+class TestAskCoach:
+    async def test_calls_correct_endpoint(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(200, json={"response": "Great question!", "session_id": "s1"})
+        )
+        result = await client.ask_coach("How do I use asyncio?", "Learning Python concurrency")
+        client._http.request.assert_called_once_with(
+            "POST",
+            "/coach/session",
+            json={"question": "How do I use asyncio?", "context": "Learning Python concurrency"},
+        )
+        assert result == {"response": "Great question!", "session_id": "s1"}
+
+    async def test_raises_on_http_error(self, client: PlatformClient) -> None:
+        client._http.request = AsyncMock(
+            return_value=httpx.Response(500, json={"detail": "Internal error"})
+        )
+        with pytest.raises(Exception, match="500"):
+            await client.ask_coach("question", "context")
+
+
 class TestClose:
     async def test_closes_http_client(self, client: PlatformClient) -> None:
         client._http.aclose = AsyncMock()

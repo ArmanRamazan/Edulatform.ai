@@ -18,7 +18,7 @@
 
 ### Integrations
 - OAuth / Social login (Google, GitHub)
-- MCP Server для AI агентов
+- ✅ MCP Server для AI агентов (core: 22 tools, 5 knowledge tools, 59 tests)
 - Webhook system для внешних интеграций
 
 ### Media
