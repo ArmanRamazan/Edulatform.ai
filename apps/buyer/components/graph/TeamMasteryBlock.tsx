@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, RefreshCw } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -24,7 +24,7 @@ export function TeamMasteryBlock({ conceptName, index }: TeamMasteryBlockProps) 
   const { activeOrg } = useActiveOrg();
   const isAdmin = user?.role === "admin" || user?.role === "teacher";
 
-  const { data: members, isLoading, error } = useConceptTeamMastery(
+  const { data: members, isLoading, error, refetch } = useConceptTeamMastery(
     token,
     activeOrg?.id ?? null,
     isAdmin,
@@ -67,8 +67,15 @@ export function TeamMasteryBlock({ conceptName, index }: TeamMasteryBlockProps) 
   if (error) {
     return (
       <Card className="border-destructive/30">
-        <CardContent className="py-5 text-sm text-destructive">
-          Failed to load team mastery
+        <CardContent className="flex items-center justify-between gap-3 py-5">
+          <div className="flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+            Failed to load team mastery
+          </div>
+          <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={() => refetch()}>
+            <RefreshCw className="size-3" aria-hidden="true" />
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );
@@ -85,7 +92,14 @@ export function TeamMasteryBlock({ conceptName, index }: TeamMasteryBlockProps) 
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Team Mastery - {conceptName}
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={toggleCollapse} className="h-6 w-6 p-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleCollapse}
+            className="h-6 w-6 p-0"
+            aria-label={collapsed ? "Expand Team Mastery" : "Collapse Team Mastery"}
+            aria-expanded={!collapsed}
+          >
             {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </Button>
         </CardHeader>

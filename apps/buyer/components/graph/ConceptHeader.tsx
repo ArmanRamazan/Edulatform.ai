@@ -1,5 +1,6 @@
 "use client";
 
+import { useId } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { ChevronRight } from "lucide-react";
@@ -15,14 +16,19 @@ interface ConceptHeaderProps {
 }
 
 function MasteryRing({ mastery }: { mastery: number }) {
+  // useId ensures each instance gets a unique gradient ID — otherwise all SVGs
+  // on the page share the same <defs> and only the last gradient wins.
+  const uid = useId();
+  const gradientId = `mastery-gradient-${uid.replace(/:/g, "")}`;
+
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
   const offset = circumference - (mastery / 100) * circumference;
 
   return (
-    <svg width="128" height="128" viewBox="0 0 128 128" className="shrink-0">
+    <svg width="128" height="128" viewBox="0 0 128 128" aria-hidden="true">
       <defs>
-        <linearGradient id="mastery-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#7c5cfc" />
           <stop offset="100%" stopColor="#9b80fd" />
         </linearGradient>
@@ -40,7 +46,7 @@ function MasteryRing({ mastery }: { mastery: number }) {
         cy="64"
         r={radius}
         fill="none"
-        stroke="url(#mastery-gradient)"
+        stroke={`url(#${gradientId})`}
         strokeWidth="8"
         strokeLinecap="round"
         strokeDasharray={circumference}
@@ -103,30 +109,34 @@ export function ConceptHeader({
       <Card>
         <CardContent className="py-6">
           {/* Breadcrumb */}
-          <nav className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
+          <nav aria-label="Breadcrumb" className="mb-4 flex items-center gap-1.5 text-xs text-muted-foreground">
             <Link
               href="/graph"
-              className="hover:text-foreground transition-colors"
+              className="transition-colors duration-150 hover:text-foreground"
             >
               Graph
             </Link>
             {parentConcept && (
               <>
-                <ChevronRight className="size-3" />
+                <ChevronRight className="size-3 opacity-50" />
                 <Link
                   href={`/graph/${parentConcept.id}`}
-                  className="hover:text-foreground transition-colors"
+                  className="transition-colors duration-150 hover:text-foreground"
                 >
                   {parentConcept.name}
                 </Link>
               </>
             )}
-            <ChevronRight className="size-3" />
-            <span className="text-foreground font-medium">{concept.name}</span>
+            <ChevronRight className="size-3 opacity-50" />
+            <span aria-current="page" className="font-medium text-foreground">
+              {concept.name}
+            </span>
           </nav>
 
           <div className="flex items-start gap-6">
-            <MasteryRing mastery={mastery} />
+            <div className="shrink-0" role="img" aria-label={`${mastery}% mastery`}>
+              <MasteryRing mastery={mastery} />
+            </div>
 
             <div className="flex-1 min-w-0">
               <h1 className="mb-2 text-2xl font-semibold tracking-tight text-card-foreground">
