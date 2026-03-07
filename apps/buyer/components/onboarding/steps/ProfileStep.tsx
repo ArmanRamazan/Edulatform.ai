@@ -7,9 +7,10 @@ import {
   Crown,
   GraduationCap,
   Shield,
+  Sparkles,
   UserCircle2,
 } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
 import type { StepProps } from "@/components/onboarding/OnboardingWizard";
@@ -100,12 +101,23 @@ const STACK_OPTIONS = [
 
 const staggerContainer = {
   hidden: {},
-  visible: { transition: { staggerChildren: 0.07 } },
+  visible: { transition: { staggerChildren: 0.07, delayChildren: 0.1 } },
 };
 
 const fadeUp = {
   hidden: { opacity: 0, y: 12 },
   visible: { opacity: 1, y: 0 },
+};
+
+// Reduced-motion variants — opacity only, no spatial transforms
+const staggerContainerReduced = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.04 } },
+};
+
+const fadeUpReduced = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1 },
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -123,13 +135,16 @@ function isTextSymbol(symbol: string): boolean {
 
 export function ProfileStep({ data, setData }: StepProps) {
   const { token } = useAuth();
-  // Guard: only fire the PATCH once per completed profile selection
-  const patchedRef = useRef(false);
+  const prefersReducedMotion = useReducedMotion();
+  // Refs for keyboard roving-tabindex within each card group
+  const roleRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  const stackRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  // Fire-and-forget PATCH /users/me when both role and stack are set
+  // Fire-and-forget PATCH /users/me when both role and stack are set.
+  // No guard: selections can change after the initial completion, each change
+  // should persist the latest values.
   useEffect(() => {
-    if (!data.role || !data.stack || !token || patchedRef.current) return;
-    patchedRef.current = true;
+    if (!data.role || !data.stack || !token) return;
     fetch("/api/identity/users/me", {
       method: "PATCH",
       headers: {
@@ -144,11 +159,52 @@ export function ProfileStep({ data, setData }: StepProps) {
 
   const bothSelected = data.role !== null && data.stack !== null;
 
+  // Roving tabindex: only one card per group is reachable via Tab at a time.
+  // The selected card is the tab stop; if nothing is selected, the first card is.
+  function getRoleTabIndex(index: number): number {
+    const selectedIdx = ROLE_OPTIONS.findIndex((o) => o.id === data.role);
+    return (selectedIdx === -1 ? index === 0 : selectedIdx === index) ? 0 : -1;
+  }
+
+  function getStackTabIndex(index: number): number {
+    const selectedIdx = STACK_OPTIONS.findIndex((o) => o.id === data.stack);
+    return (selectedIdx === -1 ? index === 0 : selectedIdx === index) ? 0 : -1;
+  }
+
+  // Arrow key navigation: moves focus between cards in the same group
+  function handleRoleKeyDown(
+    e: { key: string; preventDefault(): void },
+    index: number,
+  ) {
+    const len = ROLE_OPTIONS.length;
+    let next = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (index + 1) % len;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (index - 1 + len) % len;
+    if (next >= 0) {
+      e.preventDefault();
+      roleRefs.current[next]?.focus();
+    }
+  }
+
+  function handleStackKeyDown(
+    e: { key: string; preventDefault(): void },
+    index: number,
+  ) {
+    const len = STACK_OPTIONS.length;
+    let next = -1;
+    if (e.key === "ArrowRight" || e.key === "ArrowDown") next = (index + 1) % len;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowUp") next = (index - 1 + len) % len;
+    if (next >= 0) {
+      e.preventDefault();
+      stackRefs.current[next]?.focus();
+    }
+  }
+
   return (
     <div>
       {/* ── Header ── */}
       <motion.div
-        initial={{ opacity: 0, y: 12 }}
+        initial={{ opacity: 0, y: prefersReducedMotion ? 0 : 12 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.35 }}
         className="mb-8 text-center"
@@ -166,49 +222,68 @@ export function ProfileStep({ data, setData }: StepProps) {
 
       {/* ── Section A: Role ── */}
       <section aria-labelledby="profile-role-heading" className="mb-8">
-        <motion.p
-          id="profile-role-heading"
-          initial={{ opacity: 0, x: -8 }}
+        <motion.div
+          initial={{ opacity: 0, x: prefersReducedMotion ? 0 : -8 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3, delay: 0.08 }}
-          className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+          className="mb-3 flex items-center gap-2"
         >
-          What&apos;s your role?
-        </motion.p>
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground/40">
+            01
+          </span>
+          <h3
+            id="profile-role-heading"
+            className="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+          >
+            What&apos;s your role?
+          </h3>
+        </motion.div>
 
         <motion.div
           className="grid grid-cols-2 gap-3 sm:grid-cols-4"
           initial="hidden"
           animate="visible"
-          variants={staggerContainer}
+          variants={prefersReducedMotion ? staggerContainerReduced : staggerContainer}
         >
           {ROLE_OPTIONS.map(
-            ({
-              id,
-              label,
-              desc,
-              icon: Icon,
-              colorClass,
-              bgClass,
-              borderSelected,
-              glowSelected,
-            }) => {
+            (
+              {
+                id,
+                label,
+                desc,
+                icon: Icon,
+                colorClass,
+                bgClass,
+                borderSelected,
+                glowSelected,
+              },
+              index,
+            ) => {
               const isSelected = data.role === id;
               return (
                 <motion.button
                   key={id}
+                  ref={(el) => {
+                    roleRefs.current[index] = el as HTMLButtonElement | null;
+                  }}
                   type="button"
+                  tabIndex={getRoleTabIndex(index)}
                   aria-pressed={isSelected}
-                  onClick={() => setData({ ...data, role: id })}
-                  variants={fadeUp}
-                  whileHover={{ y: -2, scale: 1.02 }}
-                  whileTap={{ scale: 0.97 }}
+                  onClick={() => {
+                    setData({ ...data, role: id });
+                    roleRefs.current[index]?.focus();
+                  }}
+                  onKeyDown={(e) => handleRoleKeyDown(e, index)}
+                  variants={prefersReducedMotion ? fadeUpReduced : fadeUp}
+                  whileHover={prefersReducedMotion ? {} : { y: -2, scale: 1.02 }}
+                  whileTap={prefersReducedMotion ? {} : { scale: 0.97 }}
                   className={cn(
-                    "relative flex flex-col items-start rounded-xl border-2 p-4 text-left outline-none transition-all duration-200",
+                    "relative flex flex-col items-start rounded-xl border-2 p-4 text-left outline-none",
+                    "transition-[background-color,border-color,box-shadow] duration-200",
                     "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                     isSelected
-                      ? cn("bg-card", borderSelected, glowSelected)
-                      : "border-border bg-card hover:border-primary/40",
+                      ? cn("bg-popover", borderSelected, glowSelected)
+                      : "border-border bg-card hover:border-primary/40 hover:bg-popover/60",
                   )}
                 >
                   {/* Selected checkmark */}
@@ -234,10 +309,21 @@ export function ProfileStep({ data, setData }: StepProps) {
                     <Icon className="h-5 w-5" />
                   </div>
 
-                  <p className="mb-0.5 text-sm font-semibold text-foreground">
+                  {/* Guard pr-6 so text never bleeds under the absolute checkmark */}
+                  <p
+                    className={cn(
+                      "mb-0.5 text-sm font-semibold text-foreground",
+                      isSelected && "pr-6",
+                    )}
+                  >
                     {label}
                   </p>
-                  <p className="text-[11px] leading-relaxed text-muted-foreground">
+                  <p
+                    className={cn(
+                      "text-xs leading-relaxed text-muted-foreground",
+                      isSelected && "pr-6",
+                    )}
+                  >
                     {desc}
                   </p>
                 </motion.button>
@@ -249,45 +335,60 @@ export function ProfileStep({ data, setData }: StepProps) {
 
       {/* ── Section B: Tech Stack ── */}
       <section aria-labelledby="profile-stack-heading">
-        <motion.p
-          id="profile-stack-heading"
-          initial={{ opacity: 0, x: -8 }}
+        <motion.div
+          initial={{ opacity: 0, x: prefersReducedMotion ? 0 : -8 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.3, delay: 0.18 }}
-          className="mb-3 text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+          className="mb-3 flex items-center gap-2"
         >
-          Primary tech stack?
-        </motion.p>
+          <span className="font-mono text-[10px] tabular-nums text-muted-foreground/40">
+            02
+          </span>
+          <h3
+            id="profile-stack-heading"
+            className="text-xs font-semibold uppercase tracking-widest text-muted-foreground"
+          >
+            Primary tech stack?
+          </h3>
+        </motion.div>
 
         <motion.div
-          className="grid grid-cols-2 gap-3 sm:grid-cols-5"
+          className="grid grid-cols-5 gap-2 sm:gap-3"
           initial="hidden"
           animate="visible"
-          variants={{
-            hidden: {},
-            visible: {
-              transition: { staggerChildren: 0.07, delayChildren: 0.18 },
-            },
-          }}
+          variants={
+            prefersReducedMotion
+              ? staggerContainerReduced
+              : { hidden: {}, visible: { transition: { staggerChildren: 0.07, delayChildren: 0.18 } } }
+          }
         >
-          {STACK_OPTIONS.map(({ id, label, symbol, tags }) => {
+          {STACK_OPTIONS.map(({ id, label, symbol, tags }, index) => {
             const isSelected = data.stack === id;
             const isText = isTextSymbol(symbol);
             return (
               <motion.button
                 key={id}
+                ref={(el) => {
+                  stackRefs.current[index] = el as HTMLButtonElement | null;
+                }}
                 type="button"
+                tabIndex={getStackTabIndex(index)}
                 aria-pressed={isSelected}
-                onClick={() => setData({ ...data, stack: id })}
-                variants={fadeUp}
-                whileHover={{ y: -2, scale: 1.02 }}
-                whileTap={{ scale: 0.97 }}
+                onClick={() => {
+                  setData({ ...data, stack: id });
+                  stackRefs.current[index]?.focus();
+                }}
+                onKeyDown={(e) => handleStackKeyDown(e, index)}
+                variants={prefersReducedMotion ? fadeUpReduced : fadeUp}
+                whileHover={prefersReducedMotion ? {} : { y: -2, scale: 1.02 }}
+                whileTap={prefersReducedMotion ? {} : { scale: 0.97 }}
                 className={cn(
-                  "relative flex flex-col items-center rounded-xl border-2 p-4 text-center outline-none transition-all duration-200",
+                  "relative flex flex-col items-center rounded-xl border-2 p-2 text-center outline-none sm:p-4",
+                  "transition-[background-color,border-color,box-shadow] duration-200",
                   "focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
                   isSelected
-                    ? "border-primary bg-primary/5 shadow-[0_0_20px_rgba(124,92,252,0.22)]"
-                    : "border-border bg-card hover:border-primary/40",
+                    ? "border-primary bg-popover shadow-[0_0_20px_rgba(124,92,252,0.22)]"
+                    : "border-border bg-card hover:border-primary/40 hover:bg-popover/60",
                 )}
               >
                 {/* Selected checkmark */}
@@ -304,7 +405,7 @@ export function ProfileStep({ data, setData }: StepProps) {
                 {/* Symbol badge */}
                 <div
                   className={cn(
-                    "mb-2.5 flex h-10 w-10 select-none items-center justify-center rounded-xl transition-colors duration-200",
+                    "mb-2 flex h-8 w-8 select-none items-center justify-center rounded-lg transition-colors duration-200 sm:mb-2.5 sm:h-10 sm:w-10 sm:rounded-xl",
                     isSelected ? "bg-primary/15" : "bg-muted",
                   )}
                 >
@@ -312,10 +413,11 @@ export function ProfileStep({ data, setData }: StepProps) {
                     className={cn(
                       isText
                         ? cn(
-                            "font-mono text-xs font-bold",
+                            // text-sm (14px) is minimum for Latin abbreviations
+                            "font-mono text-sm font-bold",
                             isSelected ? "text-primary" : "text-foreground",
                           )
-                        : "text-xl",
+                        : "text-base sm:text-xl",
                     )}
                   >
                     {symbol}
@@ -326,13 +428,13 @@ export function ProfileStep({ data, setData }: StepProps) {
                   {label}
                 </p>
 
-                {/* Tag pills */}
-                <div className="flex flex-wrap justify-center gap-1">
+                {/* Tag pills — hidden on narrow viewports, visible on sm+ */}
+                <div className="hidden flex-wrap justify-center gap-1 sm:flex">
                   {tags.map((tag) => (
                     <span
                       key={tag}
                       className={cn(
-                        "rounded-full px-1.5 py-0.5 text-[9px] font-medium transition-colors duration-200",
+                        "rounded-full px-1.5 py-0.5 text-[10px] font-medium transition-colors duration-200",
                         isSelected
                           ? "bg-primary/20 text-primary/80"
                           : "bg-muted text-muted-foreground",
@@ -360,14 +462,15 @@ export function ProfileStep({ data, setData }: StepProps) {
             key="complete"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
-            className="text-success"
+            className="inline-flex items-center gap-1.5 text-success"
           >
+            <Sparkles className="h-3 w-3" aria-hidden="true" />
             Profile complete — ready to continue
           </motion.span>
         ) : !data.role ? (
           "Select your role to continue"
         ) : (
-          "Select your primary stack to continue"
+          "Now pick your primary stack"
         )}
       </motion.p>
     </div>
