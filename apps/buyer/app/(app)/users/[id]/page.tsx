@@ -2,15 +2,19 @@
 
 import { use } from "react";
 import Link from "next/link";
-import { Header } from "@/components/Header";
 import { FollowButton } from "@/components/FollowButton";
 import { useAuth } from "@/hooks/use-auth";
 import { useUserProfile, useFollowCounts } from "@/hooks/use-profile";
+import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, MessageSquare, Settings, Shield, CheckCircle } from "lucide-react";
 
 const ROLE_LABELS: Record<string, string> = {
-  student: "Студент",
-  teacher: "Преподаватель",
-  admin: "Администратор",
+  student: "Engineer",
+  teacher: "Tech Lead",
+  admin: "Admin",
 };
 
 function Initials({ name }: { name: string }) {
@@ -21,7 +25,7 @@ function Initials({ name }: { name: string }) {
     .slice(0, 2)
     .toUpperCase();
   return (
-    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-blue-100 text-2xl font-bold text-blue-600">
+    <div className="flex h-20 w-20 items-center justify-center rounded-full bg-primary/15 text-2xl font-bold text-primary">
       {letters}
     </div>
   );
@@ -37,79 +41,96 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
   const isOwnProfile = user?.id === id;
 
   return (
-    <>
-      <Header />
-      <main className="mx-auto max-w-3xl px-4 py-6">
-        <Link href="/" className="mb-4 inline-block text-sm text-blue-600 hover:underline">
-          &larr; На главную
-        </Link>
+    <div className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+      <Link
+        href="/dashboard"
+        className="inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Back
+      </Link>
 
-        {profileError ? (
-          <div className="rounded bg-red-50 p-4 text-red-600">
-            Профиль не найден или недоступен
-          </div>
-        ) : isLoading || !profile ? (
-          <div className="space-y-4">
-            <div className="h-20 w-20 animate-pulse rounded-full bg-gray-200" />
-            <div className="h-6 w-48 animate-pulse rounded bg-gray-200" />
-          </div>
-        ) : (
-          <>
-            {/* Profile card */}
-            <div className="rounded-lg border border-gray-200 bg-white p-6">
+      {profileError ? (
+        <Card className="border-destructive/30">
+          <CardContent className="py-8 text-center text-sm text-destructive">
+            Profile not found or unavailable
+          </CardContent>
+        </Card>
+      ) : isLoading || !profile ? (
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex items-start gap-5">
+              <Skeleton className="h-20 w-20 rounded-full" />
+              <div className="flex-1 space-y-3">
+                <Skeleton className="h-6 w-48" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-64" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <>
+          <Card>
+            <CardContent className="p-6">
               <div className="flex items-start gap-5">
                 {profile.avatar_url ? (
                   <img
                     src={profile.avatar_url}
                     alt={profile.name}
-                    className="h-20 w-20 rounded-full object-cover"
+                    className="h-20 w-20 rounded-full object-cover ring-2 ring-border"
                   />
                 ) : (
                   <Initials name={profile.name} />
                 )}
                 <div className="flex-1">
-                  <h1 className="text-2xl font-bold">{profile.name}</h1>
-                  <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <span className="rounded bg-blue-100 px-2 py-0.5 text-xs text-blue-700">
+                  <h1 className="text-2xl font-bold text-foreground">{profile.name}</h1>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <Badge variant="secondary" className="gap-1">
+                      <Shield className="h-3 w-3" />
                       {ROLE_LABELS[profile.role] || profile.role}
-                    </span>
+                    </Badge>
                     {profile.is_verified && (
-                      <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-700">
-                        Подтверждённый
-                      </span>
+                      <Badge variant="secondary" className="gap-1 bg-success/10 text-success">
+                        <CheckCircle className="h-3 w-3" />
+                        Verified
+                      </Badge>
                     )}
                   </div>
                   {profile.bio && (
-                    <p className="mt-3 text-sm text-gray-600">{profile.bio}</p>
+                    <p className="mt-3 text-sm text-muted-foreground">{profile.bio}</p>
                   )}
-                  <p className="mt-2 text-xs text-gray-400">
-                    На платформе с {new Date(profile.created_at).toLocaleDateString("ru", { year: "numeric", month: "long" })}
+                  <p className="mt-2 text-xs text-muted-foreground/60">
+                    Member since{" "}
+                    {new Date(profile.created_at).toLocaleDateString("en-US", {
+                      year: "numeric",
+                      month: "long",
+                    })}
                   </p>
                 </div>
               </div>
 
-              {/* Stats row */}
-              <div className="mt-5 flex items-center gap-6 border-t border-gray-100 pt-4">
+              <div className="mt-5 flex items-center gap-6 border-t border-border pt-4">
                 <div className="text-center">
-                  <span className="block text-lg font-bold">
+                  <span className="block text-lg font-bold text-foreground">
                     {followCounts?.followers_count ?? 0}
                   </span>
-                  <span className="text-xs text-gray-500">подписчиков</span>
+                  <span className="text-xs text-muted-foreground">followers</span>
                 </div>
                 <div className="text-center">
-                  <span className="block text-lg font-bold">
+                  <span className="block text-lg font-bold text-foreground">
                     {followCounts?.following_count ?? 0}
                   </span>
-                  <span className="text-xs text-gray-500">подписок</span>
+                  <span className="text-xs text-muted-foreground">following</span>
                 </div>
-                <div className="ml-auto flex items-center gap-3">
+                <div className="ml-auto flex items-center gap-2">
                   {isOwnProfile ? (
-                    <Link
-                      href="/settings"
-                      className="rounded border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
-                    >
-                      Редактировать
-                    </Link>
+                    <Button asChild variant="outline" size="sm" className="gap-1.5">
+                      <Link href="/settings">
+                        <Settings className="h-3.5 w-3.5" />
+                        Edit profile
+                      </Link>
+                    </Button>
                   ) : (
                     <>
                       <FollowButton
@@ -118,40 +139,43 @@ export default function UserProfilePage({ params }: { params: Promise<{ id: stri
                         targetUserId={id}
                       />
                       {token && (
-                        <Link
-                          href={`/messages?to=${id}`}
-                          className="rounded border border-blue-600 px-4 py-2 text-sm text-blue-600 hover:bg-blue-50"
-                        >
-                          Написать сообщение
-                        </Link>
+                        <Button asChild variant="outline" size="sm" className="gap-1.5">
+                          <Link href={`/messages?to=${id}`}>
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Message
+                          </Link>
+                        </Button>
                       )}
                     </>
                   )}
                 </div>
               </div>
-            </div>
+            </CardContent>
+          </Card>
 
-            {/* Role-specific sections */}
-            {profile.role === "teacher" && (
-              <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
-                <h2 className="mb-2 text-lg font-bold">Курсы преподавателя</h2>
-                <p className="text-sm text-gray-400">
-                  Список курсов скоро будет доступен
+          {profile.role === "teacher" && (
+            <Card>
+              <CardContent className="p-6">
+                <h2 className="mb-2 text-lg font-bold text-foreground">Courses</h2>
+                <p className="text-sm text-muted-foreground">
+                  Course list coming soon
                 </p>
-              </div>
-            )}
+              </CardContent>
+            </Card>
+          )}
 
-            {profile.role === "student" && (
-              <div className="mt-6 rounded-lg border border-gray-200 bg-white p-6">
-                <h2 className="mb-2 text-lg font-bold">Достижения</h2>
-                <p className="text-sm text-gray-400">
-                  Достижения скоро будут доступны
+          {profile.role === "student" && (
+            <Card>
+              <CardContent className="p-6">
+                <h2 className="mb-2 text-lg font-bold text-foreground">Achievements</h2>
+                <p className="text-sm text-muted-foreground">
+                  Achievements coming soon
                 </p>
-              </div>
-            )}
-          </>
-        )}
-      </main>
-    </>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
   );
 }
