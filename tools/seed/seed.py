@@ -1210,6 +1210,12 @@ _DEMO_MEMBERS = [
     ("Lisa Chen", "lisa"),
 ]
 
+# Deterministic UUIDs so identity-db and learning-db share the same IDs
+_DEMO_MEMBER_UUIDS_MAP: dict[str, str] = {
+    f"{prefix}@acme.com": str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{prefix}@acme.com"))
+    for _name, prefix in _DEMO_MEMBERS
+}
+
 
 def _hash_password(password: str) -> str:
     """Hash a password with bcrypt (12 rounds). Returns utf-8 string."""
@@ -1264,17 +1270,18 @@ async def seed_demo_org(identity_pool: asyncpg.Pool, payment_pool: asyncpg.Pool)
         DEMO_USER_ID,
     )
 
-    # 4. Nine team members (students)
+    # 4. Nine team members (students) — use deterministic uuid5 IDs
+    #    so identity-db and learning-db agree on member UUIDs
     for name, prefix in _DEMO_MEMBERS:
         email = f"{prefix}@acme.com"
-        # ON CONFLICT DO UPDATE SET email = EXCLUDED.email guarantees RETURNING always fires
-        member_id = await identity_pool.fetchval(
+        member_id = _DEMO_MEMBER_UUIDS_MAP[email]
+        await identity_pool.execute(
             """
-            INSERT INTO users (email, password_hash, name, role, is_verified, email_verified)
-            VALUES ($1, $2, $3, 'student', true, true)
-            ON CONFLICT (email) DO UPDATE SET email = EXCLUDED.email
-            RETURNING id
+            INSERT INTO users (id, email, password_hash, name, role, is_verified, email_verified)
+            VALUES ($1, $2, $3, $4, 'student', true, true)
+            ON CONFLICT (id) DO NOTHING
             """,
+            member_id,
             email,
             _hash_password(f"{prefix}123"),
             name,
@@ -1538,9 +1545,9 @@ async def seed_rag_documents(rag_pool: asyncpg.Pool) -> None:
 
 DEMO_FAKE_COURSE_ID = "00000000-0000-4000-d000-000000000001"
 
-# Deterministic member UUIDs for learning DB (no FK to identity, so safe)
+# Deterministic member UUIDs — same values used in identity-db and learning-db
 _DEMO_MEMBER_UUIDS = [
-    str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{prefix}@acme.com"))
+    _DEMO_MEMBER_UUIDS_MAP[f"{prefix}@acme.com"]
     for _name, prefix in _DEMO_MEMBERS
 ]
 
@@ -1652,23 +1659,45 @@ async def seed_demo_learning(learning_pool: asyncpg.Pool) -> None:
     # ------------------------------------------------------------------
     # 4. Missions for demo user (15 completed + 1 pending)
     # ------------------------------------------------------------------
+    _completed_blueprints = [
+        {"title": "Build a REST API", "steps": [{"id": 1, "description": "Design endpoints", "completed": True}, {"id": 2, "description": "Implement handlers", "completed": True}, {"id": 3, "description": "Add validation", "completed": True}], "difficulty": "intermediate", "estimated_minutes": 30},
+        {"title": "Refactor with Type Hints", "steps": [{"id": 1, "description": "Add return types", "completed": True}, {"id": 2, "description": "Annotate parameters", "completed": True}, {"id": 3, "description": "Fix mypy errors", "completed": True}], "difficulty": "beginner", "estimated_minutes": 20},
+        {"title": "Async Data Pipeline", "steps": [{"id": 1, "description": "Create async generators", "completed": True}, {"id": 2, "description": "Add error handling", "completed": True}, {"id": 3, "description": "Benchmark throughput", "completed": True}], "difficulty": "advanced", "estimated_minutes": 45},
+        {"title": "Implement Circuit Breaker", "steps": [{"id": 1, "description": "Define states", "completed": True}, {"id": 2, "description": "Add failure counting", "completed": True}, {"id": 3, "description": "Write recovery logic", "completed": True}], "difficulty": "intermediate", "estimated_minutes": 35},
+        {"title": "Design Database Schema", "steps": [{"id": 1, "description": "Identify entities", "completed": True}, {"id": 2, "description": "Define relationships", "completed": True}, {"id": 3, "description": "Add indexes", "completed": True}], "difficulty": "intermediate", "estimated_minutes": 25},
+    ]
+
+    _pending_blueprint = {
+        "title": "Build a REST API with Authentication",
+        "steps": [
+            {"id": 1, "description": "Design JWT token flow", "completed": False},
+            {"id": 2, "description": "Implement login endpoint", "completed": False},
+            {"id": 3, "description": "Add role-based middleware", "completed": False},
+            {"id": 4, "description": "Write integration tests", "completed": False},
+        ],
+        "difficulty": "intermediate",
+        "estimated_minutes": 30,
+    }
+
     for day_offset in range(15):
         days_ago = 14 - day_offset
         completed_at = now - timedelta(days=days_ago, hours=random.randint(1, 12))
         score = round(random.uniform(0.65, 0.95), 2)
         mastery_delta = round(random.uniform(0.05, 0.15), 2)
         concept_id = concept_ids[day_offset % len(concept_ids)]
+        blueprint = _completed_blueprints[day_offset % len(_completed_blueprints)]
         await learning_pool.execute(
             """
             INSERT INTO missions (
                 user_id, organization_id, concept_id, mission_type, status,
                 blueprint, score, mastery_delta, started_at, completed_at, created_at
             )
-            VALUES ($1, $2, $3, 'daily', 'completed', '{}', $4, $5, $6, $7, $8)
+            VALUES ($1, $2, $3, 'daily', 'completed', $4::jsonb, $5, $6, $7, $8, $9)
             """,
             DEMO_USER_ID,
             DEMO_ORG_ID,
             concept_id,
+            json.dumps(blueprint),
             score,
             mastery_delta,
             completed_at - timedelta(minutes=random.randint(15, 45)),
@@ -1683,14 +1712,15 @@ async def seed_demo_learning(learning_pool: asyncpg.Pool) -> None:
             user_id, organization_id, concept_id, mission_type, status,
             blueprint, created_at
         )
-        VALUES ($1, $2, $3, 'daily', 'pending', '{}', $4)
+        VALUES ($1, $2, $3, 'daily', 'pending', $4::jsonb, $5)
         """,
         DEMO_USER_ID,
         DEMO_ORG_ID,
         concept_ids[15],
+        json.dumps(_pending_blueprint),
         now,
     )
-    print("  Seeded 16 missions (15 completed + 1 pending)")
+    print("  Seeded 16 missions (15 completed + 1 pending) with realistic blueprints")
 
     # ------------------------------------------------------------------
     # 5. Flashcards for demo user (25 total)
@@ -1855,11 +1885,156 @@ async def seed_demo_learning(learning_pool: asyncpg.Pool) -> None:
     print("Demo B2B learning data seeding complete!")
 
 
+async def seed_demo_notifications(notification_pool: asyncpg.Pool) -> None:
+    """Seed ~10 notifications for the demo user. Idempotent."""
+    existing = await notification_pool.fetchval(
+        "SELECT count(*) FROM notifications WHERE user_id = $1",
+        DEMO_USER_ID,
+    )
+    if existing and existing > 0:
+        print("Demo notifications already seeded. Skipping.")
+        return
+
+    print("Seeding demo notifications...")
+    now = datetime.now(timezone.utc)
+
+    notifications = [
+        # 1 welcome
+        ("welcome", "Welcome to KnowledgeOS!", "Your team workspace is ready. Start exploring missions and build your knowledge graph.", False, now - timedelta(days=14)),
+        # 2 reminders (streak_reminder, flashcard_reminder)
+        ("streak_reminder", "Keep your streak alive!", "You have 3 hours left to maintain your 7-day streak.", False, now - timedelta(days=1, hours=6)),
+        ("flashcard_reminder", "Flashcards due for review", "You have 10 flashcards due today across Python and Rust concepts.", False, now - timedelta(hours=4)),
+        # 3 course_completed (used as achievement/badge notifications)
+        ("course_completed", "Badge earned: First Enrollment", "Congratulations! You unlocked the First Enrollment badge.", False, now - timedelta(days=12)),
+        ("course_completed", "Badge earned: Quiz Ace", "You scored 100% on a quiz! Quiz Ace badge unlocked.", False, now - timedelta(days=8)),
+        ("course_completed", "Badge earned: 7-Day Streak", "Amazing consistency! You maintained a 7-day learning streak.", False, now - timedelta(days=5)),
+        # 2 enrollment (team activity)
+        ("enrollment", "Sarah Kim completed a mission", "Your teammate Sarah scored 92% on the async_await mission.", False, now - timedelta(days=3)),
+        ("enrollment", "New team member joined", "Ali Hassan has joined Acme Engineering workspace.", False, now - timedelta(days=10)),
+        # 2 read notifications
+        ("registration", "Verify your email", "Please verify your email address to unlock all features.", True, now - timedelta(days=14)),
+        ("payment", "Enterprise plan activated", "Your Acme Engineering workspace is now on the Enterprise plan.", True, now - timedelta(days=13)),
+    ]
+
+    for ntype, title, body, is_read, created_at in notifications:
+        await notification_pool.execute(
+            """
+            INSERT INTO notifications (user_id, type, title, body, is_read, created_at)
+            VALUES ($1, $2::notification_type, $3, $4, $5, $6)
+            """,
+            DEMO_USER_ID,
+            ntype,
+            title,
+            body,
+            is_read,
+            created_at,
+        )
+
+    print(f"  Seeded {len(notifications)} notifications (2 read, 8 unread)")
+    print("Demo notifications seeding complete!")
+
+
+async def seed_demo_enrollments(
+    enrollment_pool: asyncpg.Pool,
+    course_pool: asyncpg.Pool,
+) -> None:
+    """Seed enrollments and lesson progress for demo user. Idempotent."""
+    existing = await enrollment_pool.fetchval(
+        "SELECT count(*) FROM enrollments WHERE student_id = $1",
+        DEMO_USER_ID,
+    )
+    if existing and existing > 0:
+        print("Demo enrollments already seeded. Skipping.")
+        return
+
+    print("Seeding demo enrollments...")
+
+    # Pick 5 courses that have modules and lessons
+    course_rows = await course_pool.fetch(
+        "SELECT id FROM courses LIMIT 5"
+    )
+    if not course_rows:
+        print("  No courses found. Skipping demo enrollments.")
+        return
+    course_ids = [str(r["id"]) for r in course_rows]
+
+    # Insert enrollments
+    for i, course_id in enumerate(course_ids):
+        status = "completed" if i < 2 else "in_progress" if i < 4 else "enrolled"
+        await enrollment_pool.execute(
+            """
+            INSERT INTO enrollments (student_id, course_id, status)
+            VALUES ($1, $2, $3::enrollment_status)
+            ON CONFLICT (student_id, course_id) DO NOTHING
+            """,
+            DEMO_USER_ID,
+            course_id,
+            status,
+        )
+    print(f"  Enrolled demo user in {len(course_ids)} courses (2 completed, 2 in-progress, 1 enrolled)")
+
+    # Fetch lessons for these courses to create progress records
+    lesson_rows = await course_pool.fetch(
+        """
+        SELECT l.id as lesson_id, m.course_id
+        FROM lessons l
+        JOIN modules m ON l.module_id = m.id
+        WHERE m.course_id = ANY($1::uuid[])
+        ORDER BY m."order", l."order"
+        """,
+        [r["id"] for r in course_rows],
+    )
+
+    # Group lessons by course
+    course_lessons: dict[str, list[str]] = {}
+    for row in lesson_rows:
+        cid = str(row["course_id"])
+        course_lessons.setdefault(cid, []).append(str(row["lesson_id"]))
+
+    progress_count = 0
+    now = datetime.now(timezone.utc)
+    for i, course_id in enumerate(course_ids):
+        lessons = course_lessons.get(course_id, [])
+        if not lessons:
+            continue
+
+        if i < 2:
+            # Completed courses: all lessons done
+            selected = lessons
+        elif i < 4:
+            # In-progress: ~60% of lessons done
+            count = max(1, int(len(lessons) * 0.6))
+            selected = lessons[:count]
+        else:
+            # Enrolled: no progress yet
+            selected = []
+
+        for lesson_id in selected:
+            days_ago = random.randint(1, 30)
+            completed_at = now - timedelta(days=days_ago, hours=random.randint(0, 12))
+            await enrollment_pool.execute(
+                """
+                INSERT INTO lesson_progress (student_id, lesson_id, course_id, completed_at)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (student_id, lesson_id) DO NOTHING
+                """,
+                DEMO_USER_ID,
+                lesson_id,
+                course_id,
+                completed_at,
+            )
+            progress_count += 1
+
+    print(f"  Seeded {progress_count} lesson progress records")
+    print("Demo enrollments seeding complete!")
+
+
 async def main() -> None:
     identity_pool = await asyncpg.create_pool(IDENTITY_DB_URL, min_size=2, max_size=5)
     course_pool = await asyncpg.create_pool(COURSE_DB_URL, min_size=2, max_size=5)
     enrollment_pool = await asyncpg.create_pool(ENROLLMENT_DB_URL, min_size=2, max_size=5)
     payment_pool = await asyncpg.create_pool(PAYMENT_DB_URL, min_size=2, max_size=5)
+    notification_pool = await asyncpg.create_pool(NOTIFICATION_DB_URL, min_size=2, max_size=5)
     learning_pool = await asyncpg.create_pool(LEARNING_DB_URL, min_size=2, max_size=5)
     rag_pool = await asyncpg.create_pool(RAG_DB_URL, min_size=2, max_size=5)
 
@@ -1875,6 +2050,8 @@ async def main() -> None:
             await seed_demo_org(identity_pool, payment_pool)
             await seed_rag_documents(rag_pool)
             await seed_demo_learning(learning_pool)
+            await seed_demo_notifications(notification_pool)
+            await seed_demo_enrollments(enrollment_pool, course_pool)
             return
 
         # Insert admin user before bulk COPY
@@ -1904,6 +2081,8 @@ async def main() -> None:
         await seed_demo_org(identity_pool, payment_pool)
         await seed_rag_documents(rag_pool)
         await seed_demo_learning(learning_pool)
+        await seed_demo_notifications(notification_pool)
+        await seed_demo_enrollments(enrollment_pool, course_pool)
 
         print("Seeding complete!")
     finally:
@@ -1911,6 +2090,7 @@ async def main() -> None:
         await course_pool.close()
         await enrollment_pool.close()
         await payment_pool.close()
+        await notification_pool.close()
         await learning_pool.close()
         await rag_pool.close()
 
