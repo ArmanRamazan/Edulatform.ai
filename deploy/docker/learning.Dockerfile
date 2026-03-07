@@ -19,7 +19,8 @@ RUN uv venv /app/.venv \
         "pydantic-settings>=2.7" \
         "prometheus-fastapi-instrumentator>=7.0" \
         "redis>=5.0" \
-        "fsrs>=6.0"
+        "fsrs>=6.0" \
+        "httpx>=0.28"
 
 ENV PATH="/app/.venv/bin:$PATH"
 
