@@ -7,26 +7,37 @@ const MILESTONES = new Set([7, 30, 100, 365]);
 export function StreakBadge({ days }: StreakBadgeProps) {
   const isMilestone = MILESTONES.has(days);
 
-  return (
-    <div
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-transform ${
-        isMilestone
-          ? "scale-110 bg-gradient-to-r from-amber-400 to-orange-500 text-white shadow-lg shadow-amber-200"
-          : days > 0
-            ? "bg-amber-50 text-amber-700 ring-1 ring-amber-200"
-            : "bg-gray-100 text-gray-400"
-      }`}
-    >
-      <span
-        className={`text-base ${isMilestone ? "animate-bounce" : ""}`}
-        role="img"
-        aria-label="streak"
+  if (days === 0) {
+    return (
+      <div className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1.5 text-sm font-semibold text-muted-foreground">
+        <span role="img" aria-label="no streak" className="text-base opacity-40">
+          &#x1F525;
+        </span>
+        Нет серии
+      </div>
+    );
+  }
+
+  if (isMilestone) {
+    return (
+      <div
+        className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-warning to-orange-500 px-3 py-1.5 text-sm font-bold text-white shadow-lg shadow-warning/20 transition-transform hover:scale-105"
+        title={`${days}-дневная серия — веха!`}
       >
+        <span role="img" aria-label="milestone streak" className="animate-bounce text-base">
+          &#x1F525;
+        </span>
+        {days} {dayWord(days)}
+      </div>
+    );
+  }
+
+  return (
+    <div className="inline-flex items-center gap-1.5 rounded-full bg-warning/10 px-3 py-1.5 text-sm font-semibold text-warning ring-1 ring-warning/20">
+      <span role="img" aria-label="active streak" className="text-base">
         &#x1F525;
       </span>
-      <span>
-        {days > 0 ? `${days} ${dayWord(days)}` : "Нет серии"}
-      </span>
+      {days} {dayWord(days)}
     </div>
   );
 }
