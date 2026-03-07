@@ -1,0 +1,100 @@
+phase: "sprint-40"
+description: "Phase A.1 — Remove dead code: Tantivy search, deprecated frontend, B2C seed bloat"
+
+tasks:
+  - id: remove-tantivy-search
+    title: "Remove dead Tantivy search service"
+    scope: infra
+    type: chore
+    prompt: |
+      Task: Remove the Tantivy search service — it was built but never integrated into any flow.
+
+      CONTEXT:
+      - services/rs/search/ — full Rust service with routes, but NOT in docker-compose
+      - No service calls port 9000
+      - RAG service has its own semantic search
+      - AI service has unified search (RAG + Gemini)
+
+      WHAT TO DO:
+
+      1. Delete the entire directory: services/rs/search/
+      2. Remove any references from:
+         - docker-compose.dev.yml (if present)
+         - docker-compose.prod.yml (if present)
+         - docker-compose.staging.yml (if present)
+         - STRUCTURE.md — remove search service from tree
+         - README.md — remove from service table
+         - docs/TECHNICAL-OVERVIEW.md — remove from service table
+         - docs/architecture/01-SYSTEM-OVERVIEW.md — remove from diagram and table
+         - CLAUDE.md — remove search test command if present
+      3. Check if anything imports or references "tantivy" or "search:9000" — remove those refs
+      4. Do NOT remove RAG search or AI unified search — those are active
+
+      COMMIT: chore: remove dead Tantivy search service
+    test: "test ! -d /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/search"
+    depends_on: []
+
+  - id: remove-deprecated-frontend
+    title: "Remove deprecated B2C frontend code"
+    scope: frontend
+    type: chore
+    prompt: |
+      Task: Remove all deprecated B2C code from the buyer app.
+
+      CONTEXT:
+      - apps/buyer/app/_deprecated/ — old B2C pages (courses, enrollments, wishlist, bundles, referral, my-courses)
+      - apps/buyer/hooks/_deprecated/ — 5 dead hooks (use-reviews, use-subscriptions, use-bundles, use-coupons, use-referral)
+      - apps/buyer/components/_deprecated/ — 3 dead components (PriceDisplay, SimilarCourses, CouponInput)
+      - ZERO active imports from any of these — confirmed by audit
+
+      WHAT TO DO:
+
+      1. Delete apps/buyer/app/_deprecated/ directory entirely
+      2. Delete apps/buyer/hooks/_deprecated/ directory entirely
+      3. Delete apps/buyer/components/_deprecated/ directory entirely
+      4. Grep the entire buyer app for imports from these paths — fix any found (should be 0)
+      5. Run build to verify nothing breaks:
+         cd apps/buyer && pnpm build
+
+      COMMIT: chore(buyer): remove deprecated B2C pages, hooks, and components
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: cleanup-seed-b2c
+    title: "Remove B2C bloat from seed script"
+    scope: backend
+    type: refactor
+    prompt: |
+      Task: The seed script creates 100K courses and 200K enrollments for a B2B platform that doesn't use courses. Reduce to minimal B2C data, keep B2B demo data.
+
+      CONTEXT:
+      - tools/seed/seed.py — main seed script
+      - Current: USER_COUNT=50000, COURSE_COUNT=100000, ENROLLMENT_COUNT=200000
+      - B2B demo data (Acme Engineering) is SEPARATE and must be KEPT
+      - Course service still exists (not deleted yet), so we need SOME courses for schema validity
+
+      WHAT TO DO:
+
+      1. Reduce constants:
+         - USER_COUNT: 50000 → 1000 (enough for realistic data)
+         - COURSE_COUNT: 100000 → 100
+         - ENROLLMENT_COUNT: 200000 → 500
+         - REVIEW_COUNT: 100000 → 200
+         - PAYMENT_COUNT: 50000 → 500
+
+      2. Reduce learning seed data proportionally:
+         - QUIZ_COUNT and flashcard counts — scale down
+         - Keep bulk seed functional but lean
+
+      3. DO NOT TOUCH:
+         - seed_demo_org() — keep all Acme Engineering data
+         - seed_demo_learning() — keep all demo learning data
+         - seed_rag_documents() — keep all RAG documents
+         - seed_demo_notifications() — keep
+         - seed_demo_enrollments() — keep
+
+      4. Verify syntax: python3 -c "import ast; ast.parse(open('seed.py').read())"
+
+      COMMIT: refactor(seed): reduce B2C seed from 100K to 100 courses
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/tools/seed && python3 -c \"import ast; ast.parse(open('seed.py').read()); print('OK')\""
+    depends_on: []

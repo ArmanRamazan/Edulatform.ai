@@ -1,0 +1,102 @@
+phase: "sprint-41"
+description: "Phase A.2 — Fix AI↔Learning circular dependency and unify concepts"
+
+tasks:
+  - id: fix-ai-learning-circular
+    title: "Break circular dependency between AI and Learning services"
+    scope: backend
+    type: refactor
+    prompt: |
+      Task: AI and Learning have a circular HTTP dependency that will deadlock under load.
+
+      CURRENT FLOW (BROKEN):
+      - Learning calls AI: GET /ai/mission/daily?org_id=X
+      - AI calls Learning: GET /concepts/mastery/course/{org_id}
+      - AI calls Learning: PATCH /concepts/mastery
+      Result: Learning → AI → Learning = circular, cascading timeouts
+
+      TARGET FLOW (FIXED):
+      - Learning sends mastery data IN the request to AI (push model)
+      - AI returns blueprint without calling Learning back
+      - Learning stores the result
+
+      WHAT TO DO:
+
+      1. Read the current flow:
+         - services/py/learning/app/services/mission_service.py — where it calls AI
+         - services/py/ai/app/services/orchestrator_service.py — where it calls Learning
+         - services/py/ai/app/services/strategist_service.py — where it fetches mastery
+
+      2. Modify Learning → AI call:
+         - Before calling AI, Learning fetches mastery data locally (it has concept_mastery table!)
+         - Include mastery_data in the POST body to AI: { org_id, user_id, mastery: [{concept_id, level}...] }
+
+      3. Modify AI service:
+         - StrategistService should accept mastery from request body instead of fetching from Learning
+         - Remove HTTP call to Learning's mastery endpoint
+         - Remove Learning service URL from AI config (if only used for mastery)
+
+      4. Keep PATCH /concepts/mastery — but move it to Learning side:
+         - After AI returns blueprint, Learning updates mastery locally (it already owns the table)
+         - AI should NOT call PATCH back to Learning
+
+      5. Update tests:
+         - AI tests: mock the mastery input in request, not HTTP call
+         - Learning tests: verify mastery is sent in AI request
+         - Remove tests that mock inter-service mastery calls
+
+      6. Run both test suites:
+         - cd services/py/ai && uv run --package ai pytest tests/ -v
+         - cd services/py/learning && uv run --package learning pytest tests/ -v
+
+      TDD: Write failing tests for the new contract first.
+
+      COMMIT: refactor(ai,learning): break circular dependency — push mastery in request
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: []
+
+  - id: unify-concepts-source
+    title: "Deprecate learning.concepts in favor of rag.org_concepts for B2B"
+    scope: backend
+    type: refactor
+    prompt: |
+      Task: Concepts exist in two places — learning.concepts (B2C, tied to courses) and rag.org_concepts (B2B, extracted from docs). For B2B, only rag.org_concepts matters.
+
+      CONTEXT:
+      - learning DB: concepts table (course_id, lesson_id, name, parent_id)
+      - learning DB: concept_mastery table (user_id, concept_id → references concepts)
+      - rag DB: org_concepts table (organization_id, name, source_document_id)
+      - rag DB: concept_relationships table
+
+      CURRENT PROBLEM:
+      - B2B missions use concepts, but the concept source is unclear
+      - seed_demo_learning inserts concepts into LEARNING DB
+      - RAG service extracts concepts into RAG DB
+      - These are not linked
+
+      WHAT TO DO:
+
+      1. Read both concept schemas:
+         - services/py/learning/migrations/ — concepts, concept_mastery
+         - services/py/rag/migrations/ — org_concepts, concept_relationships
+
+      2. Add organization_id to learning.concepts table:
+         - New migration: ALTER TABLE concepts ADD COLUMN organization_id UUID
+         - This allows B2B concepts to be org-scoped without breaking B2C
+         - Make it nullable (backward compatible)
+
+      3. Add a comment/docstring documenting the concept model:
+         - learning.concepts: operational data (mastery tracking, quiz targets)
+         - rag.org_concepts: source-of-truth for B2B (extracted from docs)
+         - Future: sync rag → learning concepts on document ingestion
+
+      4. Do NOT delete learning.concepts or rag.org_concepts
+      5. Do NOT merge the tables — they serve different layers
+      6. Do NOT change existing B2C flows
+
+      7. Run learning tests:
+         cd services/py/learning && uv run --package learning pytest tests/ -v
+
+      COMMIT: refactor(learning): add organization_id to concepts for B2B isolation
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
+    depends_on: [fix-ai-learning-circular]

@@ -1,0 +1,131 @@
+phase: "sprint-44"
+description: "Phase B.1 — CI/CD pipeline and E2E testing foundation"
+
+tasks:
+  - id: github-actions-ci
+    title: "Add GitHub Actions CI pipeline"
+    scope: infra
+    type: feat
+    prompt: |
+      Task: Create CI pipeline that runs all tests on push/PR.
+
+      CONTEXT:
+      - 8 Python services, each with own test suite
+      - Buyer app needs pnpm build
+      - Tests run with: uv run --package <name> pytest tests/ -v
+      - No CI exists currently
+
+      WHAT TO DO:
+
+      1. Create .github/workflows/ci.yml:
+
+      2. Jobs (run in parallel where possible):
+
+         a) python-tests (matrix strategy):
+            - services: [identity, course, enrollment, payment, notification, ai, learning, rag]
+            - Setup: python 3.12, install uv
+            - Run: cd services/py/$service && uv sync && uv run --package $service pytest tests/ -v
+            - Cache: ~/.cache/uv
+
+         b) buyer-build:
+            - Setup: node 22, pnpm
+            - Run: cd apps/buyer && pnpm install && pnpm build
+            - Cache: .next/cache
+
+         c) lint:
+            - Python: ruff check services/py/
+            - TypeScript: cd apps/buyer && pnpm lint (if eslint configured)
+
+      3. Triggers:
+         - push to main
+         - pull_request to main
+
+      4. Do NOT add deployment steps — CI only
+
+      COMMIT: feat(infra): add GitHub Actions CI pipeline
+    test: "test -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/.github/workflows/ci.yml"
+    depends_on: []
+
+  - id: playwright-setup
+    title: "Setup Playwright E2E testing for buyer app"
+    scope: frontend
+    type: feat
+    prompt: |
+      Task: Add Playwright E2E testing infrastructure to the buyer app.
+
+      CONTEXT:
+      - apps/buyer/ — Next.js 15, no tests currently
+      - Key flows to test: login, dashboard load, navigation
+      - CLAUDE.md specifies Playwright for E2E
+
+      WHAT TO DO:
+
+      1. Install playwright in buyer app:
+         cd apps/buyer && pnpm add -D @playwright/test
+
+      2. Create playwright.config.ts:
+         - baseURL: http://localhost:3001
+         - webServer: pnpm dev
+         - Projects: chromium only (for now)
+         - retries: 1
+
+      3. Create 3 smoke tests in apps/buyer/e2e/:
+
+         a) e2e/auth.spec.ts:
+            - Visit /login — page loads, form visible
+            - Visit /register — page loads, form visible
+            - Visit /dashboard without auth — redirected to /login
+
+         b) e2e/navigation.spec.ts:
+            - Visit / (landing) — hero section visible
+            - Check that sidebar links exist when authenticated
+
+         c) e2e/onboarding.spec.ts:
+            - Visit /onboarding — wizard loads
+            - Step indicator visible
+
+      4. Add to package.json:
+         "test:e2e": "playwright test"
+
+      5. Do NOT run tests (requires running server) — just create the infrastructure
+
+      COMMIT: feat(buyer): add Playwright E2E testing setup with smoke tests
+    test: "test -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer/playwright.config.ts"
+    depends_on: []
+
+  - id: api-gateway-rate-limit
+    title: "Add rate limiting to Rust API gateway"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: Add Redis-based rate limiting to the Rust API gateway.
+
+      CONTEXT:
+      - services/rs/api-gateway/ — Rust/axum reverse proxy
+      - Redis already available at redis://redis:6379
+      - CLAUDE.md mentions rate limiting in gateway
+      - Current: no rate limiting exists
+
+      WHAT TO DO:
+
+      1. Read current gateway code: services/rs/api-gateway/src/
+      2. Add rate limiting middleware using tower or custom axum layer:
+         - Key: user_id from JWT (authenticated) or IP (unauthenticated)
+         - Limits:
+           - Authenticated: 100 req/min per user
+           - Unauthenticated: 20 req/min per IP
+         - Storage: Redis (INCR + EXPIRE pattern)
+         - Response: 429 Too Many Requests with Retry-After header
+
+      3. Add to middleware chain before proxy routing
+
+      4. Write tests:
+         - Test rate limit counter increments
+         - Test 429 returned when limit exceeded
+         - Test different users have separate limits
+
+      5. Run: cd services/rs/api-gateway && cargo test && cargo clippy -- -D warnings
+
+      COMMIT: feat(api-gateway): add Redis-based rate limiting
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/rs/api-gateway && cargo test"
+    depends_on: []
