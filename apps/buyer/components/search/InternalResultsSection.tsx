@@ -1,6 +1,6 @@
 "use client";
 
-import { FileText, Code, Globe, File } from "lucide-react";
+import { FileText, Code, Globe, File, AlertCircle, RefreshCw } from "lucide-react";
 import { Card, CardHeader, CardContent } from "@/components/ui/card";
 import type { KbSearchResult } from "@/lib/api";
 
@@ -24,10 +24,12 @@ export function InternalResultsSection({
   results,
   isLoading,
   error,
+  onRetry,
 }: {
   results: KbSearchResult[];
   isLoading: boolean;
   error: string | null;
+  onRetry?: () => void;
 }) {
   return (
     <div className="space-y-3">
@@ -38,38 +40,67 @@ export function InternalResultsSection({
         </h2>
       </div>
 
+      {/* Loading — shimmer that matches the card shape */}
       {isLoading && (
-        <div className="space-y-3">
+        <div className="space-y-3" aria-busy="true" aria-label="Searching knowledge base">
           {[1, 2, 3].map((i) => (
-            <Card
-              key={i}
-              className="animate-pulse border-[#2a2a3e] bg-[#14141f]"
-            >
+            <Card key={i} className="overflow-hidden border-[#2a2a3e] bg-[#14141f]">
               <CardContent className="p-4">
-                <div className="mb-2 h-4 w-3/4 rounded bg-[#1a1a2e]" />
-                <div className="h-3 w-full rounded bg-[#1a1a2e]" />
-                <div className="mt-1 h-3 w-2/3 rounded bg-[#1a1a2e]" />
+                <div className="relative mb-2 h-4 w-3/4 overflow-hidden rounded bg-[#1a1a2e]">
+                  <div className="absolute inset-0 animate-shimmer" />
+                </div>
+                <div className="relative h-3 w-full overflow-hidden rounded bg-[#1a1a2e]">
+                  <div className="absolute inset-0 animate-shimmer" />
+                </div>
+                <div className="relative mt-1 h-3 w-2/3 overflow-hidden rounded bg-[#1a1a2e]">
+                  <div className="absolute inset-0 animate-shimmer" />
+                </div>
               </CardContent>
             </Card>
           ))}
         </div>
       )}
 
-      {error && (
-        <Card className="border-red-900/50 bg-[#14141f]">
-          <CardContent className="p-4 text-sm text-red-400">
-            {error}
-          </CardContent>
-        </Card>
+      {/* Error — design tokens, no raw message, recovery action */}
+      {!isLoading && error && (
+        <div
+          className="flex flex-col items-center gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-6 text-center"
+          role="alert"
+        >
+          <AlertCircle
+            className="h-5 w-5 text-destructive"
+            aria-hidden="true"
+            strokeWidth={1.5}
+          />
+          <div>
+            <p className="text-sm font-medium text-destructive">
+              Failed to search knowledge base
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Check your connection and try again
+            </p>
+          </div>
+          {onRetry && (
+            <button
+              type="button"
+              onClick={onRetry}
+              className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              <RefreshCw className="h-3 w-3" aria-hidden="true" />
+              Try again
+            </button>
+          )}
+        </div>
       )}
 
       {!isLoading && !error && results.length === 0 && (
         <p className="py-8 text-center text-sm text-[#45455a]">
-          No internal results
+          No results in your knowledge base
         </p>
       )}
 
       {!isLoading &&
+        !error &&
         results.map((r) => (
           <Card
             key={r.chunk_id}
