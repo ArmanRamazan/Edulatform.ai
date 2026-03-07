@@ -50,19 +50,26 @@ export const ConceptNode = memo(function ConceptNode({
   const circumference = 2 * Math.PI * ringRadius;
   const strokeDashoffset = circumference * (1 - mastery / 100);
 
+  // Chars that fit ≈ (node inner diameter - ring padding) / (fontSize * 0.6)
+  const maxChars = Math.max(4, Math.floor((size - 20) / (fontSize * 0.62)));
   const truncatedLabel =
-    label.length > 14 ? `${label.slice(0, 12)}…` : label;
+    label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label;
 
   return (
     <motion.div
       style={{ width: size, height: size, position: "relative" }}
-      whileHover={{ scale: 1.08 }}
+      // Spring physics for a snappier, more tactile hover
+      whileHover={{ scale: 1.1 }}
+      transition={{ type: "spring", stiffness: 400, damping: 20 }}
+      // Declare initial so Framer Motion doesn't animate from undefined on mount
+      initial={{ boxShadow: `0 0 0 0px ${color}00` }}
       animate={{
         boxShadow: selected
           ? `0 0 0 2px ${color}, 0 0 24px ${color}50`
           : `0 0 0 0px ${color}00`,
+        // Override the component-level spring for glow: smooth fade instead of bounce
+        transition: { boxShadow: { duration: 0.25, ease: "easeOut" } },
       }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
     >
       {/* ── Circular node body ── */}
       <div
@@ -164,11 +171,11 @@ export const ConceptNode = memo(function ConceptNode({
         </div>
       </div>
 
-      {/* ── React Flow connection handles (invisible, structural — all 4 sides) ── */}
-      <Handle type="target" position={Position.Top}    style={{ opacity: 0, top: 0 }} />
-      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, bottom: 0 }} />
-      <Handle type="target" position={Position.Left}   style={{ opacity: 0, left: 0 }} />
-      <Handle type="source" position={Position.Right}  style={{ opacity: 0, right: 0 }} />
+      {/* ── React Flow connection handles — invisible, structural, removed from tab order ── */}
+      <Handle type="target" position={Position.Top}    style={{ opacity: 0, top: "50%", left: "50%" }}   tabIndex={-1} aria-hidden />
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, top: "50%", left: "50%" }}   tabIndex={-1} aria-hidden />
+      <Handle type="target" position={Position.Left}   style={{ opacity: 0, top: "50%", left: "50%" }}   tabIndex={-1} aria-hidden />
+      <Handle type="source" position={Position.Right}  style={{ opacity: 0, top: "50%", left: "50%" }}   tabIndex={-1} aria-hidden />
     </motion.div>
   );
 });

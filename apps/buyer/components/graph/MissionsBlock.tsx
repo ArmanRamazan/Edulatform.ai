@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { ChevronDown, ChevronUp, Zap, CheckCircle2 } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, RefreshCw, Target, Zap, CheckCircle2 } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -20,7 +20,7 @@ interface MissionsBlockProps {
 
 export function MissionsBlock({ conceptId, index }: MissionsBlockProps) {
   const { token } = useAuth();
-  const { data: missions, isLoading, error } = useConceptMissions(token, conceptId);
+  const { data: missions, isLoading, error, refetch } = useConceptMissions(token, conceptId);
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -51,8 +51,15 @@ export function MissionsBlock({ conceptId, index }: MissionsBlockProps) {
   if (error) {
     return (
       <Card className="border-destructive/30">
-        <CardContent className="py-5 text-sm text-destructive">
-          Failed to load missions
+        <CardContent className="flex items-center justify-between gap-3 py-5">
+          <div className="flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+            Failed to load missions
+          </div>
+          <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={() => refetch()}>
+            <RefreshCw className="size-3" aria-hidden="true" />
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );
@@ -72,16 +79,24 @@ export function MissionsBlock({ conceptId, index }: MissionsBlockProps) {
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Missions
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={toggleCollapse} className="h-6 w-6 p-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleCollapse}
+            className="h-6 w-6 p-0"
+            aria-label={collapsed ? "Expand Missions" : "Collapse Missions"}
+            aria-expanded={!collapsed}
+          >
             {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </Button>
         </CardHeader>
         {!collapsed && (
           <CardContent className="space-y-3">
             {completed.length === 0 && available.length === 0 ? (
-              <p className="py-4 text-center text-sm text-muted-foreground">
-                No missions yet for this concept
-              </p>
+              <div className="flex flex-col items-center gap-2 py-6 text-center">
+                <Target className="size-8 text-muted-foreground/40" aria-hidden="true" />
+                <p className="text-sm text-muted-foreground">No missions yet for this concept</p>
+              </div>
             ) : (
               <>
                 {/* Completed missions */}

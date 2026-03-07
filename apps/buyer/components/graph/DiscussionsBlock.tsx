@@ -40,14 +40,21 @@ export function DiscussionsBlock({ conceptId: _conceptId, conceptName, index }: 
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Discussions
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={toggleCollapse} className="h-6 w-6 p-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleCollapse}
+            className="h-6 w-6 p-0"
+            aria-label={collapsed ? "Expand Discussions" : "Collapse Discussions"}
+            aria-expanded={!collapsed}
+          >
             {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </Button>
         </CardHeader>
         {!collapsed && (
           <CardContent>
             <div className="flex flex-col items-center justify-center py-6 text-center">
-              <MessageSquare className="mb-3 size-8 text-muted-foreground/40" />
+              <MessageSquare className="mb-3 size-12 text-muted-foreground/40" aria-hidden="true" />
               <p className="mb-1 text-sm font-medium text-card-foreground">
                 Discussions for &quot;{conceptName}&quot;
               </p>

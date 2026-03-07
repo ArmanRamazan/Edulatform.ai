@@ -13,7 +13,7 @@ import {
   type NodeMouseHandler,
   type NodeTypes,
 } from "@xyflow/react";
-import { GitMerge } from "lucide-react";
+import { Network } from "lucide-react";
 import { ConceptNode } from "./ConceptNode";
 import { defaultEdgeOptions, minimapNodeColor } from "./graphTheme";
 import type { KnowledgeGraphProps } from "./KnowledgeGraph";
@@ -40,16 +40,44 @@ export function KnowledgeGraphImpl({
   const backgroundVariant =
     viewMode === "mindmap" ? BackgroundVariant.Lines : BackgroundVariant.Dots;
 
-  // Empty state — render a placeholder canvas rather than a blank rect
+  // Empty state — render an atmospheric placeholder rather than a blank rect
   if (nodes.length === 0) {
     return (
       <div
-        className="flex h-full min-h-[480px] w-full flex-col items-center justify-center gap-3 rounded-xl"
-        style={{ background: "#0a0a0f" }}
+        className="flex h-full min-h-[480px] w-full flex-col items-center justify-center gap-4 rounded-xl"
+        style={{
+          background: "#0a0a0f",
+          // Subtle dot grid — same visual language as the real canvas
+          backgroundImage:
+            "radial-gradient(circle, #22223a 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+        }}
+        role="region"
+        aria-label="Knowledge graph — empty"
       >
-        <GitMerge className="size-10 text-[#22223a]" strokeWidth={1.5} />
-        <p className="text-sm font-medium text-[#6b6b80]">No concepts in graph</p>
-        <p className="text-xs text-[#4a4a5a]">Add concepts to the knowledge base to see them here</p>
+        {/* Faint concentric rings give spatial depth */}
+        <div className="relative flex items-center justify-center">
+          <div
+            className="absolute size-40 rounded-full"
+            style={{ border: "1px solid #22223a" }}
+          />
+          <div
+            className="absolute size-24 rounded-full"
+            style={{ border: "1px solid #1e1e2e" }}
+          />
+          <div
+            className="flex size-14 items-center justify-center rounded-full"
+            style={{ background: "#14141f", border: "1px solid #2a2a3e" }}
+          >
+            <Network className="size-6 text-[#6b6b80]" strokeWidth={1.5} />
+          </div>
+        </div>
+        <div className="text-center">
+          <p className="text-sm font-semibold text-[#a0a0b0]">No concepts yet</p>
+          <p className="mt-1 text-xs text-[#6b6b80]">
+            Add concepts to the knowledge base to map them here
+          </p>
+        </div>
       </div>
     );
   }
@@ -68,13 +96,14 @@ export function KnowledgeGraphImpl({
       deleteKeyCode={null}
       style={{ background: "#0a0a0f" }}
     >
-      {/* Subtle dot/line grid — very low opacity to avoid competing with nodes.
-          'mindmap': dim line grid | 'map': near-invisible white dots */}
+      {/* Grid texture — mindmap uses a slightly more visible line grid for hierarchy,
+          map uses a near-invisible dot grid so nodes feel free-floating */}
       <Background
-        color={viewMode === "mindmap" ? "#2a2a3e" : "#2a2a3e"}
-        gap={28}
-        size={1}
+        color={viewMode === "mindmap" ? "#1e1e2e" : "#22223a"}
+        gap={viewMode === "mindmap" ? 32 : 28}
+        size={viewMode === "mindmap" ? 0.5 : 1}
         variant={backgroundVariant}
+        style={{ opacity: viewMode === "mindmap" ? 0.6 : 0.4 }}
       />
 
       {/* Minimap — bottom-right, dark styled */}
