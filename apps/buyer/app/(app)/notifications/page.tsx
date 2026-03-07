@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell } from "lucide-react";
+import { Bell, AlertCircle, RefreshCw } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 import { useMyNotifications, useMarkRead } from "@/hooks/use-notifications";
 
@@ -42,18 +42,46 @@ function NotificationSkeleton() {
 
 export default function NotificationsPage() {
   const { token, loading: authLoading } = useAuth();
-  const { data, isLoading } = useMyNotifications(token, { limit: 50 });
+  const { data, isLoading, isError, refetch } = useMyNotifications(token, { limit: 50 });
   const markRead = useMarkRead(token);
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-6 text-2xl font-bold text-foreground">Уведомления</h1>
+      <h1 className="mb-6 text-xl font-semibold text-foreground">Уведомления</h1>
 
       {/* ── Loading ── */}
       {(authLoading || isLoading) && <NotificationSkeleton />}
 
+      {/* ── Error ── */}
+      {!isLoading && !authLoading && isError && (
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 py-12 text-center">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+            <AlertCircle
+              className="h-6 w-6 text-destructive"
+              aria-hidden="true"
+              strokeWidth={1.5}
+            />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-destructive">
+              Не удалось загрузить уведомления
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Проверьте подключение и попробуйте снова
+            </p>
+          </div>
+          <button
+            onClick={() => refetch()}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            Повторить
+          </button>
+        </div>
+      )}
+
       {/* ── Empty ── */}
-      {!isLoading && !authLoading && (!data || data.items.length === 0) && (
+      {!isLoading && !authLoading && !isError && (!data || data.items.length === 0) && (
         <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card py-16 text-center">
           <Bell
             className="h-12 w-12 text-muted-foreground/30"
@@ -68,7 +96,7 @@ export default function NotificationsPage() {
       )}
 
       {/* ── List ── */}
-      {!isLoading && !authLoading && data && data.items.length > 0 && (
+      {!isLoading && !authLoading && !isError && data && data.items.length > 0 && (
         <>
           <p className="mb-3 text-sm text-muted-foreground">
             Всего:{" "}
