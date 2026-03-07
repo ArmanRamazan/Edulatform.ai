@@ -302,11 +302,20 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
             task.error = "No code changes"
             if attempt < MAX_RETRIES:
                 log("Retrying with stronger prompt...", tid)
+                # Replace prompt entirely — previous prompt accumulation may confuse agent
+                dep_context = _get_dependency_context(task, state)
+                prompt = _build_implement_prompt(task, design_context, dep_context)
                 prompt += (
-                    "\n\nPREVIOUS ATTEMPT PRODUCED NO CODE CHANGES."
-                    "\nYou MUST write code. Do not ask questions. Just implement."
-                    f"\n\nPrevious agent output (last 1500 chars):\n{output[-1500:]}"
-                    "\n\nAnalyze why the previous attempt failed and try a different approach."
+                    "\n\n=== CRITICAL: RETRY AFTER NO CODE CHANGES ==="
+                    "\nThe previous attempt produced NO code changes — only explanations."
+                    f"\nThis is attempt {attempt + 1} of {MAX_RETRIES}."
+                    "\n\nYou MUST:"
+                    "\n1. Create or modify actual source files"
+                    "\n2. Write tests if this is backend code"
+                    "\n3. Run the tests to verify they pass"
+                    "\n4. Commit your changes with git"
+                    "\n\nDo NOT explain what to do. Do NOT ask questions. WRITE CODE NOW."
+                    f"\n\nPrevious agent output (last 1500 chars) — learn from mistakes:\n{output[-1500:]}"
                 )
                 continue
             task.status = "failed"
@@ -347,9 +356,12 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
             task.error = f"Pre-merge tests failed"
             if attempt < MAX_RETRIES:
                 log("Retrying after test failure...", tid)
+                # Keep current prompt but add test failure context
+                # (worktree still has the code, agent just needs to fix)
                 prompt += (
-                    f"\n\nPRE-MERGE TESTS FAILED. Fix the issues:\n"
-                    f"{test_output[-2000:]}"
+                    f"\n\nPRE-MERGE TESTS FAILED. Fix the failing tests in this worktree.\n"
+                    f"Test output (last 2000 chars):\n{test_output[-2000:]}"
+                    f"\n\nDo NOT rewrite everything. Just fix the failing tests."
                 )
                 continue
             task.status = "failed"
@@ -376,7 +388,7 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
         else:
             log(f"X Merge conflict: {err[:200]}", tid)
             if attempt < MAX_RETRIES:
-                log("Retrying after merge conflict...", tid)
+                log("Retrying after merge conflict — fresh worktree...", tid)
                 _cleanup_worktree(tid)
                 try:
                     wt_path = _create_worktree(tid)
@@ -388,7 +400,21 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
                     with _state_lock:
                         state.save()
                     return
-                prompt += f"\n\nPREVIOUS ATTEMPT HAD MERGE CONFLICT:\n{err[:500]}\nFix conflicts."
+                # Fresh worktree = fresh prompt. Agent must redo ALL work from scratch.
+                dep_context = _get_dependency_context(task, state)
+                prompt = _build_implement_prompt(task, design_context, dep_context)
+                prompt += (
+                    "\n\n=== CRITICAL: FRESH WORKTREE AFTER MERGE CONFLICT ==="
+                    "\nThe previous attempt's work was lost due to a merge conflict."
+                    "\nThis worktree is FRESH from main HEAD — it has NONE of the previous work."
+                    "\nYou MUST implement EVERYTHING from scratch:"
+                    "\n1. Write all source files"
+                    "\n2. Write all tests"
+                    "\n3. Run tests to verify"
+                    "\n4. Commit your changes"
+                    "\n\nDo NOT reference or try to fix conflicts — just implement cleanly."
+                    f"\n\nConflict info (for context only): {err[:300]}"
+                )
                 continue
             task.status = "failed"
             task.error = f"Merge conflict: {err[:200]}"
