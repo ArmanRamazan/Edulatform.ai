@@ -4,6 +4,12 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Left-to-right shimmer sweep for skeleton loading states */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position:  200% 0; }
+}
+
 /* One-shot scale-bounce for the notification badge when count changes */
 @keyframes badge-pop {
   0%   { transform: scale(1); }
@@ -22,6 +28,7 @@
 @theme inline {
     --animate-badge-pop: badge-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
     --animate-ws-live-pulse: ws-live-pulse 2s ease-out infinite;
+    --animate-shimmer: shimmer 2s linear infinite;
     --radius-sm: calc(var(--radius) - 4px);
     --radius-md: calc(var(--radius) - 2px);
     --radius-lg: var(--radius);
@@ -152,6 +159,23 @@
   }
 }
 
+/* ─── Shimmer utility ────────────────────────────────────────────────────────
+   Applied to skeleton overlays; sweeps a semi-transparent highlight left→right.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+@utility animate-shimmer {
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.045) 40%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.045) 60%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+  animation: var(--animate-shimmer);
+}
+
 /* ─── Coach streaming animations ─────────────────────────────────────────────
    Defined globally to eliminate repeated <style> injections per render.
    ─────────────────────────────────────────────────────────────────────────── */
@@ -227,9 +251,14 @@
   stroke-linejoin: round;
 }
 
-/* Animated edges glow slightly on the violet channel */
+/* Animated edges — glow pulses subtly on the violet channel */
+@keyframes rf-edge-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px rgba(124, 92, 252, 0.25)); }
+  50%       { filter: drop-shadow(0 0 5px rgba(124, 92, 252, 0.55)); }
+}
+
 .react-flow__edge.animated path {
-  filter: drop-shadow(0 0 3px rgba(124, 92, 252, 0.35));
+  animation: rf-edge-glow 3s ease-in-out infinite;
 }
 
 /* ── Controls (zoom / fit) — dark background, violet hover ── */
@@ -276,12 +305,20 @@
   background: transparent;
 }
 
-/* ── Node selected state — remove React Flow's default blue outline ── */
+/* ── Node selected state — remove React Flow's default blue outline for mouse interaction ── */
 .react-flow__node.selected,
-.react-flow__node:focus,
-.react-flow__node:focus-visible {
+.react-flow__node:focus {
   outline: none;
   box-shadow: none;
+}
+
+/* ── Restore a violet ring for keyboard navigation (focus-visible only) ──
+   ConceptNode handles its own selected glow; this is purely for tab navigation. */
+.react-flow__node:focus-visible {
+  outline: 2px solid #7c5cfc;
+  outline-offset: 3px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px rgba(124, 92, 252, 0.15);
 }
 
 /* ── Edge selected — violet highlight instead of blue ── */

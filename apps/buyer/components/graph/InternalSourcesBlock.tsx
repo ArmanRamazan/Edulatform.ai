@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ChevronDown, ChevronUp, FileCode, FileText, Settings } from "lucide-react";
+import { AlertCircle, ChevronDown, ChevronUp, FileCode, FileText, RefreshCw, Settings } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -47,7 +47,7 @@ interface InternalSourcesBlockProps {
 export function InternalSourcesBlock({ conceptName, index }: InternalSourcesBlockProps) {
   const { token } = useAuth();
   const { activeOrg } = useActiveOrg();
-  const { data: results, isLoading, error } = useConceptSources(
+  const { data: results, isLoading, error, refetch } = useConceptSources(
     token,
     activeOrg?.id ?? null,
     conceptName,
@@ -85,8 +85,15 @@ export function InternalSourcesBlock({ conceptName, index }: InternalSourcesBloc
   if (error) {
     return (
       <Card className="border-destructive/30">
-        <CardContent className="py-5 text-sm text-destructive">
-          Failed to load internal sources
+        <CardContent className="flex items-center justify-between gap-3 py-5">
+          <div className="flex items-center gap-2 text-sm text-destructive">
+            <AlertCircle className="size-4 shrink-0" aria-hidden="true" />
+            Failed to load internal sources
+          </div>
+          <Button size="sm" variant="ghost" className="h-7 gap-1.5 text-xs" onClick={() => refetch()}>
+            <RefreshCw className="size-3" aria-hidden="true" />
+            Retry
+          </Button>
         </CardContent>
       </Card>
     );
@@ -103,7 +110,14 @@ export function InternalSourcesBlock({ conceptName, index }: InternalSourcesBloc
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Internal Sources
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={toggleCollapse} className="h-6 w-6 p-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleCollapse}
+            className="h-6 w-6 p-0"
+            aria-label={collapsed ? "Expand Internal Sources" : "Collapse Internal Sources"}
+            aria-expanded={!collapsed}
+          >
             {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </Button>
         </CardHeader>
