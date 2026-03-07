@@ -6,6 +6,7 @@ import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepIndicator, ONBOARDING_TOTAL_STEPS } from "./StepIndicator";
 import { OrgStep } from "./steps/OrgStep";
+import { ProfileStep } from "./steps/ProfileStep";
 import { StepExperience } from "./steps/StepExperience";
 import { StepAssessment } from "./steps/StepAssessment";
 import { StepPlan } from "./steps/StepPlan";
@@ -19,6 +20,8 @@ export interface WizardData {
   orgName: string;
   orgSize: string | null;
   industry: string | null;
+  role: string | null;
+  stack: string | null;
   experience: string | null;
   skills: string[];
   goal: string | null;
@@ -41,6 +44,8 @@ const INITIAL_DATA: WizardData = {
   orgName: "",
   orgSize: null,
   industry: null,
+  role: null,
+  stack: null,
   experience: null,
   skills: [],
   goal: null,
@@ -72,12 +77,14 @@ function isStepValid(step: number, data: WizardData): boolean {
       // OrgStep handles its own progression — no wizard-level validation needed
       return false;
     case 2:
-      return data.experience !== null;
+      return data.role !== null && data.stack !== null;
     case 3:
-      return data.skills.length > 0;
+      return data.experience !== null;
     case 4:
-      return data.goal !== null;
+      return data.skills.length > 0;
     case 5:
+      return data.goal !== null;
+    case 6:
       return true; // StepStart manages its own CTAs
     default:
       return false;
@@ -220,10 +227,11 @@ export function OnboardingWizard() {
               className="outline-none"
             >
               {currentStep === 1 && <OrgStep onNext={goNext} />}
-              {currentStep === 2 && <StepExperience {...stepProps} />}
-              {currentStep === 3 && <StepAssessment {...stepProps} />}
-              {currentStep === 4 && <StepPlan {...stepProps} />}
-              {currentStep === 5 && <StepStart {...stepProps} />}
+              {currentStep === 2 && <ProfileStep {...stepProps} />}
+              {currentStep === 3 && <StepExperience {...stepProps} />}
+              {currentStep === 4 && <StepAssessment {...stepProps} />}
+              {currentStep === 5 && <StepPlan {...stepProps} />}
+              {currentStep === 6 && <StepStart {...stepProps} />}
             </motion.div>
           </AnimatePresence>
 
