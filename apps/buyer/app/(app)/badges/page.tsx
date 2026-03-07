@@ -2,7 +2,7 @@
 
 import { useAuth } from "@/hooks/use-auth";
 import { useMyBadges, useMyXpHistory, useMyStreak } from "@/hooks/use-gamification";
-import { Zap, Flame, Trophy } from "lucide-react";
+import { Zap, Flame, Trophy, AlertCircle, RefreshCw } from "lucide-react";
 
 const BADGE_ICONS: Record<string, string> = {
   first_enrollment: "\uD83C\uDF93",
@@ -34,7 +34,7 @@ function StatCard({
   return (
     <div className="rounded-xl border border-border bg-card p-4 text-center">
       <Icon className={`mx-auto mb-2 h-5 w-5 ${colorClass}`} aria-hidden="true" />
-      <p className={`text-2xl font-bold tabular-nums ${colorClass}`}>{value}</p>
+      <p className={`text-2xl font-semibold tabular-nums ${colorClass}`}>{value}</p>
       <p className="text-xs text-muted-foreground">{label}</p>
     </div>
   );
@@ -76,19 +76,62 @@ function BadgesSkeleton() {
 
 export default function BadgesPage() {
   const { token, loading } = useAuth();
-  const { data: badgeData, isLoading: badgesLoading } = useMyBadges(token);
-  const { data: xpData, isLoading: xpLoading } = useMyXpHistory(token, { limit: 10 });
+  const {
+    data: badgeData,
+    isLoading: badgesLoading,
+    isError: badgesError,
+    refetch: refetchBadges,
+  } = useMyBadges(token);
+  const {
+    data: xpData,
+    isLoading: xpLoading,
+    isError: xpError,
+    refetch: refetchXp,
+  } = useMyXpHistory(token, { limit: 10 });
   const { data: streakData } = useMyStreak(token);
 
   const unlockedTypes = new Set(badgeData?.badges.map((b) => b.badge_type) ?? []);
 
   return (
     <div className="mx-auto max-w-4xl">
-      <h1 className="mb-6 text-2xl font-bold text-foreground">Достижения</h1>
+      <h1 className="mb-6 text-xl font-semibold text-foreground">Достижения</h1>
 
+      {/* Loading */}
       {(loading || badgesLoading) && <BadgesSkeleton />}
 
-      {!loading && !badgesLoading && (
+      {/* Fatal error — badges section couldn't load */}
+      {!loading && !badgesLoading && badgesError && (
+        <div
+          className="flex flex-col items-center gap-3 rounded-2xl border border-destructive/20 bg-destructive/5 py-14 text-center"
+          role="alert"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive/10">
+            <AlertCircle
+              className="h-6 w-6 text-destructive"
+              aria-hidden="true"
+              strokeWidth={1.5}
+            />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-destructive">
+              Не удалось загрузить достижения
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Проверьте подключение и попробуйте снова
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void refetchBadges()}
+            className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" />
+            Повторить
+          </button>
+        </div>
+      )}
+
+      {!loading && !badgesLoading && !badgesError && (
         <div className="space-y-8">
           {/* Stats summary */}
           <div className="grid grid-cols-3 gap-4">
@@ -151,15 +194,42 @@ export default function BadgesPage() {
           {/* Recent XP events */}
           <section>
             <h2 className="mb-4 text-lg font-semibold text-foreground">Последние XP</h2>
-            {xpLoading ? (
-              <div className="space-y-2">
+
+            {/* XP loading skeleton */}
+            {xpLoading && (
+              <div className="space-y-2" aria-busy="true" aria-label="Loading XP history">
                 {[1, 2, 3].map((i) => (
                   <div key={i} className="relative h-10 overflow-hidden rounded-lg border border-border bg-card">
                     <div className="absolute inset-0 animate-shimmer" />
                   </div>
                 ))}
               </div>
-            ) : !xpData || xpData.events.length === 0 ? (
+            )}
+
+            {/* XP error — non-fatal, scoped to this section */}
+            {!xpLoading && xpError && (
+              <div
+                className="flex items-center justify-between gap-3 rounded-xl border border-destructive/15 bg-destructive/5 px-4 py-3"
+                role="alert"
+              >
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="h-4 w-4 shrink-0 text-destructive" aria-hidden="true" />
+                  <p className="text-sm text-destructive">
+                    Не удалось загрузить историю XP
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void refetchXp()}
+                  className="shrink-0 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                >
+                  Повторить
+                </button>
+              </div>
+            )}
+
+            {/* XP empty */}
+            {!xpLoading && !xpError && (!xpData || xpData.events.length === 0) && (
               <div className="rounded-xl border border-border bg-card py-8 text-center">
                 <Zap
                   className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30"
@@ -168,7 +238,10 @@ export default function BadgesPage() {
                 />
                 <p className="text-sm text-muted-foreground">Пока нет очков опыта</p>
               </div>
-            ) : (
+            )}
+
+            {/* XP list */}
+            {!xpLoading && !xpError && xpData && xpData.events.length > 0 && (
               <div className="space-y-1.5">
                 {xpData.events.map((ev, i) => (
                   <div
