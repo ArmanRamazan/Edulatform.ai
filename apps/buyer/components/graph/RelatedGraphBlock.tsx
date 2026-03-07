@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useId } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { motion } from "framer-motion";
@@ -35,6 +35,10 @@ export function RelatedGraphBlock({
   index,
 }: RelatedGraphBlockProps) {
   const router = useRouter();
+  // Unique SVG <defs> ID — prevents marker ID collision when multiple
+  // RelatedGraphBlock instances render on the same document.
+  const uid = useId();
+  const markerId = `arrow-neighbor-${uid.replace(/:/g, "")}`;
 
   const [collapsed, setCollapsed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -112,7 +116,14 @@ export function RelatedGraphBlock({
           <CardTitle className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Related Concepts
           </CardTitle>
-          <Button variant="ghost" size="sm" onClick={toggleCollapse} className="h-6 w-6 p-0">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleCollapse}
+            className="h-6 w-6 p-0"
+            aria-label={collapsed ? "Expand Related Concepts" : "Collapse Related Concepts"}
+            aria-expanded={!collapsed}
+          >
             {collapsed ? <ChevronDown className="size-4" /> : <ChevronUp className="size-4" />}
           </Button>
         </CardHeader>
@@ -132,7 +143,7 @@ export function RelatedGraphBlock({
                 <defs>
                   {/* Arrowhead marker for edges */}
                   <marker
-                    id="arrow-neighbor"
+                    id={markerId}
                     markerWidth="6"
                     markerHeight="6"
                     refX="5"
@@ -154,7 +165,7 @@ export function RelatedGraphBlock({
                     stroke="#3a3a55"
                     strokeWidth="1.5"
                     strokeDasharray="5 4"
-                    markerEnd="url(#arrow-neighbor)"
+                    markerEnd={`url(#${markerId})`}
                   />
                 ))}
 
