@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { MarkerType } from "@xyflow/react";
 
 // ─── Mastery color scale ──────────────────────────────────────────────────────
 export const MASTERY_COLORS = {
@@ -42,13 +43,24 @@ export const relatedEdgeStyle: CSSProperties = {
 };
 
 /**
- * Defaults applied to all edges unless overridden per-edge.
- * Prerequisite edges are animated; callers may override per edge.
+ * Defaults applied to all prerequisite edges.
+ * Animated flow line with a closed violet arrowhead.
  */
 export const defaultEdgeOptions = {
   animated: true,
   style: prerequisiteEdgeStyle,
-} as const;
+  markerEnd: { type: MarkerType.ArrowClosed, color: "#7c5cfc" },
+};
+
+/**
+ * Options for "related concept" edges: dashed, muted, no arrowhead.
+ * Spread or assign per-edge to override the default prerequisite style.
+ */
+export const relatedEdgeOptions = {
+  animated: false,
+  style: relatedEdgeStyle,
+  markerEnd: undefined,
+};
 
 // ─── MiniMap node color helper ────────────────────────────────────────────────
 export function minimapNodeColor(mastery: number): string {
