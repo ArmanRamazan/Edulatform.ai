@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { StepIndicator, ONBOARDING_TOTAL_STEPS } from "./StepIndicator";
-import { StepOrganization } from "./steps/StepOrganization";
+import { OrgStep } from "./steps/OrgStep";
 import { StepExperience } from "./steps/StepExperience";
 import { StepAssessment } from "./steps/StepAssessment";
 import { StepPlan } from "./steps/StepPlan";
@@ -69,7 +69,8 @@ const stepVariants = {
 function isStepValid(step: number, data: WizardData): boolean {
   switch (step) {
     case 1:
-      return data.orgName.trim().length > 0;
+      // OrgStep handles its own progression — no wizard-level validation needed
+      return false;
     case 2:
       return data.experience !== null;
     case 3:
@@ -218,7 +219,7 @@ export function OnboardingWizard() {
               transition={{ duration: 0.22, ease: "easeOut" }}
               className="outline-none"
             >
-              {currentStep === 1 && <StepOrganization {...stepProps} />}
+              {currentStep === 1 && <OrgStep onNext={goNext} />}
               {currentStep === 2 && <StepExperience {...stepProps} />}
               {currentStep === 3 && <StepAssessment {...stepProps} />}
               {currentStep === 4 && <StepPlan {...stepProps} />}
@@ -226,8 +227,8 @@ export function OnboardingWizard() {
             </motion.div>
           </AnimatePresence>
 
-          {/* ── Navigation bar — hidden on the final step (StepStart has its own CTAs) ── */}
-          {!isLastStep && (
+          {/* ── Navigation bar — hidden on step 1 (OrgStep self-advances) and final step ── */}
+          {!isLastStep && currentStep > 1 && (
             <motion.div
               initial={{ opacity: 0, y: 6 }}
               animate={{ opacity: 1, y: 0 }}
@@ -263,7 +264,7 @@ export function OnboardingWizard() {
           )}
 
           {/* ── Keyboard hint — only shown when Enter will actually work ── */}
-          {!isLastStep && (
+          {!isLastStep && currentStep > 1 && (
             <motion.p
               initial={{ opacity: 0 }}
               animate={{ opacity: canAdvance ? 1 : 0 }}
