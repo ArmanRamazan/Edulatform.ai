@@ -48,16 +48,15 @@ def _create_worktree(task_id: str) -> Path:
 
     WORKTREE_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Remove stale
-    if wt_path.exists():
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", str(wt_path)],
-            cwd=str(ROOT), capture_output=True,
-        )
-        subprocess.run(
-            ["git", "branch", "-D", branch],
-            cwd=str(ROOT), capture_output=True,
-        )
+    # Always clean up stale worktree AND branch
+    subprocess.run(
+        ["git", "worktree", "remove", "--force", str(wt_path)],
+        cwd=str(ROOT), capture_output=True,
+    )
+    subprocess.run(
+        ["git", "branch", "-D", branch],
+        cwd=str(ROOT), capture_output=True,
+    )
 
     result = subprocess.run(
         ["git", "worktree", "add", str(wt_path), "-b", branch, "HEAD"],
