@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import {
+  Activity,
   BookOpen,
   Brain,
   Award,
@@ -12,6 +13,7 @@ import {
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useAuth } from "@/hooks/use-auth";
 import { useMyActivity } from "@/hooks/use-activity";
 
@@ -120,9 +122,12 @@ export function ActivityBlock() {
         </CardHeader>
         <CardContent>
           {activities.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">
-              No recent activity
-            </p>
+            <EmptyState
+              icon={Activity}
+              title="No recent activity"
+              description="Complete a mission or review flashcards to see activity here."
+              action={{ label: "Review flashcards", href: "/flashcards" }}
+            />
           ) : (
             <ul className="space-y-3">
               {activities.map((a) => {

@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveOrg } from "@/hooks/use-active-org";
 import { trustLevels } from "@/lib/api";
@@ -77,9 +78,11 @@ export function TeamProgressBlock() {
         </CardHeader>
         <CardContent>
           {levels.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">
-              No team members yet
-            </p>
+            <EmptyState
+              icon={Users}
+              title="No team members yet"
+              description="Invite engineers to your organization to track team progress."
+            />
           ) : (
             <div className="space-y-3">
               {levels.map((member) => (

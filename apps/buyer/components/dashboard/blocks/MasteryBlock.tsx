@@ -1,9 +1,11 @@
 "use client";
 
+import { Brain } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { useAuth } from "@/hooks/use-auth";
 import { useDailySummary } from "@/hooks/use-daily";
 
@@ -67,9 +69,12 @@ export function MasteryBlock() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="py-4 text-center text-sm text-muted-foreground">
-              Complete missions to track mastery
-            </p>
+            <EmptyState
+              icon={Brain}
+              title="No mastery data yet"
+              description="Complete missions to start tracking concept mastery."
+              action={{ label: "View missions", href: "/dashboard" }}
+            />
           </CardContent>
         </Card>
       </motion.div>
