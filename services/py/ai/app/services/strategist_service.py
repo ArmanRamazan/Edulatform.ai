@@ -59,8 +59,6 @@ class StrategistService:
             logger.warning("no_org_concepts", org_id=str(org_id))
             return self._empty_path(user_id, org_id)
 
-        if mastery is None:
-            mastery = await self._fetch_mastery(org_id)
         mastery_map = self._build_mastery_map(mastery)
 
         prompt = STRATEGIST_PROMPT_TEMPLATE.format(
@@ -172,18 +170,6 @@ class StrategistService:
             return None
         except Exception:
             logger.warning("rag_service_unavailable")
-            return None
-
-    async def _fetch_mastery(self, org_id: UUID) -> list[dict] | None:
-        url = f"{self._settings.learning_service_url}/concepts/mastery/course/{org_id}"
-        try:
-            resp = await self._http.get(url, timeout=5.0)
-            if resp.status_code == 200:
-                return resp.json().get("items", [])
-            logger.warning("learning_service_error", status=resp.status_code)
-            return None
-        except Exception:
-            logger.warning("learning_service_unavailable")
             return None
 
     @staticmethod

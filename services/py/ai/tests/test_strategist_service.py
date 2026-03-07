@@ -122,17 +122,13 @@ def service(mock_llm, mock_cache, mock_http, settings):
 
 async def test_plan_path_returns_learning_path(
     service, mock_llm, mock_cache, mock_http,
-    user_id, org_id, concept_ids, rag_concepts, mastery_data, llm_path_response,
+    user_id, org_id, concept_ids, rag_concepts, llm_path_response,
 ):
     rag_resp = MagicMock()
     rag_resp.status_code = 200
     rag_resp.json.return_value = rag_concepts
 
-    mastery_resp = MagicMock()
-    mastery_resp.status_code = 200
-    mastery_resp.json.return_value = mastery_data
-
-    mock_http.get.side_effect = [rag_resp, mastery_resp]
+    mock_http.get.side_effect = [rag_resp]
     mock_llm.generate.return_value = (llm_path_response, 500, 300)
     mock_cache.get_path.return_value = None
 
@@ -149,19 +145,19 @@ async def test_plan_path_merges_mastery(
     service, mock_llm, mock_cache, mock_http,
     user_id, org_id, concept_ids, rag_concepts, mastery_data, llm_path_response,
 ):
+    """Mastery is passed as parameter (push model) and merged into path concepts."""
     rag_resp = MagicMock()
     rag_resp.status_code = 200
     rag_resp.json.return_value = rag_concepts
 
-    mastery_resp = MagicMock()
-    mastery_resp.status_code = 200
-    mastery_resp.json.return_value = mastery_data
-
-    mock_http.get.side_effect = [rag_resp, mastery_resp]
+    mock_http.get.side_effect = [rag_resp]
     mock_llm.generate.return_value = (llm_path_response, 500, 300)
     mock_cache.get_path.return_value = None
 
-    result = await service.plan_path(user_id, org_id, {"role": "backend developer"})
+    # Mastery is pushed by Learning in the request — not fetched via HTTP
+    result = await service.plan_path(
+        user_id, org_id, {"role": "backend developer"}, mastery=mastery_data["items"]
+    )
 
     oop_concept = next(c for c in result.concepts_ordered if c.name == "OOP")
     assert oop_concept.mastery == 0.3
@@ -172,17 +168,13 @@ async def test_plan_path_merges_mastery(
 
 async def test_plan_path_caches_result(
     service, mock_llm, mock_cache, mock_http,
-    user_id, org_id, rag_concepts, mastery_data, llm_path_response,
+    user_id, org_id, rag_concepts, llm_path_response,
 ):
     rag_resp = MagicMock()
     rag_resp.status_code = 200
     rag_resp.json.return_value = rag_concepts
 
-    mastery_resp = MagicMock()
-    mastery_resp.status_code = 200
-    mastery_resp.json.return_value = mastery_data
-
-    mock_http.get.side_effect = [rag_resp, mastery_resp]
+    mock_http.get.side_effect = [rag_resp]
     mock_llm.generate.return_value = (llm_path_response, 500, 300)
     mock_cache.get_path.return_value = None
 
@@ -207,17 +199,13 @@ async def test_plan_path_graceful_on_rag_failure(
 
 async def test_plan_path_no_pii_in_prompt(
     service, mock_llm, mock_cache, mock_http,
-    user_id, org_id, rag_concepts, mastery_data, llm_path_response,
+    user_id, org_id, rag_concepts, llm_path_response,
 ):
     rag_resp = MagicMock()
     rag_resp.status_code = 200
     rag_resp.json.return_value = rag_concepts
 
-    mastery_resp = MagicMock()
-    mastery_resp.status_code = 200
-    mastery_resp.json.return_value = mastery_data
-
-    mock_http.get.side_effect = [rag_resp, mastery_resp]
+    mock_http.get.side_effect = [rag_resp]
     mock_llm.generate.return_value = (llm_path_response, 500, 300)
     mock_cache.get_path.return_value = None
 
@@ -254,6 +242,32 @@ async def test_plan_path_uses_provided_mastery_without_http_call(
     # Mastery values from provided data are reflected
     oop_concept = next(c for c in result.concepts_ordered if c.name == "OOP")
     assert oop_concept.mastery == 0.3
+
+
+async def test_plan_path_never_calls_learning_service_for_mastery(
+    service, mock_llm, mock_cache, mock_http,
+    user_id, org_id, rag_concepts, llm_path_response,
+):
+    """plan_path() must NEVER call Learning mastery endpoint — even when mastery not provided.
+
+    The push model requires Learning to include mastery in the request body.
+    AI must not make callback HTTP calls to Learning for mastery data.
+    """
+    rag_resp = MagicMock()
+    rag_resp.status_code = 200
+    rag_resp.json.return_value = rag_concepts
+
+    # Only one GET response available — RAG only. Any second call would exhaust
+    # the side_effect list, causing StopAsyncIteration and failing the test.
+    mock_http.get.side_effect = [rag_resp]
+    mock_llm.generate.return_value = (llm_path_response, 500, 300)
+    mock_cache.get_path.return_value = None
+
+    # No mastery parameter — strategist must not fetch it from Learning
+    result = await service.plan_path(user_id, org_id, {"role": "dev"})
+
+    assert isinstance(result, LearningPath)
+    assert mock_http.get.call_count == 1  # only RAG, never Learning
 
 
 # --- get_next_concept tests ---
