@@ -1532,6 +1532,329 @@ async def seed_rag_documents(rag_pool: asyncpg.Pool) -> None:
     print("RAG documents seeding complete!")
 
 
+# ---------------------------------------------------------------------------
+# Demo B2B learning data — concepts, mastery, missions, flashcards, etc.
+# ---------------------------------------------------------------------------
+
+DEMO_FAKE_COURSE_ID = "00000000-0000-4000-d000-000000000001"
+
+# Deterministic member UUIDs for learning DB (no FK to identity, so safe)
+_DEMO_MEMBER_UUIDS = [
+    str(uuid.uuid5(uuid.NAMESPACE_DNS, f"{prefix}@acme.com"))
+    for _name, prefix in _DEMO_MEMBERS
+]
+
+# Concept groups by topic (indices into _DEMO_CONCEPTS)
+_PYTHON_CONCEPTS = list(range(0, 10))
+_RUST_CONCEPTS = list(range(10, 20))
+_TS_CONCEPTS = list(range(20, 29))
+_SYSDESIGN_CONCEPTS = list(range(29, 38))
+_API_CONCEPTS = list(range(38, 47))
+
+# Member specialisations — each member is strong in one area
+_MEMBER_STRENGTHS: list[list[int]] = [
+    _PYTHON_CONCEPTS,      # Sarah Kim
+    _RUST_CONCEPTS,        # Mike Johnson
+    _TS_CONCEPTS,          # Priya Patel
+    _SYSDESIGN_CONCEPTS,   # James Wilson
+    _API_CONCEPTS,         # Yuki Tanaka
+    _PYTHON_CONCEPTS,      # Carlos Rodriguez
+    _RUST_CONCEPTS,        # Emma Davis
+    _TS_CONCEPTS,          # Ali Hassan
+    _SYSDESIGN_CONCEPTS,   # Lisa Chen
+]
+
+
+async def seed_demo_learning(learning_pool: asyncpg.Pool) -> None:
+    """Seed B2B learning data for demo user + 9 team members. Idempotent."""
+    existing = await learning_pool.fetchval(
+        "SELECT user_id FROM trust_levels WHERE user_id = $1",
+        DEMO_USER_ID,
+    )
+    if existing:
+        print("Demo learning data already seeded. Skipping.")
+        return
+
+    print("Seeding demo B2B learning data...")
+    now = datetime.now(timezone.utc)
+    today = date.today()
+
+    # ------------------------------------------------------------------
+    # 1. Seed 47 concepts into learning.concepts
+    # ------------------------------------------------------------------
+    concept_ids: list[str] = []
+    for i, concept in enumerate(_DEMO_CONCEPTS):
+        cid = await learning_pool.fetchval(
+            """
+            INSERT INTO concepts (course_id, name, description, "order")
+            VALUES ($1, $2, $3, $4)
+            ON CONFLICT (course_id, name) DO UPDATE SET description = EXCLUDED.description
+            RETURNING id
+            """,
+            DEMO_FAKE_COURSE_ID,
+            concept["name"],
+            concept["description"],
+            i,
+        )
+        concept_ids.append(str(cid))
+    print(f"  Inserted {len(concept_ids)} concepts into learning DB")
+
+    # ------------------------------------------------------------------
+    # 2. Concept mastery for demo user (all 47)
+    #    10 mastered (0.80-0.95), 15 in-progress (0.40-0.60), 22 gaps (0.05-0.25)
+    # ------------------------------------------------------------------
+    mastered_indices = random.sample(range(47), 10)
+    remaining = [i for i in range(47) if i not in mastered_indices]
+    in_progress_indices = random.sample(remaining, 15)
+    gap_indices = [i for i in remaining if i not in in_progress_indices]
+
+    for idx in range(47):
+        if idx in mastered_indices:
+            mastery = round(random.uniform(0.80, 0.95), 2)
+        elif idx in in_progress_indices:
+            mastery = round(random.uniform(0.40, 0.60), 2)
+        else:
+            mastery = round(random.uniform(0.05, 0.25), 2)
+        await learning_pool.execute(
+            """
+            INSERT INTO concept_mastery (student_id, concept_id, mastery)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (student_id, concept_id) DO NOTHING
+            """,
+            DEMO_USER_ID,
+            concept_ids[idx],
+            mastery,
+        )
+    print("  Seeded concept mastery for demo user (10 mastered, 15 in-progress, 22 gaps)")
+
+    # ------------------------------------------------------------------
+    # 3. Concept mastery for 9 team members
+    # ------------------------------------------------------------------
+    for member_idx, member_uuid in enumerate(_DEMO_MEMBER_UUIDS):
+        strong_indices = _MEMBER_STRENGTHS[member_idx]
+        for idx in range(47):
+            if idx in strong_indices:
+                mastery = round(random.uniform(0.65, 0.95), 2)
+            else:
+                mastery = round(random.uniform(0.05, 0.45), 2)
+            await learning_pool.execute(
+                """
+                INSERT INTO concept_mastery (student_id, concept_id, mastery)
+                VALUES ($1, $2, $3)
+                ON CONFLICT (student_id, concept_id) DO NOTHING
+                """,
+                member_uuid,
+                concept_ids[idx],
+                mastery,
+            )
+    print("  Seeded concept mastery for 9 team members")
+
+    # ------------------------------------------------------------------
+    # 4. Missions for demo user (15 completed + 1 pending)
+    # ------------------------------------------------------------------
+    for day_offset in range(15):
+        days_ago = 14 - day_offset
+        completed_at = now - timedelta(days=days_ago, hours=random.randint(1, 12))
+        score = round(random.uniform(0.65, 0.95), 2)
+        mastery_delta = round(random.uniform(0.05, 0.15), 2)
+        concept_id = concept_ids[day_offset % len(concept_ids)]
+        await learning_pool.execute(
+            """
+            INSERT INTO missions (
+                user_id, organization_id, concept_id, mission_type, status,
+                blueprint, score, mastery_delta, started_at, completed_at, created_at
+            )
+            VALUES ($1, $2, $3, 'daily', 'completed', '{}', $4, $5, $6, $7, $8)
+            """,
+            DEMO_USER_ID,
+            DEMO_ORG_ID,
+            concept_id,
+            score,
+            mastery_delta,
+            completed_at - timedelta(minutes=random.randint(15, 45)),
+            completed_at,
+            completed_at - timedelta(minutes=random.randint(45, 90)),
+        )
+
+    # 1 pending mission (today)
+    await learning_pool.execute(
+        """
+        INSERT INTO missions (
+            user_id, organization_id, concept_id, mission_type, status,
+            blueprint, created_at
+        )
+        VALUES ($1, $2, $3, 'daily', 'pending', '{}', $4)
+        """,
+        DEMO_USER_ID,
+        DEMO_ORG_ID,
+        concept_ids[15],
+        now,
+    )
+    print("  Seeded 16 missions (15 completed + 1 pending)")
+
+    # ------------------------------------------------------------------
+    # 5. Flashcards for demo user (25 total)
+    # ------------------------------------------------------------------
+    flashcard_concepts = random.sample(_DEMO_CONCEPTS, 25)
+    for i, fc in enumerate(flashcard_concepts):
+        if i < 10:
+            # Due today
+            due = now - timedelta(hours=random.randint(0, 6))
+        else:
+            # Due in future (reviewed recently)
+            due = now + timedelta(days=random.randint(1, 14))
+        stability = round(random.uniform(1.0, 10.0), 2)
+        difficulty = round(random.uniform(0.1, 0.9), 2)
+        reps = random.randint(1, 8)
+        await learning_pool.execute(
+            """
+            INSERT INTO flashcards (
+                student_id, course_id, concept, answer,
+                stability, difficulty, due, reps, state, last_review, created_at
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 2, $9, $10)
+            """,
+            DEMO_USER_ID,
+            DEMO_FAKE_COURSE_ID,
+            fc["name"],
+            fc["description"],
+            stability,
+            difficulty,
+            due,
+            reps,
+            now - timedelta(days=random.randint(1, 7)),
+            now - timedelta(days=random.randint(7, 21)),
+        )
+    print("  Seeded 25 flashcards (10 due today, 15 future)")
+
+    # ------------------------------------------------------------------
+    # 6. Trust levels
+    # ------------------------------------------------------------------
+    await learning_pool.execute(
+        """
+        INSERT INTO trust_levels (
+            user_id, organization_id, level,
+            total_missions_completed, total_concepts_mastered, unlocked_areas
+        )
+        VALUES ($1, $2, 4, 15, 10, $3)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        DEMO_USER_ID,
+        DEMO_ORG_ID,
+        json.dumps(["python", "rust", "typescript", "system_design"]),
+    )
+
+    member_levels = [2, 3, 1, 2, 3, 1, 2, 1, 3]
+    for member_idx, member_uuid in enumerate(_DEMO_MEMBER_UUIDS):
+        lvl = member_levels[member_idx]
+        missions_done = lvl * random.randint(3, 6)
+        concepts_done = lvl * random.randint(2, 4)
+        await learning_pool.execute(
+            """
+            INSERT INTO trust_levels (
+                user_id, organization_id, level,
+                total_missions_completed, total_concepts_mastered, unlocked_areas
+            )
+            VALUES ($1, $2, $3, $4, $5, '[]')
+            ON CONFLICT (user_id) DO NOTHING
+            """,
+            member_uuid,
+            DEMO_ORG_ID,
+            lvl,
+            missions_done,
+            concepts_done,
+        )
+    print("  Seeded trust levels (demo=4, team=1-3)")
+
+    # ------------------------------------------------------------------
+    # 7. Streaks for demo user
+    # ------------------------------------------------------------------
+    await learning_pool.execute(
+        """
+        INSERT INTO streaks (user_id, current_streak, longest_streak, last_activity_date)
+        VALUES ($1, 7, 14, $2)
+        ON CONFLICT (user_id) DO NOTHING
+        """,
+        DEMO_USER_ID,
+        today,
+    )
+    print("  Seeded streak (current=7, longest=14)")
+
+    # ------------------------------------------------------------------
+    # 8. XP events (20 over 14 days, ~2450 total)
+    # ------------------------------------------------------------------
+    # 15 mission_complete (750) + 20 flashcard_review (100) + 16 concept_mastered (1600) = 2450
+    xp_plan: list[tuple[str, int]] = (
+        [("mission_complete", 50)] * 15
+        + [("flashcard_review", 5)] * 20
+        + [("concept_mastered", 100)] * 16
+    )
+    random.shuffle(xp_plan)
+    # Take first 20 events
+    xp_plan = xp_plan[:20]
+    for i, (action, points) in enumerate(xp_plan):
+        days_ago = 14 - (i * 14 // 20)
+        created_at = now - timedelta(days=days_ago, hours=random.randint(1, 18))
+        await learning_pool.execute(
+            """
+            INSERT INTO xp_events (user_id, action, points, course_id, created_at)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            DEMO_USER_ID,
+            action,
+            points,
+            DEMO_FAKE_COURSE_ID,
+            created_at,
+        )
+    total_xp = sum(p for _, p in xp_plan)
+    print(f"  Seeded {len(xp_plan)} XP events ({total_xp} total XP)")
+
+    # ------------------------------------------------------------------
+    # 9. Badges for demo user
+    # ------------------------------------------------------------------
+    badge_types = ["first_enrollment", "streak_7", "quiz_ace"]
+    for bt in badge_types:
+        await learning_pool.execute(
+            """
+            INSERT INTO badges (user_id, badge_type, unlocked_at)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, badge_type) DO NOTHING
+            """,
+            DEMO_USER_ID,
+            bt,
+            now - timedelta(days=random.randint(1, 14)),
+        )
+    print(f"  Seeded {len(badge_types)} badges")
+
+    # ------------------------------------------------------------------
+    # 10. Activity feed (20 entries over 14 days)
+    # ------------------------------------------------------------------
+    activity_templates = [
+        ("mission_completed", lambda: {"concept": random.choice(_DEMO_CONCEPTS)["name"], "score": round(random.uniform(0.70, 0.95), 2)}),
+        ("badge_earned", lambda: {"badge": random.choice(badge_types)}),
+        ("streak_milestone", lambda: {"days": random.choice([3, 5, 7, 10, 14])}),
+        ("flashcard_review", lambda: {"concept": random.choice(_DEMO_CONCEPTS)["name"], "cards_reviewed": random.randint(5, 15)}),
+        ("concept_mastered", lambda: {"concept": random.choice(_DEMO_CONCEPTS)["name"], "mastery": round(random.uniform(0.80, 0.95), 2)}),
+    ]
+    for i in range(20):
+        days_ago = 14 - (i * 14 // 20)
+        created_at = now - timedelta(days=days_ago, hours=random.randint(1, 18))
+        activity_type, payload_fn = activity_templates[i % len(activity_templates)]
+        await learning_pool.execute(
+            """
+            INSERT INTO activity_feed (user_id, activity_type, payload, created_at)
+            VALUES ($1, $2, $3, $4)
+            """,
+            DEMO_USER_ID,
+            activity_type,
+            json.dumps(payload_fn()),
+            created_at,
+        )
+    print("  Seeded 20 activity feed entries")
+
+    print("Demo B2B learning data seeding complete!")
+
+
 async def main() -> None:
     identity_pool = await asyncpg.create_pool(IDENTITY_DB_URL, min_size=2, max_size=5)
     course_pool = await asyncpg.create_pool(COURSE_DB_URL, min_size=2, max_size=5)
@@ -1551,6 +1874,7 @@ async def main() -> None:
             await seed_learning(learning_pool, course_pool, enrollment_pool, student_ids)
             await seed_demo_org(identity_pool, payment_pool)
             await seed_rag_documents(rag_pool)
+            await seed_demo_learning(learning_pool)
             return
 
         # Insert admin user before bulk COPY
@@ -1579,6 +1903,7 @@ async def main() -> None:
 
         await seed_demo_org(identity_pool, payment_pool)
         await seed_rag_documents(rag_pool)
+        await seed_demo_learning(learning_pool)
 
         print("Seeding complete!")
     finally:
