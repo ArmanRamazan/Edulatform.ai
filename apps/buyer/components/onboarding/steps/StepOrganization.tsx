@@ -1,7 +1,8 @@
 "use client";
 
-import { Building2, ChevronRight, Users } from "lucide-react";
-import { motion } from "framer-motion";
+import { useState } from "react";
+import { Building2, Users } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { StepProps } from "@/components/onboarding/OnboardingWizard";
@@ -22,6 +23,10 @@ const ORG_SIZES = [
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function StepOrganization({ data, setData }: StepProps) {
+  // Validate on blur only — show error after first touch, not on every keystroke
+  const [nameTouched, setNameTouched] = useState(false);
+  const nameIsEmpty = nameTouched && data.orgName.trim().length === 0;
+
   return (
     <div>
       {/* Header */}
@@ -54,17 +59,40 @@ export function StepOrganization({ data, setData }: StepProps) {
           className="mb-1.5 block text-sm font-medium text-foreground"
         >
           Organization name
-          <span className="ml-1 text-primary">*</span>
+          <span className="ml-1 text-primary" aria-hidden="true">*</span>
+          <span className="sr-only">(required)</span>
         </label>
         <Input
           id="org-name"
           placeholder="Acme Corp"
           value={data.orgName}
           onChange={(e) => setData({ ...data, orgName: e.target.value })}
-          className="bg-card"
+          onBlur={() => setNameTouched(true)}
+          className={cn(
+            "bg-card transition-colors duration-200",
+            nameIsEmpty && "border-destructive ring-1 ring-destructive/50 focus-visible:ring-destructive",
+          )}
+          aria-invalid={nameIsEmpty}
+          aria-describedby={nameIsEmpty ? "org-name-error" : undefined}
           autoFocus
           autoComplete="organization"
         />
+        {/* Inline error — animated in, linked via aria-describedby */}
+        <AnimatePresence>
+          {nameIsEmpty && (
+            <motion.p
+              id="org-name-error"
+              role="alert"
+              initial={{ opacity: 0, y: -4, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -4, height: 0 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="mt-1.5 overflow-hidden text-xs text-destructive"
+            >
+              Organization name is required to continue
+            </motion.p>
+          )}
+        </AnimatePresence>
       </motion.div>
 
       {/* Org size */}
@@ -94,6 +122,7 @@ export function StepOrganization({ data, setData }: StepProps) {
               <motion.button
                 key={id}
                 type="button"
+                aria-pressed={isSelected}
                 onClick={() =>
                   setData({
                     ...data,
@@ -125,16 +154,6 @@ export function StepOrganization({ data, setData }: StepProps) {
         </motion.div>
       </motion.div>
 
-      {/* Inline hint for navigation */}
-      <motion.p
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 0.5 }}
-        className="mt-6 flex items-center justify-center gap-1 text-xs text-muted-foreground"
-      >
-        Enter your org name to continue
-        <ChevronRight className="h-3 w-3" />
-      </motion.p>
     </div>
   );
 }

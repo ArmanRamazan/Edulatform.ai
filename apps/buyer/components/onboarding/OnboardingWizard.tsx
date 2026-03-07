@@ -49,7 +49,7 @@ const INITIAL_DATA: WizardData = {
 // Slide variants: direction > 0 = forward, < 0 = backward
 const stepVariants = {
   enter: (direction: number) => ({
-    x: direction > 0 ? 52 : -52,
+    x: direction > 0 ? 32 : -32,
     opacity: 0,
   }),
   center: {
@@ -57,7 +57,7 @@ const stepVariants = {
     opacity: 1,
   },
   exit: (direction: number) => ({
-    x: direction > 0 ? -52 : 52,
+    x: direction > 0 ? -32 : 32,
     opacity: 0,
   }),
 };
@@ -189,102 +189,105 @@ export function OnboardingWizard() {
         aria-hidden="true"
       >
         <div className="absolute left-1/2 top-1/3 h-[500px] w-[700px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary/5 blur-3xl" />
-        <div className="absolute bottom-1/4 right-1/3 h-[280px] w-[380px] rounded-full bg-info/4 blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/3 h-[280px] w-[380px] rounded-full bg-info/5 blur-3xl" />
       </div>
 
-      <div className="mx-auto max-w-2xl py-4">
-        {/* ── Step indicator ── */}
-        <div className="mb-8">
-          <StepIndicator currentStep={currentStep} />
-        </div>
+      <div className="flex min-h-full flex-col items-center justify-center">
+          <div className="w-full max-w-2xl py-8">
+          {/* ── Step indicator ── */}
+          <div className="mb-8">
+            <StepIndicator currentStep={currentStep} />
+          </div>
 
-        {/* ── Screen-reader live region ── */}
-        <div aria-live="polite" aria-atomic="true" className="sr-only">
-          Step {currentStep} of {ONBOARDING_TOTAL_STEPS}
-        </div>
+            {/* ── Screen-reader live region ── */}
+          <div aria-live="polite" aria-atomic="true" className="sr-only">
+            Step {currentStep} of {ONBOARDING_TOTAL_STEPS}
+          </div>
 
-        {/* ── Animated step content ── */}
-        <AnimatePresence mode="wait" custom={direction}>
-          <motion.div
-            key={currentStep}
-            ref={stepContentRef}
-            tabIndex={-1}
-            custom={direction}
-            variants={stepVariants}
-            initial="enter"
-            animate="center"
-            exit="exit"
-            transition={{ duration: 0.22, ease: "easeInOut" }}
-            className="outline-none"
-          >
-            {currentStep === 1 && <StepOrganization {...stepProps} />}
-            {currentStep === 2 && <StepExperience {...stepProps} />}
-            {currentStep === 3 && <StepAssessment {...stepProps} />}
-            {currentStep === 4 && <StepPlan {...stepProps} />}
-            {currentStep === 5 && <StepStart {...stepProps} />}
-          </motion.div>
-        </AnimatePresence>
-
-        {/* ── Navigation bar — hidden on the final step (StepStart has its own CTAs) ── */}
-        {!isLastStep && (
-          <motion.div
-            initial={{ opacity: 0, y: 6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.18 }}
-            className="mt-8 flex items-center justify-between"
-          >
-            {/* Back — only shown from step 2 onwards */}
-            {currentStep > 1 ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={goBack}
-                className="gap-1.5"
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </Button>
-            ) : (
-              // Placeholder to keep "Continue" right-aligned on step 1
-              <div />
-            )}
-
-            {/* Continue */}
-            <Button
-              onClick={goNext}
-              disabled={!canAdvance}
-              className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
+          {/* ── Animated step content ── */}
+          <AnimatePresence mode="wait" custom={direction}>
+            <motion.div
+              key={currentStep}
+              ref={stepContentRef}
+              tabIndex={-1}
+              custom={direction}
+              variants={stepVariants}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{ duration: 0.22, ease: "easeOut" }}
+              className="outline-none"
             >
-              Continue
-              <ArrowRight className="h-4 w-4" />
-            </Button>
-          </motion.div>
-        )}
+              {currentStep === 1 && <StepOrganization {...stepProps} />}
+              {currentStep === 2 && <StepExperience {...stepProps} />}
+              {currentStep === 3 && <StepAssessment {...stepProps} />}
+              {currentStep === 4 && <StepPlan {...stepProps} />}
+              {currentStep === 5 && <StepStart {...stepProps} />}
+            </motion.div>
+          </AnimatePresence>
 
-        {/* ── Keyboard hint (steps 1-4 only) ── */}
-        {!isLastStep && (
-          <motion.p
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ delay: 0.5 }}
-            className="mt-4 text-center text-xs text-muted-foreground/60"
-          >
-            Press{" "}
-            <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-              Enter
-            </kbd>{" "}
-            to continue
-            {currentStep > 1 && (
-              <>
-                {" · "}
-                <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
-                  Esc
-                </kbd>{" "}
-                to go back
-              </>
-            )}
-          </motion.p>
-        )}
+          {/* ── Navigation bar — hidden on the final step (StepStart has its own CTAs) ── */}
+          {!isLastStep && (
+            <motion.div
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.18 }}
+              className="mt-8 flex items-center justify-between border-t border-border/40 pt-6"
+            >
+              {/* Back — only shown from step 2 onwards */}
+              {currentStep > 1 ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={goBack}
+                  className="gap-1.5"
+                >
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                  Back
+                </Button>
+              ) : (
+                // Placeholder to keep "Continue" right-aligned on step 1
+                <div />
+              )}
+
+              {/* Continue */}
+              <Button
+                onClick={goNext}
+                disabled={!canAdvance}
+                className="gap-2 bg-primary hover:bg-primary/90 disabled:opacity-40"
+              >
+                Continue
+                <ArrowRight className="h-4 w-4" aria-hidden="true" />
+              </Button>
+            </motion.div>
+          )}
+
+          {/* ── Keyboard hint — only shown when Enter will actually work ── */}
+          {!isLastStep && (
+            <motion.p
+              initial={{ opacity: 0 }}
+              animate={{ opacity: canAdvance ? 1 : 0 }}
+              transition={{ duration: 0.3, delay: canAdvance ? 0.5 : 0 }}
+              className="mt-4 text-center text-xs text-muted-foreground/60"
+              aria-hidden="true"
+            >
+              Press{" "}
+              <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                Enter
+              </kbd>{" "}
+              to continue
+              {currentStep > 1 && (
+                <>
+                  {" · "}
+                  <kbd className="rounded border border-border bg-muted px-1.5 py-0.5 font-mono text-[10px]">
+                    Esc
+                  </kbd>{" "}
+                  to go back
+                </>
+              )}
+            </motion.p>
+          )}
+        </div>
       </div>
     </>
   );

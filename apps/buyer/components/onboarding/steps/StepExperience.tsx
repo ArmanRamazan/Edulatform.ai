@@ -103,6 +103,7 @@ export function StepExperience({ data, setData }: StepProps) {
               <motion.button
                 key={id}
                 type="button"
+                aria-pressed={isSelected}
                 onClick={() => setData({ ...data, experience: id })}
                 variants={{
                   hidden: { opacity: 0, y: 12 },
