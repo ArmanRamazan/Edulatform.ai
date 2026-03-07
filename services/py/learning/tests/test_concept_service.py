@@ -8,6 +8,90 @@ from app.domain.concept import Concept, ConceptMastery, ConceptPrerequisite
 from datetime import datetime, timezone
 
 
+class TestConceptOrgScope:
+    """
+    B2B concepts are org-scoped via organization_id (nullable).
+    B2C concepts leave organization_id=None (backward compatible).
+    """
+
+    async def test_b2b_concept_carries_organization_id(self):
+        """Concept entity stores organization_id for B2B scoping."""
+        org_id = uuid4()
+        concept = Concept(
+            id=uuid4(),
+            course_id=uuid4(),
+            lesson_id=None,
+            name="Docker Basics",
+            description="",
+            parent_id=None,
+            order=0,
+            organization_id=org_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert concept.organization_id == org_id
+
+    async def test_b2c_concept_has_no_organization_id(self):
+        """B2C concepts default organization_id to None."""
+        concept = Concept(
+            id=uuid4(),
+            course_id=uuid4(),
+            lesson_id=None,
+            name="Loops",
+            description="",
+            parent_id=None,
+            order=0,
+            created_at=datetime.now(timezone.utc),
+        )
+        assert concept.organization_id is None
+
+    async def test_create_concept_passes_organization_id_to_repo(
+        self, concept_service, mock_concept_repo, teacher_id, course_id
+    ):
+        """Service forwards organization_id when creating B2B concept."""
+        org_id = uuid4()
+        mock_concept_repo.create.return_value = Concept(
+            id=uuid4(),
+            course_id=course_id,
+            lesson_id=None,
+            name="Docker Basics",
+            description="",
+            parent_id=None,
+            order=0,
+            organization_id=org_id,
+            created_at=datetime.now(timezone.utc),
+        )
+
+        result = await concept_service.create_concept(
+            teacher_id=teacher_id,
+            role="teacher",
+            is_verified=True,
+            course_id=course_id,
+            name="Docker Basics",
+            organization_id=org_id,
+        )
+
+        assert result.organization_id == org_id
+        call_kwargs = mock_concept_repo.create.call_args.kwargs
+        assert call_kwargs.get("organization_id") == org_id
+
+    async def test_create_b2c_concept_passes_none_organization_id(
+        self, concept_service, mock_concept_repo, sample_concept, teacher_id, course_id
+    ):
+        """B2C flow: organization_id defaults to None and is passed as None to repo."""
+        mock_concept_repo.create.return_value = sample_concept
+
+        await concept_service.create_concept(
+            teacher_id=teacher_id,
+            role="teacher",
+            is_verified=True,
+            course_id=course_id,
+            name="Variables",
+        )
+
+        call_kwargs = mock_concept_repo.create.call_args.kwargs
+        assert call_kwargs.get("organization_id") is None
+
+
 class TestCreateConcept:
     async def test_creates_concept_as_verified_teacher(
         self, concept_service, mock_concept_repo, sample_concept, teacher_id, course_id

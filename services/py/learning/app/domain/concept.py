@@ -17,6 +17,10 @@ class Concept:
     parent_id: UUID | None
     order: int
     created_at: datetime
+    # B2B org-scoping: None for B2C courses, set for org-owned concepts.
+    # Source-of-truth for B2B is rag.org_concepts (extracted from docs).
+    # learning.concepts is the operational layer (mastery tracking, quiz targets).
+    organization_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -42,6 +46,7 @@ class ConceptCreate(BaseModel):
     description: str = Field(default="", max_length=2000)
     parent_id: UUID | None = None
     order: int = Field(default=0, ge=0)
+    organization_id: UUID | None = None
 
 
 class ConceptUpdate(BaseModel):
@@ -66,6 +71,7 @@ class ConceptResponse(BaseModel):
     order: int
     created_at: datetime
     prerequisites: list[UUID] = Field(default_factory=list)
+    organization_id: UUID | None = None
 
 
 class MasteryResponse(BaseModel):

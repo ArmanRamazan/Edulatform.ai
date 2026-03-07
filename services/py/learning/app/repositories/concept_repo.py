@@ -7,7 +7,7 @@ import asyncpg
 from common.errors import ConflictError, ForbiddenError
 from app.domain.concept import Concept, ConceptPrerequisite, ConceptMastery
 
-_CONCEPT_COLUMNS = 'id, course_id, lesson_id, name, description, parent_id, "order", created_at'
+_CONCEPT_COLUMNS = 'id, course_id, lesson_id, name, description, parent_id, "order", created_at, organization_id'
 
 
 class ConceptRepository:
@@ -22,15 +22,16 @@ class ConceptRepository:
         lesson_id: UUID | None = None,
         parent_id: UUID | None = None,
         order: int = 0,
+        organization_id: UUID | None = None,
     ) -> Concept:
         try:
             row = await self._pool.fetchrow(
                 f"""
-                INSERT INTO concepts (course_id, lesson_id, name, description, parent_id, "order")
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO concepts (course_id, lesson_id, name, description, parent_id, "order", organization_id)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING {_CONCEPT_COLUMNS}
                 """,
-                course_id, lesson_id, name, description, parent_id, order,
+                course_id, lesson_id, name, description, parent_id, order, organization_id,
             )
         except asyncpg.UniqueViolationError as exc:
             raise ConflictError(f"Concept '{name}' already exists in this course") from exc
@@ -168,7 +169,7 @@ class ConceptRepository:
         rows = await self._pool.fetch(
             """
             SELECT c.id, c.course_id, c.lesson_id, c.name, c.description,
-                   c.parent_id, c."order", c.created_at,
+                   c.parent_id, c."order", c.created_at, c.organization_id,
                    COALESCE(cm.mastery, 0.0) as mastery
             FROM concepts c
             LEFT JOIN concept_mastery cm ON cm.concept_id = c.id AND cm.student_id = $1
@@ -206,6 +207,7 @@ class ConceptRepository:
             parent_id=row["parent_id"],
             order=row["order"],
             created_at=row["created_at"],
+            organization_id=row["organization_id"],
         )
 
     @staticmethod

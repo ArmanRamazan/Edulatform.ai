@@ -22,6 +22,19 @@ logger = structlog.get_logger()
 
 
 class ConceptService:
+    """Manage learning concepts (knowledge graph nodes) and mastery tracking.
+
+    Concept model:
+        learning.concepts  — operational layer: mastery tracking, quiz targets,
+                             knowledge graph edges (prerequisites).
+                             B2C: course_id/lesson_id set, organization_id=None.
+                             B2B: organization_id set for org-scoped concepts.
+        rag.org_concepts   — source-of-truth for B2B: extracted from ingested docs.
+                             Future: sync rag → learning on document ingestion event.
+
+    Do NOT merge the tables; they serve different layers.
+    """
+
     def __init__(
         self, repo: ConceptRepository, activity_service: ActivityService | None = None,
     ) -> None:
@@ -41,6 +54,7 @@ class ConceptService:
         lesson_id: UUID | None = None,
         parent_id: UUID | None = None,
         order: int = 0,
+        organization_id: UUID | None = None,
     ) -> Concept:
         if role != "teacher" or not is_verified:
             raise ForbiddenError("Only verified teachers can create concepts")
@@ -52,6 +66,7 @@ class ConceptService:
             lesson_id=lesson_id,
             parent_id=parent_id,
             order=order,
+            organization_id=organization_id,
         )
 
     async def update_concept(
