@@ -1,8 +1,8 @@
 "use client";
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ShieldAlert, CheckCircle2 } from "lucide-react";
 import { admin } from "@/lib/api";
-import { Header } from "@/components/Header";
 import { useAuth } from "@/hooks/use-auth";
 
 export default function AdminTeachersPage() {
@@ -30,63 +30,88 @@ export default function AdminTeachersPage() {
 
   if (!loading && (!user || user.role !== "admin")) {
     return (
-      <>
-        <Header />
-        <main className="mx-auto max-w-sm px-4 py-12 text-center">
-          <p className="text-gray-500">Доступ запрещён</p>
-        </main>
-      </>
+      <div className="flex min-h-[50vh] flex-col items-center justify-center gap-3 text-center">
+        <ShieldAlert
+          className="h-10 w-10 text-destructive/50"
+          aria-hidden="true"
+          strokeWidth={1.5}
+        />
+        <p className="text-sm font-medium text-muted-foreground">Доступ запрещён</p>
+      </div>
     );
   }
 
   return (
-    <>
-      <Header />
-      <main className="mx-auto max-w-4xl px-4 py-6">
-        <h1 className="mb-4 text-2xl font-bold">Верификация преподавателей</h1>
+    <div className="mx-auto max-w-4xl">
+      <h1 className="mb-4 text-2xl font-bold text-foreground">Верификация преподавателей</h1>
 
-        {isLoading ? (
-          <p className="text-gray-400">Загрузка...</p>
-        ) : !data || data.items.length === 0 ? (
-          <p className="text-gray-500">Нет заявок на верификацию</p>
-        ) : (
-          <>
-            <p className="mb-4 text-sm text-gray-500">Всего заявок: {data.total}</p>
-            <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
-              <table className="w-full text-left text-sm">
-                <thead className="border-b border-gray-200 bg-gray-50">
-                  <tr>
-                    <th className="px-4 py-3 font-medium text-gray-600">Имя</th>
-                    <th className="px-4 py-3 font-medium text-gray-600">Email</th>
-                    <th className="px-4 py-3 font-medium text-gray-600">Дата регистрации</th>
-                    <th className="px-4 py-3 font-medium text-gray-600"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.items.map((t) => (
-                    <tr key={t.id} className="border-b border-gray-100 last:border-0">
-                      <td className="px-4 py-3">{t.name}</td>
-                      <td className="px-4 py-3 text-gray-500">{t.email}</td>
-                      <td className="px-4 py-3 text-gray-400">
-                        {new Date(t.created_at).toLocaleDateString("ru")}
-                      </td>
-                      <td className="px-4 py-3">
-                        <button
-                          onClick={() => verify.mutate(t.id)}
-                          disabled={verify.isPending}
-                          className="rounded bg-green-600 px-3 py-1 text-xs text-white hover:bg-green-700 disabled:opacity-50"
-                        >
-                          {verify.isPending ? "..." : "Одобрить"}
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      {/* Loading */}
+      {isLoading && (
+        <div className="space-y-2" aria-busy="true">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="relative h-14 overflow-hidden rounded-xl border border-border bg-card">
+              <div className="absolute inset-0 animate-shimmer" />
             </div>
-          </>
-        )}
-      </main>
-    </>
+          ))}
+        </div>
+      )}
+
+      {/* Empty */}
+      {!isLoading && (!data || data.items.length === 0) && (
+        <div className="flex flex-col items-center gap-3 rounded-2xl border border-border bg-card py-16 text-center">
+          <CheckCircle2
+            className="h-10 w-10 text-success/50"
+            aria-hidden="true"
+            strokeWidth={1.5}
+          />
+          <p className="text-sm text-muted-foreground">Нет заявок на верификацию</p>
+        </div>
+      )}
+
+      {/* Table */}
+      {!isLoading && data && data.items.length > 0 && (
+        <>
+          <p className="mb-4 text-sm text-muted-foreground">
+            Всего заявок:{" "}
+            <span className="tabular-nums font-medium text-foreground">{data.total}</span>
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-border">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-border bg-secondary/50">
+                <tr>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Имя</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Email</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground">Дата регистрации</th>
+                  <th className="px-4 py-3 font-medium text-muted-foreground"></th>
+                </tr>
+              </thead>
+              <tbody className="bg-card">
+                {data.items.map((t) => (
+                  <tr
+                    key={t.id}
+                    className="border-b border-border last:border-0 hover:bg-muted/20 transition-colors"
+                  >
+                    <td className="px-4 py-3 font-medium text-foreground">{t.name}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{t.email}</td>
+                    <td className="px-4 py-3 text-muted-foreground/60">
+                      {new Date(t.created_at).toLocaleDateString("ru")}
+                    </td>
+                    <td className="px-4 py-3">
+                      <button
+                        onClick={() => verify.mutate(t.id)}
+                        disabled={verify.isPending}
+                        className="rounded-lg bg-success/15 px-3 py-1.5 text-xs font-semibold text-success ring-1 ring-success/20 transition-all hover:bg-success/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {verify.isPending ? "..." : "Одобрить"}
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+    </div>
   );
 }

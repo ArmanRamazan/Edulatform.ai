@@ -21,47 +21,52 @@ export function TrustLevelCard({ trustLevel }: TrustLevelCardProps) {
   const progressPct = (progressInLevel / MISSIONS_PER_LEVEL) * 100;
 
   return (
-    <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 p-5 text-white shadow-xl">
-      {/* Decorative circles */}
-      <div className="pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full bg-white/5" />
-      <div className="pointer-events-none absolute -bottom-4 -left-4 h-16 w-16 rounded-full bg-white/5" />
+    <div className="relative overflow-hidden rounded-2xl border border-border bg-card p-5">
+      {/* Violet ambient glow — brand moment */}
+      <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-primary/10 blur-2xl" />
+      <div className="pointer-events-none absolute -bottom-6 -left-6 h-20 w-20 rounded-full bg-primary/5 blur-xl" />
 
       <div className="relative">
         <div className="mb-3 flex items-center justify-between">
-          <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+          <span className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
             Уровень доверия
           </span>
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-amber-500 text-sm font-bold text-slate-900">
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-warning text-sm font-bold text-background">
             {trustLevel.level}
           </span>
         </div>
 
-        <h3 className="mb-4 text-xl font-bold tracking-tight">{levelName}</h3>
+        <h3 className="mb-4 text-xl font-bold tracking-tight text-foreground">{levelName}</h3>
 
         {/* Progress bar */}
         <div className="mb-2">
-          <div className="flex items-center justify-between text-xs text-slate-400">
+          <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{progressInLevel}/{MISSIONS_PER_LEVEL} миссий</span>
-            <span>{Math.round(progressPct)}%</span>
+            <span className="tabular-nums">{Math.round(progressPct)}%</span>
           </div>
-          <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-700">
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-secondary">
             <div
-              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-amber-500 transition-all duration-500"
+              className="h-full rounded-full bg-gradient-to-r from-warning/80 to-warning transition-all duration-700 ease-out"
               style={{ width: `${progressPct}%` }}
+              role="progressbar"
+              aria-valuenow={progressInLevel}
+              aria-valuemin={0}
+              aria-valuemax={MISSIONS_PER_LEVEL}
+              aria-label={`${Math.round(progressPct)}% к следующему уровню`}
             />
           </div>
         </div>
 
         {/* Stats */}
-        <div className="mt-4 flex gap-4 text-xs text-slate-400">
+        <div className="mt-4 flex gap-4 text-xs text-muted-foreground">
           <div>
-            <span className="block text-lg font-bold text-white">
+            <span className="block text-lg font-bold tabular-nums text-foreground">
               {trustLevel.total_missions_completed}
             </span>
             миссий
           </div>
           <div>
-            <span className="block text-lg font-bold text-white">
+            <span className="block text-lg font-bold tabular-nums text-foreground">
               {trustLevel.total_concepts_mastered}
             </span>
             концепций
@@ -74,7 +79,7 @@ export function TrustLevelCard({ trustLevel }: TrustLevelCardProps) {
             {trustLevel.unlocked_areas.map((area) => (
               <span
                 key={area}
-                className="rounded-full bg-slate-700 px-2.5 py-0.5 text-xs text-slate-300"
+                className="rounded-full bg-secondary px-2.5 py-0.5 text-xs text-muted-foreground"
               >
                 {area}
               </span>
