@@ -22,7 +22,7 @@ AGENTS_DIR = ROOT / ".claude" / "agents"
 # ---------------------------------------------------------------------------
 
 CLAUDE_TIMEOUT = 900        # 15 min per agent invocation
-TEST_TIMEOUT = 300          # 5 min per test run
+TEST_TIMEOUT = 600          # 10 min per test run (WSL2 pnpm build is slow)
 MAX_RETRIES = 3             # max retry per phase failure
 DISPATCH_INTERVAL = 2       # seconds between queue scans
 
