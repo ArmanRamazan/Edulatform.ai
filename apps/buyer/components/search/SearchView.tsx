@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
-import { Search } from "lucide-react";
+import { Search, SearchX } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 import { useAuth } from "@/hooks/use-auth";
 import { useActiveOrg } from "@/hooks/use-active-org";
 import {
@@ -113,18 +114,33 @@ export function SearchView() {
         {hasQuery && <RouteIndicator route={route} />}
       </div>
 
-      {/* Empty state */}
-      {!hasQuery && !hasResults && (
-        <div className="flex flex-col items-center justify-center py-24 text-center">
-          <Search className="mb-4 h-12 w-12 text-[#45455a]" />
-          <p className="text-lg text-[#6b6b80]">
-            Start typing to search across your knowledge base and the web
-          </p>
-          <p className="mt-2 text-sm text-[#45455a]">
-            Press <kbd className="rounded border border-[#2a2a3e] bg-[#1a1a2e] px-1.5 py-0.5 font-mono text-xs text-[#6b6b80]">/</kbd> to focus search
-          </p>
-        </div>
-      )}
+      {/* Empty state — before first query */}
+      <AnimatePresence>
+        {!hasQuery && !hasResults && (
+          <motion.div
+            key="search-idle"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -4 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            className="flex flex-col items-center justify-center py-24 text-center"
+          >
+            <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-primary/8 ring-1 ring-primary/15">
+              <Search className="h-6 w-6 text-muted-foreground/50" aria-hidden="true" />
+            </div>
+            <p className="text-base text-muted-foreground">
+              Начните вводить запрос для поиска по базе знаний и вебу
+            </p>
+            <p className="mt-2 text-sm text-muted-foreground/50">
+              Нажмите{" "}
+              <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
+                /
+              </kbd>{" "}
+              чтобы сфокусировать поиск
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Results grid */}
       {hasQuery && (
@@ -134,6 +150,7 @@ export function SearchView() {
               results={internal.data ?? []}
               isLoading={internal.isPending}
               error={internal.error?.message ?? null}
+              onRetry={() => executeSearch(query)}
             />
           )}
           {(route === "external" || route === "both") && (
@@ -141,6 +158,7 @@ export function SearchView() {
               results={external.data?.results ?? []}
               isLoading={external.isPending}
               error={external.error?.message ?? null}
+              onRetry={() => executeSearch(query)}
             />
           )}
         </div>
@@ -148,9 +166,26 @@ export function SearchView() {
 
       {/* No results */}
       {hasQuery && !isSearching && !hasResults && (internal.data || external.data) && (
-        <div className="py-12 text-center">
-          <p className="text-[#6b6b80]">No results found for &ldquo;{query.trim()}&rdquo;</p>
-        </div>
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.25, ease: "easeOut" }}
+          className="flex flex-col items-center gap-3 py-16 text-center"
+        >
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-secondary ring-1 ring-border">
+            <SearchX
+              className="h-5 w-5 text-muted-foreground/50"
+              aria-hidden="true"
+              strokeWidth={1.5}
+            />
+          </div>
+          <div>
+            <p className="text-sm font-medium text-muted-foreground">Ничего не найдено</p>
+            <p className="mt-0.5 text-xs text-muted-foreground/60">
+              По запросу &ldquo;{query.trim()}&rdquo; результатов нет
+            </p>
+          </div>
+        </motion.div>
       )}
     </div>
   );

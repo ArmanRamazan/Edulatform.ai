@@ -125,7 +125,7 @@ export default function FlashcardsPage() {
   return (
     <div className="mx-auto max-w-2xl px-4 py-8">
       <div className="mb-6 flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Повторение карточек</h1>
+        <h1 className="text-xl font-semibold text-foreground">Повторение карточек</h1>
         {!isDone && !isLoading && (
           <span className="text-sm text-muted-foreground">
             Space — показать ответ · 1-4 — оценить
