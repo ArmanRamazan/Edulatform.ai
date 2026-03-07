@@ -44,12 +44,10 @@ export function KnowledgeGraphImpl({
   if (nodes.length === 0) {
     return (
       <div
-        className="flex h-full min-h-[480px] w-full flex-col items-center justify-center gap-4 rounded-xl"
+        className="flex h-full min-h-[480px] w-full flex-col items-center justify-center gap-5 rounded-xl"
         style={{
-          background: "#0a0a0f",
-          // Subtle dot grid — same visual language as the real canvas
-          backgroundImage:
-            "radial-gradient(circle, #22223a 1px, transparent 1px)",
+          background: "#07070b",
+          backgroundImage: "radial-gradient(circle, #22223a 1px, transparent 1px)",
           backgroundSize: "28px 28px",
         }}
         role="region"
@@ -58,18 +56,23 @@ export function KnowledgeGraphImpl({
         {/* Faint concentric rings give spatial depth */}
         <div className="relative flex items-center justify-center">
           <div
-            className="absolute size-40 rounded-full"
-            style={{ border: "1px solid #22223a" }}
+            className="absolute size-48 rounded-full"
+            style={{ border: "1px dashed rgba(255,255,255,0.05)", opacity: 0.6 }}
+            aria-hidden="true"
           />
           <div
-            className="absolute size-24 rounded-full"
-            style={{ border: "1px solid #1e1e2e" }}
+            className="absolute size-32 rounded-full"
+            style={{ border: "1px solid rgba(255,255,255,0.04)" }}
+            aria-hidden="true"
           />
           <div
-            className="flex size-14 items-center justify-center rounded-full"
-            style={{ background: "#14141f", border: "1px solid #2a2a3e" }}
+            className="flex size-16 items-center justify-center rounded-full"
+            style={{
+              background: "#14141f",
+              border: "1px solid rgba(255,255,255,0.07)",
+            }}
           >
-            <Network className="size-6 text-[#6b6b80]" strokeWidth={1.5} />
+            <Network className="size-7 text-[#6b6b80]" strokeWidth={1.5} aria-hidden="true" />
           </div>
         </div>
         <div className="text-center">
@@ -91,10 +94,12 @@ export function KnowledgeGraphImpl({
       defaultEdgeOptions={defaultEdgeOptions}
       proOptions={{ hideAttribution: true }}
       fitView
-      fitViewOptions={{ padding: 0.15 }}
+      fitViewOptions={{ padding: 0.18 }}
       colorMode="dark"
       deleteKeyCode={null}
-      style={{ background: "#0a0a0f" }}
+      // Prevent accidental node deletion via Backspace
+      selectionKeyCode={null}
+      style={{ background: "#07070b" }}
     >
       {/* Grid texture — mindmap uses a slightly more visible line grid for hierarchy,
           map uses a near-invisible dot grid so nodes feel free-floating */}
@@ -103,21 +108,22 @@ export function KnowledgeGraphImpl({
         gap={viewMode === "mindmap" ? 32 : 28}
         size={viewMode === "mindmap" ? 0.5 : 1}
         variant={backgroundVariant}
-        style={{ opacity: viewMode === "mindmap" ? 0.6 : 0.4 }}
+        style={{ opacity: viewMode === "mindmap" ? 0.55 : 0.35 }}
       />
 
       {/* Minimap — bottom-right, dark styled */}
       <MiniMap
         position="bottom-right"
         style={{
-          background: "#0e0e18",
-          border: "1px solid #1e1e2e",
+          background: "#0a0a0f",
+          border: "1px solid rgba(255,255,255,0.07)",
           borderRadius: 8,
         }}
         nodeColor={(node: Node) =>
           minimapNodeColor((node.data?.mastery as number) ?? 0)
         }
-        maskColor="rgba(10, 10, 15, 0.82)"
+        nodeStrokeWidth={0}
+        maskColor="rgba(7, 7, 11, 0.75)"
         pannable
         zoomable
       />
