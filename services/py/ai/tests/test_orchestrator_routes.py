@@ -129,9 +129,9 @@ class TestDailyMission:
         token = _make_token(settings)
         org_id = str(uuid4())
 
-        resp = await client.get(
+        resp = await client.post(
             "/ai/mission/daily",
-            params={"org_id": org_id},
+            json={"org_id": org_id, "mastery": []},
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -141,7 +141,10 @@ class TestDailyMission:
         assert "check_questions" in data
 
     async def test_returns_401_without_auth(self, client):
-        resp = await client.get("/ai/mission/daily", params={"org_id": str(uuid4())})
+        resp = await client.post(
+            "/ai/mission/daily",
+            json={"org_id": str(uuid4()), "mastery": []},
+        )
         assert resp.status_code in (401, 422)
 
     async def test_calls_orchestrator_with_user_and_org(
@@ -153,9 +156,9 @@ class TestDailyMission:
         org_id = str(uuid4())
         token = _make_token(settings, user_id=user_id)
 
-        await client.get(
+        await client.post(
             "/ai/mission/daily",
-            params={"org_id": org_id},
+            json={"org_id": org_id, "mastery": []},
             headers={"Authorization": f"Bearer {token}"},
         )
 
@@ -165,13 +168,36 @@ class TestDailyMission:
         mock_cache.get_credits_used.return_value = 10
         token = _make_token(settings, tier="free")
 
-        resp = await client.get(
+        resp = await client.post(
             "/ai/mission/daily",
-            params={"org_id": str(uuid4())},
+            json={"org_id": str(uuid4()), "mastery": []},
             headers={"Authorization": f"Bearer {token}"},
         )
 
         assert resp.status_code == 403
+
+    async def test_forwards_mastery_data_to_orchestrator(
+        self, client, settings, mock_orchestrator, mock_cache
+    ):
+        """Mastery pushed by Learning must be forwarded to orchestrator."""
+        mock_cache.get_credits_used.return_value = 0
+        mock_cache.increment_credits.return_value = 1
+        concept_id = str(uuid4())
+        token = _make_token(settings)
+
+        await client.post(
+            "/ai/mission/daily",
+            json={
+                "org_id": str(uuid4()),
+                "mastery": [{"concept_id": concept_id, "mastery": 0.5}],
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+
+        call_kwargs = mock_orchestrator.get_daily_mission.call_args
+        assert "mastery_data" in call_kwargs[1]
+        assert len(call_kwargs[1]["mastery_data"]) == 1
+        assert call_kwargs[1]["mastery_data"][0]["mastery"] == 0.5
 
 
 class TestMissionComplete:

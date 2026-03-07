@@ -203,10 +203,27 @@ class TestGetDailyMission:
         call_kwargs = mock_designer.design_mission.call_args
         assert call_kwargs[1]["previous_concepts"] == ["c3", "c4", "c5"]
 
+    async def test_accepts_mastery_data_from_learning(
+        self, orchestrator, mock_strategist, mock_designer, mock_cache, user_id, org_id, sample_concept, sample_mission
+    ):
+        """Learning pushes mastery data — orchestrator must accept and forward it."""
+        mastery_data = [
+            {"concept_id": str(sample_concept.concept_id), "mastery": 0.4},
+        ]
+        mock_cache._get = AsyncMock(side_effect=[None, None])
+        mock_cache._set = AsyncMock()
+        mock_strategist.get_next_concept.return_value = sample_concept
+        mock_designer.design_mission.return_value = sample_mission
+
+        # Must accept mastery_data kwarg without TypeError
+        result = await orchestrator.get_daily_mission(user_id, org_id, mastery_data=mastery_data)
+
+        assert result.concept_name == sample_mission.concept_name
+
 
 class TestCompleteSession:
     async def test_adapts_path_via_strategist(
-        self, orchestrator, mock_strategist, mock_cache, mock_http_client, user_id, org_id, sample_session_result
+        self, orchestrator, mock_strategist, mock_cache, user_id, org_id, sample_session_result
     ):
         mock_cache._get = AsyncMock(return_value=None)
         mock_cache._set = AsyncMock()
@@ -215,9 +232,6 @@ class TestCompleteSession:
             concept_id=uuid4(), name="Next Topic", priority=1,
             estimated_sessions=2, prerequisites=[], mastery=0.1,
         )
-        resp_mock = AsyncMock()
-        resp_mock.status_code = 200
-        mock_http_client.patch = AsyncMock(return_value=resp_mock)
 
         await orchestrator.complete_session(
             user_id=user_id,
@@ -228,46 +242,37 @@ class TestCompleteSession:
 
         mock_strategist.adapt_path.assert_called_once()
 
-    async def test_updates_mastery_in_learning_service(
-        self, orchestrator, mock_strategist, mock_cache, mock_http_client, user_id, org_id, sample_session_result, settings
+    async def test_does_not_call_learning_service_for_mastery_update(
+        self, orchestrator, mock_strategist, mock_cache, mock_http_client, user_id, org_id, sample_session_result
     ):
-        concept_id = uuid4()
+        """AI must NOT call Learning's PATCH /concepts/mastery — Learning owns its own mastery."""
         mock_cache._get = AsyncMock(return_value=None)
         mock_cache._set = AsyncMock()
         mock_strategist.adapt_path.return_value = AsyncMock()
         mock_strategist.get_next_concept.return_value = None
-        resp_mock = AsyncMock()
-        resp_mock.status_code = 200
-        mock_http_client.patch = AsyncMock(return_value=resp_mock)
 
         await orchestrator.complete_session(
             user_id=user_id,
             org_id=org_id,
             session_result=sample_session_result,
-            concept_id=concept_id,
+            concept_id=uuid4(),
         )
 
-        mock_http_client.patch.assert_called_once()
-        call_args = mock_http_client.patch.call_args
-        assert "/concepts/mastery" in call_args[0][0]
+        mock_http_client.patch.assert_not_called()
 
     async def test_records_completed_concept_in_cache(
-        self, orchestrator, mock_strategist, mock_cache, mock_http_client, user_id, org_id, sample_session_result
+        self, orchestrator, mock_strategist, mock_cache, user_id, org_id, sample_session_result
     ):
-        concept_id = uuid4()
         mock_cache._get = AsyncMock(return_value=json.dumps(["prev_concept"]))
         mock_cache._set = AsyncMock()
         mock_strategist.adapt_path.return_value = AsyncMock()
         mock_strategist.get_next_concept.return_value = None
-        resp_mock = AsyncMock()
-        resp_mock.status_code = 200
-        mock_http_client.patch = AsyncMock(return_value=resp_mock)
 
         await orchestrator.complete_session(
             user_id=user_id,
             org_id=org_id,
             session_result=sample_session_result,
-            concept_id=concept_id,
+            concept_id=uuid4(),
         )
 
         # Verify completed concepts cache was updated
@@ -276,7 +281,7 @@ class TestCompleteSession:
         assert len(completed_call) == 1
 
     async def test_returns_summary_with_next_concept_preview(
-        self, orchestrator, mock_strategist, mock_cache, mock_http_client, user_id, org_id, sample_session_result
+        self, orchestrator, mock_strategist, mock_cache, user_id, org_id, sample_session_result
     ):
         next_concept = PathConcept(
             concept_id=uuid4(), name="Async Python", priority=1,
@@ -286,9 +291,6 @@ class TestCompleteSession:
         mock_cache._set = AsyncMock()
         mock_strategist.adapt_path.return_value = AsyncMock()
         mock_strategist.get_next_concept.return_value = next_concept
-        resp_mock = AsyncMock()
-        resp_mock.status_code = 200
-        mock_http_client.patch = AsyncMock(return_value=resp_mock)
 
         result = await orchestrator.complete_session(
             user_id=user_id,
@@ -300,15 +302,12 @@ class TestCompleteSession:
         assert result["next_concept_preview"] == "Async Python"
 
     async def test_returns_none_preview_when_path_complete(
-        self, orchestrator, mock_strategist, mock_cache, mock_http_client, user_id, org_id, sample_session_result
+        self, orchestrator, mock_strategist, mock_cache, user_id, org_id, sample_session_result
     ):
         mock_cache._get = AsyncMock(return_value=None)
         mock_cache._set = AsyncMock()
         mock_strategist.adapt_path.return_value = AsyncMock()
         mock_strategist.get_next_concept.return_value = None
-        resp_mock = AsyncMock()
-        resp_mock.status_code = 200
-        mock_http_client.patch = AsyncMock(return_value=resp_mock)
 
         result = await orchestrator.complete_session(
             user_id=user_id,
@@ -320,16 +319,13 @@ class TestCompleteSession:
         assert result["next_concept_preview"] is None
 
     async def test_returns_total_completed_count(
-        self, orchestrator, mock_strategist, mock_cache, mock_http_client, user_id, org_id, sample_session_result
+        self, orchestrator, mock_strategist, mock_cache, user_id, org_id, sample_session_result
     ):
         existing = ["concept_a", "concept_b"]
         mock_cache._get = AsyncMock(return_value=json.dumps(existing))
         mock_cache._set = AsyncMock()
         mock_strategist.adapt_path.return_value = AsyncMock()
         mock_strategist.get_next_concept.return_value = None
-        resp_mock = AsyncMock()
-        resp_mock.status_code = 200
-        mock_http_client.patch = AsyncMock(return_value=resp_mock)
 
         result = await orchestrator.complete_session(
             user_id=user_id,

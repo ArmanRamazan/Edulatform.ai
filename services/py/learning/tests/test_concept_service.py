@@ -221,3 +221,43 @@ class TestMastery:
         await concept_service.update_mastery_for_lesson(student_id, lesson_id, 0.3)
 
         mock_concept_repo.upsert_mastery.assert_not_called()
+
+
+class TestApplyMasteryDelta:
+    """ConceptService.apply_mastery_delta — called by MissionService after mission completion."""
+
+    async def test_applies_delta_to_existing_mastery(
+        self, concept_service, mock_concept_repo, student_id, concept_id,
+    ):
+        existing = ConceptMastery(
+            id=uuid4(), student_id=student_id, concept_id=concept_id,
+            mastery=0.3, updated_at=datetime.now(timezone.utc),
+        )
+        mock_concept_repo.get_mastery.return_value = existing
+        updated = ConceptMastery(
+            id=uuid4(), student_id=student_id, concept_id=concept_id,
+            mastery=0.45, updated_at=datetime.now(timezone.utc),
+        )
+        mock_concept_repo.upsert_mastery.return_value = updated
+
+        await concept_service.apply_mastery_delta(student_id, concept_id, 0.15)
+
+        mock_concept_repo.upsert_mastery.assert_called_once_with(
+            student_id, concept_id, pytest.approx(0.45),
+        )
+
+    async def test_applies_delta_when_no_prior_mastery(
+        self, concept_service, mock_concept_repo, student_id, concept_id,
+    ):
+        mock_concept_repo.get_mastery.return_value = None
+        updated = ConceptMastery(
+            id=uuid4(), student_id=student_id, concept_id=concept_id,
+            mastery=0.2, updated_at=datetime.now(timezone.utc),
+        )
+        mock_concept_repo.upsert_mastery.return_value = updated
+
+        await concept_service.apply_mastery_delta(student_id, concept_id, 0.2)
+
+        mock_concept_repo.upsert_mastery.assert_called_once_with(
+            student_id, concept_id, pytest.approx(0.2),
+        )

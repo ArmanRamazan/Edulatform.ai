@@ -268,6 +268,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         trust_level_service=_trust_level_service,
         http_client=_http_client,
         settings=app_settings,
+        concept_service=_concept_service,
         review_generator=_review_generator,
     )
 

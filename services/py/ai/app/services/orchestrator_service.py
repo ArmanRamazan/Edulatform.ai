@@ -46,6 +46,7 @@ class AgentOrchestrator:
         user_id: UUID,
         org_id: UUID,
         user_profile: dict | None = None,
+        mastery_data: list[dict] | None = None,
     ) -> MissionBlueprint:
         today = date.today().isoformat()
         cache_key = f"ai:daily:{user_id}:{today}"
@@ -103,12 +104,6 @@ class AgentOrchestrator:
             },
         )
 
-        # Update mastery in Learning service
-        await self._update_mastery(
-            concept_id=concept_id,
-            mastery_delta=session_result.mastery_delta,
-        )
-
         # Get preview of next concept
         next_concept = await self._strategist.get_next_concept(user_id, org_id)
 
@@ -127,22 +122,6 @@ class AgentOrchestrator:
             return json.loads(raw)
         except (json.JSONDecodeError, TypeError):
             return []
-
-    async def _update_mastery(self, concept_id: UUID, mastery_delta: float) -> None:
-        url = f"{self._settings.learning_service_url}/concepts/mastery"
-        try:
-            resp = await self._http.patch(
-                url,
-                json={
-                    "concept_id": str(concept_id),
-                    "mastery_delta": mastery_delta,
-                },
-                timeout=5.0,
-            )
-            if resp.status_code != 200:
-                logger.warning("mastery_update_failed", status=resp.status_code)
-        except Exception:
-            logger.warning("learning_service_unavailable")
 
     @staticmethod
     def _serialize_mission(mission: MissionBlueprint) -> str:

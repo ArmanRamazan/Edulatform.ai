@@ -52,13 +52,15 @@ class StrategistService:
         user_id: UUID,
         org_id: UUID,
         user_profile: dict,
+        mastery: list[dict] | None = None,
     ) -> LearningPath:
         concepts = await self._fetch_org_concepts(org_id)
         if not concepts:
             logger.warning("no_org_concepts", org_id=str(org_id))
             return self._empty_path(user_id, org_id)
 
-        mastery = await self._fetch_mastery(org_id)
+        if mastery is None:
+            mastery = await self._fetch_mastery(org_id)
         mastery_map = self._build_mastery_map(mastery)
 
         prompt = STRATEGIST_PROMPT_TEMPLATE.format(

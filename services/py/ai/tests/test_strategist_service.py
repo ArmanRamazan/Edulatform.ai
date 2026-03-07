@@ -227,6 +227,35 @@ async def test_plan_path_no_pii_in_prompt(
     assert str(user_id) not in prompt
 
 
+async def test_plan_path_uses_provided_mastery_without_http_call(
+    service, mock_llm, mock_cache, mock_http,
+    user_id, org_id, concept_ids, rag_concepts, mastery_data, llm_path_response,
+):
+    """When mastery is provided by Learning, strategist must NOT call Learning over HTTP."""
+    rag_resp = MagicMock()
+    rag_resp.status_code = 200
+    rag_resp.json.return_value = rag_concepts
+
+    # Only RAG call allowed — no Learning mastery HTTP call
+    mock_http.get.side_effect = [rag_resp]
+    mock_llm.generate.return_value = (llm_path_response, 500, 300)
+    mock_cache.get_path.return_value = None
+
+    provided_mastery = mastery_data["items"]
+
+    result = await service.plan_path(
+        user_id, org_id, {"role": "backend developer"}, mastery=provided_mastery
+    )
+
+    assert isinstance(result, LearningPath)
+    # Exactly one HTTP call (RAG), not two (RAG + Learning)
+    assert mock_http.get.call_count == 1
+
+    # Mastery values from provided data are reflected
+    oop_concept = next(c for c in result.concepts_ordered if c.name == "OOP")
+    assert oop_concept.mastery == 0.3
+
+
 # --- get_next_concept tests ---
 
 
