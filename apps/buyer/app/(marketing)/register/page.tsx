@@ -82,7 +82,7 @@ function RegisterForm() {
           }
         }
       }
-      router.push("/welcome");
+      router.push("/onboarding");
     } catch (err) {
       setError(getErrorMessage(err, "Не удалось создать аккаунт"));
     } finally {

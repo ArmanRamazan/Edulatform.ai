@@ -123,10 +123,11 @@ export function OnboardingWizard() {
     localStorage.setItem(STORAGE_KEY, String(currentStep));
   }, [currentStep]);
 
-  // Clear storage when wizard completes (step 5 reached)
+  // Mark onboarding complete when last step reached
   useEffect(() => {
     if (currentStep === ONBOARDING_TOTAL_STEPS) {
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.setItem("onboarding_complete", "true");
     }
   }, [currentStep]);
 
