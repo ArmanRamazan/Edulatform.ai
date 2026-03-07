@@ -56,7 +56,7 @@ export const ConceptNode = memo(function ConceptNode({
   return (
     <motion.div
       style={{ width: size, height: size, position: "relative" }}
-      whileHover={{ scale: 1.08 }}
+      whileHover={{ scale: 1.1 }}
       animate={{
         boxShadow: selected
           ? `0 0 0 2px ${color}, 0 0 24px ${color}50`
