@@ -1,0 +1,130 @@
+phase: "sprint-47"
+description: "Phase C.2 — Slack integration, multi-org dashboard, proto contracts"
+
+tasks:
+  - id: slack-integration
+    title: "Add Slack bot for daily mission reminders and search"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: Create a Slack integration that sends daily mission reminders and allows /knowledge search.
+
+      CONTEXT:
+      - Notification service handles reminders
+      - AI service has unified search
+      - Target: Slack bot posts to #engineering channel
+
+      WHAT TO DO:
+
+      1. Add Slack integration to notification service:
+         - New adapter: services/py/notification/app/repositories/slack_client.py
+         - SlackClient: sends messages via Slack webhook URL
+         - StubSlackClient: logs messages (when SLACK_WEBHOOK_URL is empty)
+
+      2. Slack webhook endpoint: POST /slack/commands
+         - /knowledge search <query> → calls AI unified search → returns results
+         - Slack signature verification (SLACK_SIGNING_SECRET)
+
+      3. Daily mission reminder via Slack:
+         - SmartReminderService: if org has Slack connected, post to channel
+         - Message format: "Hey @user, your daily mission is ready: [concept_name]"
+
+      4. Config:
+         - SLACK_WEBHOOK_URL (optional, empty = stub)
+         - SLACK_SIGNING_SECRET (for command verification)
+
+      5. New migration: ADD COLUMN slack_webhook_url to organizations (identity service)
+         OR store in notification service config table
+
+      6. Write tests with mocked Slack API
+
+      TDD: Write failing tests first.
+
+      COMMIT: feat(notification): add Slack integration for reminders and search
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+    depends_on: []
+
+  - id: multi-org-admin-dashboard
+    title: "Add org admin dashboard page with member management"
+    scope: frontend
+    type: feat
+    prompt: |
+      Task: Create an org admin dashboard for managing members, invitations, and org settings.
+
+      CONTEXT:
+      - apps/buyer/ — existing (app)/ route group
+      - Identity service has org endpoints: /organizations/, /organizations/{id}/members
+      - Currently: only /org/select page exists
+      - Missing: org management UI
+
+      WHAT TO DO:
+
+      1. Create apps/buyer/app/(app)/org/admin/page.tsx:
+         - Org overview: name, slug, member count, plan tier
+         - Member list: name, email, role, joined date, last active
+         - Invite member form: email + role select
+         - Remove member button (with confirmation)
+
+      2. Create apps/buyer/hooks/use-org-admin.ts:
+         - useOrgMembers(orgId) — fetch members
+         - useInviteMember() — mutation to invite
+         - useRemoveMember() — mutation to remove
+
+      3. API calls (via lib/api.ts):
+         - GET /api/identity/organizations/{id}/members
+         - POST /api/identity/organizations/{id}/members/invite
+         - DELETE /api/identity/organizations/{id}/members/{userId}
+
+      4. Follow Dark Knowledge theme
+      5. Add to Sidebar navigation (under Settings group)
+
+      COMMIT: feat(buyer): add org admin dashboard with member management
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    depends_on: []
+
+  - id: proto-contracts
+    title: "Define proto contracts for inter-service communication"
+    scope: infra
+    type: feat
+    prompt: |
+      Task: Define protobuf contracts for inter-service API calls as required by CLAUDE.md.
+
+      CONTEXT:
+      - proto/ directory exists but may be empty
+      - CLAUDE.md: "Контракты определяются в proto/. Нет proto-контракта = нет вызова"
+      - Current: all inter-service calls are HTTP JSON without contracts
+
+      WHAT TO DO:
+
+      1. Create proto/services/v1/ directory
+
+      2. Define contracts for ACTIVE inter-service calls:
+
+         a) proto/services/v1/ai.proto:
+            - DailyMissionRequest { org_id, user_id, mastery[] }
+            - DailyMissionResponse { mission_id, concept_name, blueprint }
+
+         b) proto/services/v1/rag.proto:
+            - SearchRequest { query, org_id, limit }
+            - SearchResponse { results[] { chunk_id, content, similarity, document_title } }
+
+         c) proto/services/v1/learning.proto:
+            - MasteryRequest { user_id, org_id }
+            - MasteryResponse { items[] { concept_id, level } }
+
+      3. Define event contracts:
+         proto/events/v1/mastery.proto:
+         - MasteryUpdated { user_id, org_id, concept_id, new_level, timestamp }
+
+         proto/events/v1/mission.proto:
+         - MissionCompleted { user_id, org_id, mission_id, score, timestamp }
+
+         proto/events/v1/badge.proto:
+         - BadgeEarned { user_id, badge_type, timestamp }
+
+      4. Do NOT generate code from protos yet — just define the contracts as documentation
+      5. Add README to proto/ explaining the contract-first approach
+
+      COMMIT: feat(proto): define inter-service contracts for AI, RAG, Learning, events
+    test: "test -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/proto/services/v1/ai.proto"
+    depends_on: []

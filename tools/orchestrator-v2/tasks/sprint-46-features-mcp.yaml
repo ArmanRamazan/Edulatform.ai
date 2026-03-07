@@ -1,0 +1,146 @@
+phase: "sprint-46"
+description: "Phase C.1 — MCP Server for AI agents + multi-LLM provider support"
+
+tasks:
+  - id: mcp-server-core
+    title: "Build MCP Server exposing KnowledgeOS tools"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: Create an MCP (Model Context Protocol) server that exposes KnowledgeOS capabilities as tools for AI agents.
+
+      CONTEXT:
+      - services/py/mcp/ — scaffold exists (Dockerfile, basic structure)
+      - MCP server connects to api-gateway (8080) and exposes tools
+      - Target: AI coding agents (Claude, Cursor, etc.) can query knowledge base
+
+      WHAT TO DO:
+
+      1. Read existing MCP scaffold: services/py/mcp/
+      2. Implement MCP server with these tools:
+
+         a) search_knowledge_base(query: str, org_id: str) → SearchResult[]
+            - Calls RAG service: POST /kb/{org_id}/search
+            - Returns: title, content snippet, relevance score
+
+         b) get_concept(concept_name: str, org_id: str) → ConceptDetail
+            - Calls RAG service: GET /concepts?org_id={org_id}&name={name}
+            - Returns: description, prerequisites, related concepts
+
+         c) get_team_mastery(org_id: str) → TeamMastery[]
+            - Calls Learning service: GET /concepts/mastery/course/{org_id}
+            - Returns: per-member mastery levels
+
+         d) get_user_missions(user_id: str) → Mission[]
+            - Calls Learning service: GET /missions/me
+            - Returns: active and completed missions
+
+         e) ask_coach(question: str, context: str) → CoachResponse
+            - Calls AI service: POST /coach/session
+            - Returns: coaching response
+
+      3. Use MCP Python SDK (mcp package)
+      4. Auth: MCP_AUTH_TOKEN env var → passed as Bearer to api-gateway
+      5. Write tests with mocked HTTP calls
+
+      TDD: Write failing tests first.
+
+      COMMIT: feat(mcp): implement MCP server with 5 knowledge tools
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/mcp && python3 -c \"import ast; ast.parse(open('app/main.py').read()); print('OK')\""
+    depends_on: []
+
+  - id: multi-llm-provider
+    title: "Add OpenAI and Claude as alternative LLM providers"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: AI service currently only supports Gemini. Add OpenAI and Claude as alternative providers.
+
+      CONTEXT:
+      - services/py/ai/app/services/llm_provider.py — has GeminiClient and MockLLMProvider
+      - services/py/ai/app/services/llm_resolver.py — factory that picks provider
+      - LLMProvider interface: complete(prompt, system_prompt) → str
+      - Config: GEMINI_API_KEY in config.py
+
+      WHAT TO DO:
+
+      1. Read llm_provider.py — understand the LLMProvider interface
+
+      2. Add OpenAIClient (implements LLMProvider):
+         - Uses openai package (add to dependencies)
+         - Config: OPENAI_API_KEY, OPENAI_MODEL (default: gpt-4o-mini)
+         - Method: complete() → calls chat.completions.create()
+
+      3. Add ClaudeClient (implements LLMProvider):
+         - Uses anthropic package
+         - Config: ANTHROPIC_API_KEY, CLAUDE_MODEL (default: claude-sonnet-4-20250514)
+         - Method: complete() → calls messages.create()
+
+      4. Update LLMResolver:
+         - Priority: check LLM_PROVIDER env var (gemini/openai/claude/mock)
+         - If not set, auto-detect by checking which API key is present
+         - Fallback: MockLLMProvider
+
+      5. Update config.py:
+         - Add: openai_api_key, anthropic_api_key, llm_provider (optional enum)
+
+      6. Write tests:
+         - Test OpenAIClient.complete() with mocked API
+         - Test ClaudeClient.complete() with mocked API
+         - Test LLMResolver picks correct provider based on config
+         - Test fallback chain: specified > auto-detect > mock
+
+      TDD: Write failing tests first.
+
+      COMMIT: feat(ai): add OpenAI and Claude as alternative LLM providers
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/ai && uv run --package ai pytest tests/ -v"
+    depends_on: []
+
+  - id: github-app-integration
+    title: "Add GitHub App auto-ingestion for org repositories"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: Allow orgs to connect GitHub repos for automatic knowledge base ingestion.
+
+      CONTEXT:
+      - services/py/rag/ — has GitHub adapter already (routes/github_routes.py)
+      - Currently: manual document upload or single-file fetch
+      - Target: connect org's GitHub → auto-ingest README, docs/, wiki
+
+      WHAT TO DO:
+
+      1. Read existing GitHub adapter: services/py/rag/app/routes/github_routes.py
+      2. Read existing ingestion flow: services/py/rag/app/services/ingestion_service.py
+
+      3. Add webhook endpoint: POST /github/webhook
+         - Handles: push events (new commits to tracked repos)
+         - Extracts changed .md, .py, .rs, .ts files
+         - Triggers re-ingestion of changed files only (incremental)
+
+      4. Add repo connection endpoint: POST /github/connect
+         - Input: repo_url, org_id, branch (default: main)
+         - Fetches repo tree via GitHub API
+         - Ingests all .md files from docs/, README.md, CONTRIBUTING.md
+         - Stores connection in new table: org_github_repos
+
+      5. New migration: services/py/rag/migrations/004_github_repos.sql
+         ```sql
+         CREATE TABLE IF NOT EXISTS org_github_repos (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           organization_id UUID NOT NULL,
+           repo_url TEXT NOT NULL,
+           branch TEXT NOT NULL DEFAULT 'main',
+           last_synced_at TIMESTAMPTZ,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+           UNIQUE(organization_id, repo_url)
+         );
+         ```
+
+      6. Write tests with mocked GitHub API responses
+
+      TDD: Write failing tests first.
+
+      COMMIT: feat(rag): add GitHub App auto-ingestion for org repositories
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: []

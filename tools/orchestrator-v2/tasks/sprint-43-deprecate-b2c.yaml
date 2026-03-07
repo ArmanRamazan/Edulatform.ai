@@ -1,0 +1,120 @@
+phase: "sprint-43"
+description: "Phase A.4 — Mark Course/Enrollment as deprecated, add org_id where missing"
+
+tasks:
+  - id: deprecate-course-enrollment
+    title: "Mark Course and Enrollment services as deprecated for B2B"
+    scope: docs
+    type: docs
+    prompt: |
+      Task: Document that Course and Enrollment services are B2C legacy, not used in B2B flow.
+
+      CONTEXT:
+      - Course service (8002): 129 tests, CRUD courses — B2B uses concepts/missions, not courses
+      - Enrollment service (8003): 39 tests — B2B uses missions, not enrollments
+      - These services still work, still have tests, but serve NO B2B use case
+      - Do NOT delete them — they may be repurposed later
+
+      WHAT TO DO:
+
+      1. Add DEPRECATED.md to each service:
+         - services/py/course/DEPRECATED.md
+         - services/py/enrollment/DEPRECATED.md
+         Content:
+         ```
+         # DEPRECATED — B2C Legacy
+
+         This service was built for the B2C EduPlatform (v0.1.0-v1.0.0).
+         The B2B KnowledgeOS platform does not use courses/enrollments.
+         Instead, B2B uses: concepts (rag service) + missions (learning service).
+
+         Status: Maintained but not actively developed.
+         Tests: Still running, still green.
+         Future: May be repurposed for org-level training modules.
+         ```
+
+      2. Update docs/TECHNICAL-OVERVIEW.md:
+         - Mark course and enrollment rows with "(B2C legacy)" in the Purpose column
+
+      3. Update docs/architecture/01-SYSTEM-OVERVIEW.md:
+         - Add note: "Course and Enrollment services are B2C legacy. B2B flow uses Learning + RAG + AI."
+
+      4. Update STRUCTURE.md if it lists these services without context
+
+      COMMIT: docs: mark course and enrollment services as B2C legacy
+    test: "test -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course/DEPRECATED.md"
+    depends_on: []
+
+  - id: add-org-id-notification
+    title: "Add organization_id to notification service"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: Notification service has no org awareness. Add organization_id for B2B multi-tenancy.
+
+      CONTEXT:
+      - services/py/notification/ — 145 tests
+      - notifications table has: user_id, notification_type, title, body, is_read, created_at
+      - NO organization_id — cannot filter by org
+      - B2B needs: "show notifications for members of MY org"
+
+      WHAT TO DO:
+
+      1. Read current schema: services/py/notification/migrations/
+      2. Create new migration: ADD COLUMN organization_id UUID to notifications table
+         - Nullable (backward compatible with existing data)
+         - Add index: CREATE INDEX idx_notifications_org ON notifications(organization_id)
+
+      3. Update domain entity: add organization_id field (optional)
+      4. Update repository: accept organization_id in create, filter by org_id in list
+      5. Update service: pass organization_id from JWT claims
+      6. Update routes: extract organization_id from JWT token (same pattern as other services)
+
+      7. Write tests:
+         - Test notification created with org_id
+         - Test list filtered by org_id
+         - Test backward compat: notifications without org_id still work
+
+      TDD: Write failing tests first.
+
+      COMMIT: feat(notification): add organization_id for B2B multi-tenancy
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+    depends_on: []
+
+  - id: add-org-id-learning-concepts
+    title: "Add organization_id filtering to learning concepts endpoints"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: Learning service concepts and mastery should be filterable by organization_id.
+
+      CONTEXT:
+      - services/py/learning/ — 272 tests
+      - concepts table already has organization_id (added in sprint-41)
+      - But concept routes don't filter by org_id yet
+      - Mastery endpoints return ALL mastery for a user, regardless of org
+
+      WHAT TO DO:
+
+      1. Read concept routes: services/py/learning/app/routes/
+         - Find concept-related endpoints
+         - Find mastery-related endpoints
+
+      2. Add optional org_id query parameter to:
+         - GET /concepts — filter by organization_id
+         - GET /concepts/mastery — filter mastery to org concepts only
+         - GET /concepts/mastery/course/{org_id} — already org-scoped? verify
+
+      3. Update repository queries:
+         - Add WHERE organization_id = $X when org_id is provided
+         - Keep backward compat: if no org_id, return all (B2C behavior)
+
+      4. Write tests for org-scoped queries
+
+      5. Run tests: cd services/py/learning && uv run --package learning pytest tests/ -v
+
+      TDD: Write failing tests first.
+
+      COMMIT: feat(learning): add organization_id filtering to concept endpoints
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
+    depends_on: []
