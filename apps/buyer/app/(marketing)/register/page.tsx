@@ -36,7 +36,7 @@ function RegisterForm() {
           }
         }
       }
-      router.push("/onboarding");
+      router.push("/welcome");
       return;
     } catch (err) {
       setError(getErrorMessage(err, "Registration failed"));
