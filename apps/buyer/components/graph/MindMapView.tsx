@@ -1,8 +1,8 @@
 "use client";
 
-import { useMemo, useEffect, useRef, useCallback } from "react";
+import { useMemo, useEffect, useRef, useCallback, useState } from "react";
 import Link from "next/link";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   ArrowLeft,
   Zap,
@@ -13,6 +13,8 @@ import {
   Network,
   AlertCircle,
   RefreshCw,
+  ChevronUp,
+  X,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -980,6 +982,9 @@ export function MindMapView({
   onBack,
   onNodeClick,
 }: MindMapViewProps) {
+  // Mobile panel toggle — shown only on screens narrower than lg breakpoint.
+  const [mobileDetailOpen, setMobileDetailOpen] = useState(false);
+
   const { centerConcept, centerMastery, nodes } = useMemo(
     () => computeLayout(conceptId, graphData.concepts, masteryItems),
     [conceptId, graphData, masteryItems],
@@ -1117,7 +1122,11 @@ export function MindMapView({
           initial={{ opacity: 0, x: -10 }}
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-          whileHover={{ scale: 1.03, borderColor: "rgba(255,255,255,0.14)" }}
+          whileHover={{
+            scale: 1.03,
+            borderColor: "rgba(124, 92, 252, 0.35)",
+            color: "#e2e2e8",
+          }}
           whileTap={{ scale: 0.97 }}
           aria-label="Back to concept map (Escape)"
         >
@@ -1161,9 +1170,10 @@ export function MindMapView({
       </div>
 
       {/* ── Right: Detail panel (320px, re-mounts per concept for animation replay) ── */}
+      {/* Hidden on < lg screens; mobile users get the slide-up panel instead.        */}
       <motion.aside
         key={centerConcept.id}
-        className="h-full shrink-0 overflow-hidden"
+        className="hidden h-full shrink-0 overflow-hidden lg:flex lg:flex-col"
         style={{
           width: 320,
           background: "#0a0a0f",
@@ -1176,6 +1186,134 @@ export function MindMapView({
       >
         <DetailPanel concept={centerConcept} mastery={centerMastery} />
       </motion.aside>
+
+      {/* ── Mobile concept info bar (visible only on < lg) ── */}
+      {/* Sits at the bottom of the canvas and opens a slide-up panel.              */}
+      <div className="lg:hidden">
+        {/* Compact bottom pill — always visible on mobile */}
+        <motion.button
+          type="button"
+          onClick={() => setMobileDetailOpen(true)}
+          className="absolute inset-x-3 bottom-3 z-10 flex items-center justify-between rounded-xl px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-[#7c5cfc]"
+          style={{
+            background: "rgba(10, 10, 15, 0.90)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            backdropFilter: "blur(14px)",
+            WebkitBackdropFilter: "blur(14px)",
+          }}
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          transition={{ delay: 0.18, duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+          aria-label={`Open details for ${centerConcept.name}`}
+          whileHover={{ borderColor: "rgba(124, 92, 252, 0.25)" }}
+          whileTap={{ scale: 0.98 }}
+        >
+          <div className="min-w-0">
+            <p
+              className="truncate text-sm font-semibold"
+              style={{ color: "#e2e2e8" }}
+            >
+              {centerConcept.name}
+            </p>
+            <p
+              className="mt-0.5 text-[11px]"
+              style={{
+                color:
+                  centerMastery >= 80
+                    ? "#34d399"
+                    : centerMastery >= 30
+                      ? "#7c5cfc"
+                      : "#6b6b80",
+                fontFamily: "var(--font-mono, ui-monospace, monospace)",
+              }}
+            >
+              {centerMastery}%
+              {" · "}
+              {centerMastery >= 80
+                ? "Mastered"
+                : centerMastery >= 30
+                  ? "In progress"
+                  : "Not started"}
+            </p>
+          </div>
+          <ChevronUp
+            className="ml-3 size-4 shrink-0"
+            style={{ color: "#6b6b80" }}
+            aria-hidden="true"
+          />
+        </motion.button>
+
+        {/* Slide-up detail sheet — covers most of the screen on mobile */}
+        <AnimatePresence>
+          {mobileDetailOpen && (
+            <>
+              {/* Backdrop */}
+              <motion.div
+                key="mobile-backdrop"
+                className="absolute inset-0 z-20"
+                style={{ background: "rgba(7, 7, 11, 0.7)" }}
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                onClick={() => setMobileDetailOpen(false)}
+                aria-hidden="true"
+              />
+
+              {/* Sheet */}
+              <motion.div
+                key="mobile-sheet"
+                className="absolute inset-x-0 bottom-0 z-30 overflow-hidden rounded-t-2xl"
+                style={{
+                  background: "#0a0a0f",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  maxHeight: "72vh",
+                }}
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", stiffness: 340, damping: 36 }}
+                aria-label={`Details for ${centerConcept.name}`}
+                role="dialog"
+                aria-modal="true"
+              >
+                {/* Sheet handle + close button */}
+                <div
+                  className="flex items-center justify-between px-5 pb-2 pt-4"
+                  style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                >
+                  {/* Drag handle */}
+                  <div
+                    className="mx-auto h-1 w-10 rounded-full"
+                    style={{ background: "rgba(255,255,255,0.12)" }}
+                    aria-hidden="true"
+                  />
+                  <motion.button
+                    type="button"
+                    onClick={() => setMobileDetailOpen(false)}
+                    className="absolute right-4 top-3.5 flex size-7 items-center justify-center rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-[#7c5cfc]"
+                    style={{
+                      background: "rgba(255,255,255,0.05)",
+                      border: "1px solid rgba(255,255,255,0.08)",
+                      color: "#6b6b80",
+                    }}
+                    whileHover={{ color: "#e2e2e8" }}
+                    whileTap={{ scale: 0.9 }}
+                    aria-label="Close details panel"
+                  >
+                    <X className="size-3.5" aria-hidden="true" />
+                  </motion.button>
+                </div>
+
+                {/* Scrollable content — reuses the same DetailPanel */}
+                <div style={{ height: "calc(72vh - 52px)" }}>
+                  <DetailPanel concept={centerConcept} mastery={centerMastery} />
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </div>
     </div>
   );
 }
