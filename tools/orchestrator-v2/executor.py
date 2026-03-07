@@ -12,11 +12,13 @@ import time
 from pathlib import Path
 
 from agent_runner import (
+    emit_event,
     has_git_changes,
     is_shutdown,
     log,
     run_agent,
     run_git,
+    run_tests,
 )
 from config import (
     DESIGN_REVIEW_AGENTS,
@@ -176,12 +178,49 @@ def _build_design_review_prompt(task: Task) -> str:
     )
 
 
-def _build_implement_prompt(task: Task, design_context: str) -> str:
+def _build_implement_prompt(task: Task, design_context: str, dep_context: str = "") -> str:
     parts = [task.prompt]
     if design_context:
         parts.append(f"\n\n## Design context from tech-lead:\n{design_context[:2000]}")
+    if dep_context:
+        parts.append(f"\n\n## Changes from dependency tasks:\n{dep_context[:3000]}")
     parts.append(TDD_PREAMBLE)
     return "\n".join(parts)
+
+
+def _get_dependency_context(task: Task, state: SprintState) -> str:
+    """Collect diff summaries from completed dependency tasks."""
+    parts = []
+    task_map = {t.id: t for t in state.tasks}
+    for dep_id in task.depends_on:
+        dep = task_map.get(dep_id)
+        if dep and dep.status == "passed" and dep.diff_summary:
+            parts.append(f"### {dep.title} (task {dep.id}):\n{dep.diff_summary}")
+    return "\n\n".join(parts)
+
+
+def _capture_diff_summary(task_id: str, wt_path: Path) -> str:
+    """Capture git diff --stat for the worktree branch vs main."""
+    _, base = run_git(["merge-base", "HEAD", "main"], cwd=wt_path)
+    if base.strip():
+        _, diff = run_git(["diff", "--stat", base.strip(), "HEAD"], cwd=wt_path)
+        if diff.strip():
+            return diff.strip()[:2000]
+    _, log_out = run_git(["log", "main..HEAD", "--oneline", "--stat"], cwd=wt_path)
+    return log_out.strip()[:2000]
+
+
+def _run_pre_merge_tests(task: Task, wt_path: Path) -> tuple[bool, str]:
+    """Run task.test command in worktree before merging."""
+    if not task.test:
+        return True, "No test command specified"
+    log(f"Running pre-merge tests: {task.test}", task.id)
+    code, output = run_tests(task.test, cwd=wt_path, task_id=task.id)
+    if code == 0:
+        log("V Pre-merge tests passed", task.id)
+    else:
+        log(f"X Pre-merge tests FAILED (exit={code})", task.id)
+    return code == 0, output
 
 
 # ---------------------------------------------------------------------------
@@ -231,7 +270,8 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
     log(f"Worktree ready, agent: {agent_name}", tid)
     task.started_at = _now()
 
-    prompt = _build_implement_prompt(task, design_context)
+    dep_context = _get_dependency_context(task, state)
+    prompt = _build_implement_prompt(task, design_context, dep_context)
 
     for attempt in range(1, MAX_RETRIES + 1):
         task.attempts = attempt
@@ -265,6 +305,8 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
                 prompt += (
                     "\n\nPREVIOUS ATTEMPT PRODUCED NO CODE CHANGES."
                     "\nYou MUST write code. Do not ask questions. Just implement."
+                    f"\n\nPrevious agent output (last 1500 chars):\n{output[-1500:]}"
+                    "\n\nAnalyze why the previous attempt failed and try a different approach."
                 )
                 continue
             task.status = "failed"
@@ -298,6 +340,27 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
 
         # Commit any uncommitted changes (agent may have already committed)
         _commit_in_worktree(task, wt_path)
+
+        # Pre-merge test verification
+        tests_ok, test_output = _run_pre_merge_tests(task, wt_path)
+        if not tests_ok:
+            task.error = f"Pre-merge tests failed"
+            if attempt < MAX_RETRIES:
+                log("Retrying after test failure...", tid)
+                prompt += (
+                    f"\n\nPRE-MERGE TESTS FAILED. Fix the issues:\n"
+                    f"{test_output[-2000:]}"
+                )
+                continue
+            task.status = "failed"
+            task.finished_at = _now()
+            with _state_lock:
+                state.save()
+            _cleanup_worktree(tid)
+            return
+
+        # Capture diff summary for dependent tasks
+        task.diff_summary = _capture_diff_summary(tid, wt_path)
 
         # Merge back
         log("Merging to main...", tid)
@@ -364,7 +427,15 @@ def _worker(
             break
 
         log(f">> Task {task.id}: {task.title} [scope: {task.scope}]", task.id)
+        emit_event("task_start", task_id=task.id, extra={"title": task.title, "scope": task.scope})
+        t0 = time.time()
         _execute_task(task, state, design_context)
+        elapsed = time.time() - t0
+        emit_event(
+            "task_done", task_id=task.id, duration_s=elapsed,
+            extra={"status": task.status, "attempts": task.attempts},
+            error=task.error if task.status == "failed" else None,
+        )
         task_queue.task_done()
 
 

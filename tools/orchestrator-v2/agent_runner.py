@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as _json
 import os
 import signal
 import subprocess
@@ -12,6 +13,7 @@ from pathlib import Path
 from config import (
     AGENTS_DIR,
     CLAUDE_TIMEOUT,
+    LOG_DIR,
     QUOTA_MAX_RETRIES,
     QUOTA_PATTERNS,
     QUOTA_RETRY_INTERVAL,
@@ -42,6 +44,54 @@ def is_shutdown() -> bool:
 # ---------------------------------------------------------------------------
 # Output helpers
 # ---------------------------------------------------------------------------
+
+_events_file = None
+_events_lock = threading.Lock()
+
+
+def _init_events_log() -> None:
+    """Initialize JSON-lines event log file."""
+    global _events_file
+    LOG_DIR.mkdir(parents=True, exist_ok=True)
+    ts = time.strftime("%Y%m%d-%H%M%S")
+    _events_file = open(LOG_DIR / f"events-{ts}.jsonl", "a")
+
+
+def emit_event(
+    event: str,
+    *,
+    task_id: str | None = None,
+    agent: str | None = None,
+    duration_s: float | None = None,
+    exit_code: int | None = None,
+    error: str | None = None,
+    extra: dict | None = None,
+) -> None:
+    """Write structured JSON event to events log."""
+    if _events_file is None:
+        _init_events_log()
+    record = {
+        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "event": event,
+    }
+    if task_id:
+        record["task_id"] = task_id
+    if agent:
+        record["agent"] = agent
+    if duration_s is not None:
+        record["duration_s"] = round(duration_s, 1)
+    if exit_code is not None:
+        record["exit_code"] = exit_code
+    if error:
+        record["error"] = error[:500]
+    if extra:
+        record.update(extra)
+    line = _json.dumps(record, ensure_ascii=False)
+    with _events_lock:
+        if _events_file:
+            _events_file.write(line + "\n")
+            _events_file.flush()
+
 
 def log(msg: str, task_id: str | None = None) -> None:
     if task_id:
@@ -205,10 +255,17 @@ def run_agent(
 
     for quota_attempt in range(1, QUOTA_MAX_RETRIES + 1):
         log(f"+-- Agent '{agent_name}' starting...", task_id)
+        emit_event("agent_start", task_id=task_id, agent=agent_name)
+        t0 = time.time()
         code, output = _stream_process(
             cmd, work_dir, timeout or CLAUDE_TIMEOUT, task_id=task_id,
         )
+        elapsed = time.time() - t0
         log(f"+-- Agent '{agent_name}' done (exit={code})", task_id)
+        emit_event(
+            "agent_done", task_id=task_id, agent=agent_name,
+            exit_code=code, duration_s=elapsed,
+        )
 
         if not _is_quota_error(code, output):
             return code, output
@@ -232,11 +289,17 @@ def run_tests(
 ) -> tuple[int, str]:
     work_dir = str(cwd or ROOT)
     log(f"+-- Tests: {command}", task_id)
+    t0 = time.time()
     code, output = _stream_process(
         command, work_dir, TEST_TIMEOUT, shell=True, task_id=task_id,
     )
+    elapsed = time.time() - t0
     status = "PASSED" if code == 0 else "FAILED"
     log(f"+-- Tests {status}", task_id)
+    emit_event(
+        "test_done", task_id=task_id, exit_code=code,
+        duration_s=elapsed, extra={"command": command, "status": status},
+    )
     return code, output
 
 

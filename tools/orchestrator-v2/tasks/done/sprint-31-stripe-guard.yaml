@@ -1,0 +1,58 @@
+phase: "sprint-31"
+description: "Payment Guard — mock Stripe responses when no API key"
+
+tasks:
+  - id: stripe-mock-mode
+    title: "Mock Stripe responses when no API key"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: Add mock mode to payment service when STRIPE_SECRET_KEY is not set.
+
+      CONTEXT:
+      - Payment service: services/py/payment/ (port 8004, FastAPI, 181 tests)
+      - Config: app/config.py — Settings with stripe_secret_key field
+      - Org subscriptions: app/routes/org_subscription_routes.py
+      - User subscriptions: app/routes/subscription_routes.py
+      - Payments: app/routes/payment_routes.py
+
+      WHAT TO BUILD (TDD):
+
+      1. app/services/stripe_mock.py — MockStripeService:
+         - get_org_subscription(org_id) → returns mock data:
+           {
+             "id": "sub_mock_demo",
+             "org_id": org_id,
+             "plan": "enterprise",
+             "status": "active",
+             "current_seats": 10,
+             "max_seats": 50,
+             "price_cents": 100000,
+             "currency": "usd",
+             "current_period_start": "2026-01-01",
+             "current_period_end": "2026-12-31"
+           }
+         - get_user_subscription(user_id) → mock active subscription
+         - create_payment(data) → returns mock payment with id="pay_mock_xxx"
+         - All methods log: logger.info("stripe_mock_mode")
+
+      2. In service layer — check if stripe key exists:
+         - If settings.stripe_secret_key is empty → use MockStripeService
+         - If set → use real Stripe (existing behavior)
+         - This should be a simple conditional in the service constructor or factory
+
+      3. Tests:
+         - test_mock_returns_active_subscription
+         - test_mock_returns_payment_success
+         - test_mock_activated_when_no_key
+
+      RULES:
+      - TDD mandatory
+      - Do NOT change existing Stripe integration code
+      - Do NOT change existing tests
+      - Mock data must have same structure as real Stripe responses
+      - Log clearly when in mock mode
+
+      COMMIT: feat(payment): add Stripe mock mode for demo without API key
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/payment && uv run --package payment pytest tests/ -v"
+    depends_on: []
