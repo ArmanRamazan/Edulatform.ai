@@ -95,9 +95,48 @@ pub fn create_router_with_proxy(jwt_secret: String, proxy_service: ProxyService)
         .layer(TraceLayer::new_for_http())
 }
 
-/// Create the application router with a specific rate limiter.
+/// Create the application router with proxy routing AND Redis-backed rate limiting.
 ///
-/// Used by rate limiting tests and production code when Redis is available.
+/// Layer execution order on each request:
+///   TraceLayer → CorsLayer → RequestLogger → Auth → RateLimit → ProxyHandler
+///
+/// Auth runs before RateLimit, so authenticated requests are keyed by user_id;
+/// unauthenticated requests are keyed by IP.
+pub fn create_router_with_proxy_and_limiter(
+    jwt_secret: String,
+    proxy_service: ProxyService,
+    rate_limiter: middleware::rate_limit::RateLimiter,
+) -> Router {
+    let config = config::Config::from_env().ok();
+    let cors_origins = config
+        .as_ref()
+        .map(|c| c.cors_origins.clone())
+        .unwrap_or_else(|| vec!["http://localhost:3000".into(), "http://localhost:3001".into()]);
+    let cors_max_age = config.as_ref().map(|c| c.cors_max_age).unwrap_or(3600);
+
+    // Rate limiter wraps the proxy handler directly (innermost layer).
+    let router = Router::new()
+        .route("/health/live", get(health_live))
+        .route("/health/ready", get(health_ready))
+        .fallback(any(proxy::proxy_handler).with_state(proxy_service))
+        .layer(axum::middleware::from_fn_with_state(
+            rate_limiter,
+            middleware::rate_limit::rate_limit_middleware,
+        ));
+
+    // Auth middleware wraps the rate-limited router (outer layer).
+    // Request: Auth → RateLimit → Handler
+    middleware::apply_auth(router, jwt_secret)
+        .layer(axum::middleware::from_fn(
+            middleware::request_logger::request_logger_middleware,
+        ))
+        .layer(middleware::cors::cors_layer(&cors_origins, cors_max_age))
+        .layer(TraceLayer::new_for_http())
+}
+
+/// Create the application router with a specific rate limiter (IP-only, no auth).
+///
+/// Used by rate limiting tests that do not require JWT authentication.
 pub fn create_router_with_rate_limiter(limiter: middleware::rate_limit::RateLimiter) -> Router {
     Router::new()
         .route("/health/live", get(health_live))
@@ -111,4 +150,32 @@ pub fn create_router_with_rate_limiter(limiter: middleware::rate_limit::RateLimi
             Duration::from_secs(30),
         ))
         .layer(TraceLayer::new_for_http())
+}
+
+/// Create the application router with both auth middleware and rate limiting.
+///
+/// Auth runs as the outer layer so JWT Claims are available in request extensions
+/// when the rate limiter middleware executes.  This enables per-user rate limiting
+/// for authenticated requests and per-IP limiting for unauthenticated requests.
+///
+/// Layer execution order: Auth → RateLimit → Handler
+pub fn create_router_with_rate_limiter_and_jwt(
+    limiter: middleware::rate_limit::RateLimiter,
+    jwt_secret: String,
+) -> Router {
+    // Rate limit layer wraps the handlers directly (inner).
+    let router = Router::new()
+        .route("/health/live", get(health_live))
+        .route("/health/ready", get(health_ready))
+        .layer(axum::middleware::from_fn_with_state(
+            limiter,
+            middleware::rate_limit::rate_limit_middleware,
+        ))
+        .layer(TimeoutLayer::with_status_code(
+            StatusCode::GATEWAY_TIMEOUT,
+            Duration::from_secs(30),
+        ));
+
+    // Auth layer wraps the rate-limited router (outer).
+    middleware::apply_auth(router, jwt_secret).layer(TraceLayer::new_for_http())
 }

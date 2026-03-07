@@ -28,7 +28,9 @@ PostgreSQL 16-alpine. Каждый сервис — своя БД:
 
 > `rag-db` использует `pgvector/pgvector:pg16` (не plain postgres) — требует расширение `vector` для хранения эмбеддингов.
 
-**Redis 7-alpine** на порту 6379 — кэш и rate limiting.
+**Redis 7-alpine** на порту 6379 — кэш, сессии и rate limiting.
+
+Rate limiting (api-gateway): INCR + EXPIRE pattern, ключи вида `rl:user:{uid}:{group}:{window_ts}` (auth) и `rl:ip:{ip}:{group}:{window_ts}` (unauth). Fail-open при недоступности Redis.
 
 ## Dockerfiles
 

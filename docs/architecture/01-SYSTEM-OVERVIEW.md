@@ -58,7 +58,7 @@
 
 | Service | Language | Framework | Port | DB Port | Tests | Purpose |
 |---------|----------|-----------|------|---------|-------|---------|
-| api-gateway | Rust | axum | 8080 | — | cargo test | JWT validation, reverse proxy to all backends |
+| api-gateway | Rust | axum | 8080 | — | cargo test | JWT validation, Redis rate limiting (100/min auth, 20/min unauth), reverse proxy to all backends |
 | ws-gateway | Rust | axum | 8011 | — | cargo test | WebSocket real-time notifications |
 | embedding-orchestrator | Rust | axum | 8009 | — | cargo test | Concurrent embedding API proxy |
 | identity | Python | FastAPI | 8001 | 5433 | 156 | Auth, users, profiles, follows, referrals, organizations |
@@ -102,7 +102,7 @@
 
 ## Communication
 
-All client requests go through the Rust **api-gateway** which validates JWT and reverse-proxies to the appropriate Python service based on URL prefix. Services do not call each other directly — they operate on their own data within their bounded context.
+All client requests go through the Rust **api-gateway** which validates JWT, enforces Redis-backed rate limiting, and reverse-proxies to the appropriate Python service based on URL prefix. Rate limiting is keyed by `user_id` for authenticated requests (100 req/min) and by IP for unauthenticated requests (20 req/min). Services do not call each other directly — they operate on their own data within their bounded context.
 
 ## Testing
 
