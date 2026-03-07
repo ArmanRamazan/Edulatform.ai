@@ -245,7 +245,7 @@ services:
       - "8011:8011"
     environment:
       WS_PORT: 8011
-      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-key-at-least-32-chars!!}
+      JWT_SECRET: dev-secret-key
       MAX_CONNECTIONS: 10000
       RUST_LOG: ws_gateway=debug
 
@@ -294,8 +294,10 @@ services:
     environment:
       GATEWAY_PORT: 8080
       REDIS_URL: redis://redis:6379
-      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-key-at-least-32-chars!!}
+      JWT_SECRET: dev-secret-key
       IDENTITY_URL: http://identity:8001
+      COURSE_URL: http://course:8002
+      ENROLLMENT_URL: http://enrollment:8003
       AI_URL: http://ai:8006
       LEARNING_URL: http://learning:8007
       RAG_URL: http://rag:8008
