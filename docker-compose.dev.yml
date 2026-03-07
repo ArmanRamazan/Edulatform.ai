@@ -123,6 +123,20 @@ services:
       timeout: 3s
       retries: 5
 
+  nats:
+    image: nats:2.10-alpine
+    ports:
+      - "4222:4222"   # client connections
+      - "8222:8222"   # HTTP monitoring
+    command: "--jetstream --store_dir /data"
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8222/healthz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
   identity:
     build:
       context: .
@@ -133,6 +147,7 @@ services:
       DATABASE_URL: postgresql://identity:identity@identity-db:5432/identity
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev-secret-key
+      NATS_URL: nats://nats:4222
     volumes:
       - ./services/py/identity/app:/app/app
       - ./services/py/identity/migrations:/app/migrations
@@ -152,6 +167,7 @@ services:
       DATABASE_URL: postgresql://course:course@course-db:5432/course
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev-secret-key
+      NATS_URL: nats://nats:4222
     volumes:
       - ./services/py/course/app:/app/app
       - ./services/py/course/migrations:/app/migrations
@@ -171,6 +187,7 @@ services:
       DATABASE_URL: postgresql://enrollment:enrollment@enrollment-db:5432/enrollment
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev-secret-key
+      NATS_URL: nats://nats:4222
     volumes:
       - ./services/py/enrollment/app:/app/app
       - ./services/py/enrollment/migrations:/app/migrations
@@ -190,6 +207,7 @@ services:
       DATABASE_URL: postgresql://payment:payment@payment-db:5432/payment
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev-secret-key
+      NATS_URL: nats://nats:4222
     volumes:
       - ./services/py/payment/app:/app/app
       - ./services/py/payment/migrations:/app/migrations
@@ -209,6 +227,7 @@ services:
       DATABASE_URL: postgresql://notification:notification@notification-db:5432/notification
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev-secret-key
+      NATS_URL: nats://nats:4222
     volumes:
       - ./services/py/notification/app:/app/app
       - ./services/py/notification/migrations:/app/migrations
@@ -231,6 +250,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.0-flash-lite}
       WS_GATEWAY_URL: http://ws-gateway:8011
+      NATS_URL: nats://nats:4222
     volumes:
       - ./services/py/ai/app:/app/app
       - ./libs/py/common/common:/libs/common/common
@@ -259,6 +279,7 @@ services:
       DATABASE_URL: postgresql://learning:learning@learning-db:5432/learning
       REDIS_URL: redis://redis:6379
       JWT_SECRET: dev-secret-key
+      NATS_URL: nats://nats:4222
     volumes:
       - ./services/py/learning/app:/app/app
       - ./services/py/learning/migrations:/app/migrations
@@ -278,6 +299,7 @@ services:
       DATABASE_URL: postgresql://rag:rag@rag-db:5432/rag
       JWT_SECRET: dev-secret-key
       EMBEDDING_SERVICE_URL: http://embedding-orchestrator:8009
+      NATS_URL: nats://nats:4222
     volumes:
       - ./services/py/rag/app:/app/app
       - ./services/py/rag/migrations:/app/migrations
@@ -375,3 +397,4 @@ volumes:
   notification-db-data:
   learning-db-data:
   rag-db-data:
+  nats-data:

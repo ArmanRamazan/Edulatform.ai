@@ -32,6 +32,17 @@ PostgreSQL 16-alpine. Каждый сервис — своя БД:
 
 Rate limiting (api-gateway): INCR + EXPIRE pattern, ключи вида `rl:user:{uid}:{group}:{window_ts}` (auth) и `rl:ip:{ip}:{group}:{window_ts}` (unauth). Fail-open при недоступности Redis.
 
+**NATS 2.10-alpine** — async event bus между доменами (JetStream):
+
+| Port | Purpose |
+|------|---------|
+| 4222 | Client connections (all services) |
+| 8222 | HTTP monitoring (`/healthz`, Prometheus scrape target) |
+
+Stream: `PLATFORM_EVENTS`, subjects: `platform.mastery.updated`, `platform.mission.completed`, `platform.badge.earned`, `platform.streak.milestone`. Storage: file (события переживают рестарт контейнера). Max age: 72h.
+
+Клиентская обёртка: `common.nats.NATSClient` (фабрика `create_nats_client(url)`). Env var: `NATS_URL=nats://nats:4222` — инжектируется во все Python-сервисы.
+
 ## Dockerfiles
 
 Расположение: `deploy/docker/{service}.Dockerfile`
@@ -130,6 +141,7 @@ API Gateway: `GET /health/live`, `GET /health/ready`
 | `JWT_SECRET` | all | JWT signing secret (64+ chars) |
 | `{SERVICE}_DATABASE_URL` | per service | PostgreSQL connection string |
 | `REDIS_URL` | all | Redis connection (default: redis://localhost:6379) |
+| `NATS_URL` | all Python services | NATS JetStream connection (default: nats://nats:4222) |
 
 ### Service-Specific
 

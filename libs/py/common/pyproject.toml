@@ -10,8 +10,12 @@ dependencies = [
     "prometheus-client>=0.21",
     "structlog>=24.1",
     "sentry-sdk[fastapi]>=2.0",
+    "nats-py>=2.3",
 ]
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
