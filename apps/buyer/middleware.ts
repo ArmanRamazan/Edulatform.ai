@@ -10,6 +10,7 @@ const PUBLIC_PATHS = new Set([
   "/verify-email",
   "/reset-password",
   "/welcome",
+  "/onboarding",
 ]);
 
 function isPublicPath(pathname: string): boolean {
