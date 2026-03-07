@@ -290,7 +290,7 @@
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/ai/mission/daily` | required | Get daily mission (org_id) |
+| POST | `/ai/mission/daily` | required | Generate daily mission — body: `{org_id, mastery: [{concept_id, mastery}...]}`. Learning pushes its own mastery data; AI never calls Learning back (push model, no circular dependency). |
 | POST | `/ai/mission/complete` | required | Complete mission (session_id, org_id, concept_id) |
 
 ### Unified Search
