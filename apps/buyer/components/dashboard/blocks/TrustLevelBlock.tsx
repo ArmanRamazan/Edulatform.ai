@@ -1,7 +1,9 @@
 "use client";
 
+import { AlertCircle } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { useDailySummary } from "@/hooks/use-daily";
@@ -61,8 +63,8 @@ function TrustRing({ progress, level }: { progress: number; level: number }) {
         y="50"
         textAnchor="middle"
         dominantBaseline="central"
-        className="fill-card-foreground font-mono text-2xl font-bold"
-        style={{ fontSize: "24px" }}
+        className="fill-card-foreground font-mono text-2xl font-semibold"
+        style={{ fontSize: "24px", fontWeight: 600 }}
       >
         {level}
       </text>
@@ -79,7 +81,7 @@ function TrustRing({ progress, level }: { progress: number; level: number }) {
 
 export function TrustLevelBlock() {
   const { token } = useAuth();
-  const { data: summary, isLoading, error } = useDailySummary(token);
+  const { data: summary, isLoading, error, refetch } = useDailySummary(token);
 
   if (isLoading) {
     return (
@@ -100,9 +102,14 @@ export function TrustLevelBlock() {
 
   if (error || !summary) {
     return (
-      <Card className="border-destructive/30">
-        <CardContent className="py-5 text-sm text-destructive">
-          Failed to load trust level
+      <Card className="border-destructive/30 bg-destructive/5" role="alert">
+        <CardContent className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" strokeWidth={1.5} />
+          <p className="text-sm font-medium text-destructive">Something went wrong</p>
+          <p className="text-xs text-muted-foreground">Couldn&apos;t load your trust level.</p>
+          <Button variant="outline" size="sm" className="mt-1" onClick={() => void refetch()}>
+            Try again
+          </Button>
         </CardContent>
       </Card>
     );

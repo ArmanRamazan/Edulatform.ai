@@ -1,8 +1,9 @@
 "use client";
 
-import { Brain } from "lucide-react";
+import { AlertCircle, Brain } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -24,7 +25,7 @@ function masteryColorClass(pct: number): string {
 
 export function MasteryBlock() {
   const { token } = useAuth();
-  const { data: summary, isLoading, error } = useDailySummary(token);
+  const { data: summary, isLoading, error, refetch } = useDailySummary(token);
 
   if (isLoading) {
     return (
@@ -46,9 +47,14 @@ export function MasteryBlock() {
 
   if (error || !summary) {
     return (
-      <Card className="border-destructive/30">
-        <CardContent className="py-5 text-sm text-destructive">
-          Failed to load mastery
+      <Card className="border-destructive/30 bg-destructive/5" role="alert">
+        <CardContent className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" strokeWidth={1.5} />
+          <p className="text-sm font-medium text-destructive">Something went wrong</p>
+          <p className="text-xs text-muted-foreground">Couldn&apos;t load concept mastery data.</p>
+          <Button variant="outline" size="sm" className="mt-1" onClick={() => void refetch()}>
+            Try again
+          </Button>
         </CardContent>
       </Card>
     );
@@ -92,13 +98,13 @@ export function MasteryBlock() {
         <CardContent>
           <div className="mb-4 grid grid-cols-2 gap-3">
             <div className="rounded-lg bg-secondary p-3">
-              <p className="font-mono text-xl font-bold text-card-foreground">
+              <p className="font-mono text-xl font-semibold text-card-foreground">
                 {totalMissions}
               </p>
               <p className="text-xs text-muted-foreground">missions done</p>
             </div>
             <div className="rounded-lg bg-secondary p-3">
-              <p className="font-mono text-xl font-bold text-card-foreground">
+              <p className="font-mono text-xl font-semibold text-card-foreground">
                 {totalConcepts}
               </p>
               <p className="text-xs text-muted-foreground">concepts mastered</p>

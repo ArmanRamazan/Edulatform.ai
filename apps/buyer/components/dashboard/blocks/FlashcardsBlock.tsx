@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { BookOpen, Check } from "lucide-react";
+import { AlertCircle, BookOpen, Check } from "lucide-react";
 import { motion } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -17,7 +17,7 @@ const BLOCK_ANIMATION = {
 
 export function FlashcardsBlock() {
   const { token } = useAuth();
-  const { data: dueCount, isLoading, error } = useDueCount(token);
+  const { data: dueCount, isLoading, error, refetch } = useDueCount(token);
 
   if (isLoading) {
     return (
@@ -35,9 +35,14 @@ export function FlashcardsBlock() {
 
   if (error) {
     return (
-      <Card className="border-destructive/30">
-        <CardContent className="py-5 text-sm text-destructive">
-          Failed to load flashcards
+      <Card className="border-destructive/30 bg-destructive/5" role="alert">
+        <CardContent className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" strokeWidth={1.5} />
+          <p className="text-sm font-medium text-destructive">Something went wrong</p>
+          <p className="text-xs text-muted-foreground">Couldn&apos;t load your flashcard queue.</p>
+          <Button variant="outline" size="sm" className="mt-1" onClick={() => void refetch()}>
+            Try again
+          </Button>
         </CardContent>
       </Card>
     );

@@ -24,18 +24,13 @@ const ROUTE_LABELS: Record<string, string> = {
   messages: "Messages",
   notifications: "Notifications",
   settings: "Settings",
-  enrollments: "My Courses",
-  "my-courses": "My Courses",
   velocity: "Velocity",
   badges: "Badges",
-  referral: "Referral",
   feed: "Feed",
   groups: "Study Groups",
-  wishlist: "Wishlist",
-  bundles: "Bundles",
-  courses: "Courses",
   admin: "Admin",
   users: "Users",
+  org: "Organization",
 };
 
 // ---------------------------------------------------------------------------
@@ -100,7 +95,7 @@ function NotificationBadge({ count }: NotificationBadgeProps) {
   return (
     <span
       key={animKey}
-      className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground animate-badge-pop pointer-events-none"
+      className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-semibold text-primary-foreground animate-badge-pop pointer-events-none"
       aria-hidden="true"
     >
       {count > 99 ? "99+" : count}

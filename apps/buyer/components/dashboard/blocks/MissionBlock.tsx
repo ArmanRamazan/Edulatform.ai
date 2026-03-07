@@ -1,5 +1,7 @@
 "use client";
 
+import { AlertCircle } from "lucide-react";
+import Link from "next/link";
 import { motion, useSpring, useTransform } from "framer-motion";
 import { useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,7 +29,7 @@ function AnimatedScore({ value }: { value: number }) {
   }, [value, spring, display]);
 
   return (
-    <span className="font-mono text-3xl font-bold text-success">
+    <span className="font-mono text-3xl font-semibold text-success">
       {current}%
     </span>
   );
@@ -51,7 +53,7 @@ function missionTypeBadge(missionType: string): {
 
 export function MissionBlock() {
   const { token } = useAuth();
-  const { data: summary, isLoading, error } = useDailySummary(token);
+  const { data: summary, isLoading, error, refetch } = useDailySummary(token);
   const startMission = useStartMission(token);
 
   if (isLoading) {
@@ -70,9 +72,14 @@ export function MissionBlock() {
 
   if (error || !summary) {
     return (
-      <Card className="border-destructive/30">
-        <CardContent className="py-5 text-sm text-destructive">
-          Failed to load mission
+      <Card className="border-destructive/30 bg-destructive/5" role="alert">
+        <CardContent className="flex flex-col items-center justify-center gap-2 py-8 text-center">
+          <AlertCircle className="h-5 w-5 text-destructive" aria-hidden="true" strokeWidth={1.5} />
+          <p className="text-sm font-medium text-destructive">Something went wrong</p>
+          <p className="text-xs text-muted-foreground">Couldn&apos;t load today&apos;s mission.</p>
+          <Button variant="outline" size="sm" className="mt-1" onClick={() => void refetch()}>
+            Try again
+          </Button>
         </CardContent>
       </Card>
     );
@@ -143,8 +150,8 @@ export function MissionBlock() {
           )}
 
           {mission.status === "in_progress" && (
-            <Button className="w-full" variant="secondary">
-              Continue
+            <Button className="w-full" variant="secondary" asChild>
+              <Link href={`/missions/${mission.id}`}>Continue</Link>
             </Button>
           )}
 
