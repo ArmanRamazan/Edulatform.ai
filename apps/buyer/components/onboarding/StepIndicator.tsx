@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 export const ONBOARDING_STEP_LABELS = [
   "Organization",
+  "Profile",
   "Experience",
   "Assessment",
   "Plan",
