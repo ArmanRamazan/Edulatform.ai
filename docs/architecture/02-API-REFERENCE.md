@@ -428,7 +428,9 @@
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| POST | `/sources/github` | required | Ingest from GitHub (repo_url, file_pattern, org_id) |
+| POST | `/sources/github` | required (admin) | Bulk ingest from GitHub repo (owner, repo, branch, extensions) |
+| POST | `/github/connect` | required (admin) | Connect org to GitHub repo — ingests all .md files, stores connection → `{id, repo_url, branch, ingested_count}` |
+| POST | `/github/webhook` | — (public) | GitHub push webhook — re-ingests changed .md/.py/.rs/.ts files; requires `X-GitHub-Event: push` header |
 
 ### Search
 

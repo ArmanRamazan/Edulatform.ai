@@ -27,11 +27,14 @@ from app.routes.search_routes import create_search_router
 from app.routes.concept_routes import create_concept_router
 from app.routes.knowledge_base_routes import create_knowledge_base_router
 from app.routes.github_routes import create_github_router
+from app.routes.github_connect_routes import create_github_connect_router
 from app.adapters.github_adapter import GitHubAdapter
+from app.repositories.github_repo_repository import SqlOrgGithubRepoRepository
 from app.services.ingestion_service import IngestionService
 from app.services.search_service import SearchService
 from app.services.extraction_service import ExtractionService
 from app.services.knowledge_base_service import KnowledgeBaseService
+from app.services.github_connect_service import GitHubConnectService
 
 app_settings = Settings()
 
@@ -44,6 +47,7 @@ _extraction_service: ExtractionService | None = None
 _concept_store: ConceptStoreRepository | None = None
 _kb_service: KnowledgeBaseService | None = None
 _github_adapter: GitHubAdapter | None = None
+_github_connect_service: GitHubConnectService | None = None
 
 
 def get_embedding_client() -> EmbeddingClient:
@@ -81,9 +85,14 @@ def get_github_adapter() -> GitHubAdapter:
     return _github_adapter
 
 
+def get_github_connect_service() -> GitHubConnectService:
+    assert _github_connect_service is not None
+    return _github_connect_service
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _http_client, _embedding_client, _ingestion_service, _search_service, _extraction_service, _concept_store, _kb_service, _github_adapter
+    global _pool, _http_client, _embedding_client, _ingestion_service, _search_service, _extraction_service, _concept_store, _kb_service, _github_adapter, _github_connect_service
 
     configure_logging(service_name="rag")
     logger = structlog.get_logger()
@@ -98,6 +107,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         with open("migrations/001_init.sql") as f:
             await conn.execute(f.read())
         with open("migrations/002_concepts.sql") as f:
+            await conn.execute(f.read())
+        with open("migrations/004_github_repos.sql") as f:
             await conn.execute(f.read())
 
     _http_client = httpx.AsyncClient()
@@ -153,6 +164,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         http_client=_http_client,
         github_token=app_settings.github_token,
     )
+    github_repo_repo = SqlOrgGithubRepoRepository(_pool)
+    _github_connect_service = GitHubConnectService(
+        repo_repository=github_repo_repo,
+        github_adapter=_github_adapter,
+        ingestion_service=_ingestion_service,
+    )
 
     logger.info("service_started", port=8008)
     yield
@@ -204,6 +221,13 @@ app.include_router(
     create_github_router(
         get_github_adapter=get_github_adapter,
         get_ingestion_service=get_ingestion_service,
+        jwt_secret=app_settings.jwt_secret,
+        jwt_algorithm=app_settings.jwt_algorithm,
+    )
+)
+app.include_router(
+    create_github_connect_router(
+        get_connect_service=get_github_connect_service,
         jwt_secret=app_settings.jwt_secret,
         jwt_algorithm=app_settings.jwt_algorithm,
     )

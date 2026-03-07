@@ -725,3 +725,17 @@ CREATE TABLE IF NOT EXISTS concept_relationships (
     UNIQUE (concept_id, related_concept_id)
 );
 ```
+
+### org_github_repos (migration 004)
+```sql
+CREATE TABLE IF NOT EXISTS org_github_repos (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    organization_id UUID NOT NULL,
+    repo_url TEXT NOT NULL,
+    branch TEXT NOT NULL DEFAULT 'main',
+    last_synced_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(organization_id, repo_url)
+);
+```
+Stores GitHub repository connections per organisation. Used by `POST /github/connect` (initial ingestion) and `POST /github/webhook` (incremental re-ingestion on push events).

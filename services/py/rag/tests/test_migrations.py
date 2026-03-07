@@ -43,3 +43,25 @@ def test_concepts_migration_contains_required_tables() -> None:
     assert "UNIQUE(organization_id, name)" in content
     assert "UNIQUE(concept_id, related_concept_id)" in content
     assert "REFERENCES documents(id)" in content
+
+
+def test_github_repos_migration_exists() -> None:
+    migration_path = os.path.join(
+        os.path.dirname(__file__), "..", "migrations", "004_github_repos.sql"
+    )
+    assert os.path.exists(migration_path), "migrations/004_github_repos.sql must exist"
+
+
+def test_github_repos_migration_contains_required_table() -> None:
+    migration_path = os.path.join(
+        os.path.dirname(__file__), "..", "migrations", "004_github_repos.sql"
+    )
+    with open(migration_path) as f:
+        content = f.read()
+
+    assert "CREATE TABLE IF NOT EXISTS org_github_repos" in content
+    assert "organization_id UUID NOT NULL" in content
+    assert "repo_url TEXT NOT NULL" in content
+    assert "branch TEXT NOT NULL" in content
+    assert "last_synced_at TIMESTAMPTZ" in content
+    assert "UNIQUE(organization_id, repo_url)" in content

@@ -20,13 +20,13 @@ Clean Architecture in every Python service: `routes → services → domain ← 
 | notification | Python | FastAPI | 8005 | 5437 | 145 | Notifications, reminders, direct messaging, StubEmailClient |
 | ai | Python | FastAPI | 8006 | — | 291 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, unified search, MockLLMProvider fallback, SSE coach streaming |
 | learning | Python | FastAPI | 8007 | 5438 | 272 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity, study groups, missions, certificates, trust levels |
-| rag | Python | FastAPI | 8008 | 5439 | 180 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, StubEmbeddingClient |
+| rag | Python | FastAPI | 8008 | 5439 | 211 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, org repo connections, webhook ingestion, StubEmbeddingClient |
 | mcp | Python | FastMCP | — | — | 59 | MCP server exposing KB tools for AI agents (Claude, Cursor); auth via Bearer token to api-gateway |
 | ws-gateway | Rust | axum | 8011 | — | cargo test | WebSocket real-time notifications |
 | embedding-orchestrator | Rust | axum | 8009 | — | cargo test | Concurrent embedding API proxy |
 | search | Rust | axum + tantivy | 9000 | — | cargo test | Full-text search index |
 
-**Total: 1461 tests passed, 6 pre-existing failures** (3 enrollment, 3 notification).
+**Total: 1492 tests passed, 6 pre-existing failures** (3 enrollment, 3 notification).
 
 ## Frontend
 
