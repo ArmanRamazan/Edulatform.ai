@@ -128,7 +128,7 @@ export function MissionBlock() {
           </div>
         </CardHeader>
         <CardContent className="space-y-4">
-          <h3 className="text-lg font-bold text-card-foreground">
+          <h3 className="text-lg font-semibold text-card-foreground">
             {conceptName}
           </h3>
 

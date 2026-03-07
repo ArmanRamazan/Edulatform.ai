@@ -57,7 +57,13 @@ export function FlashcardsBlock() {
           </div>
         </CardHeader>
         <CardContent>
-          <p className="font-mono text-3xl font-bold text-card-foreground">
+          <p className={`font-mono text-3xl font-semibold ${
+            count === 0
+              ? "text-success"
+              : count > 10
+                ? "text-warning"
+                : "text-card-foreground"
+          }`}>
             {count}
           </p>
           {count === 0 ? (

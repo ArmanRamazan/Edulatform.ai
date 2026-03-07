@@ -27,6 +27,16 @@ const LEVEL_NAMES: Record<number, string> = {
   5: "Mentor",
 };
 
+// Semantic badge color per trust level
+const LEVEL_BADGE_CLASS: Record<number, string> = {
+  0: "bg-secondary text-muted-foreground",
+  1: "bg-info/10 text-info",
+  2: "bg-primary/10 text-primary",
+  3: "bg-warning/10 text-warning",
+  4: "bg-success/10 text-success",
+  5: "bg-gradient-to-r from-primary/20 to-success/20 text-primary",
+};
+
 export function TeamProgressBlock() {
   const { token, user } = useAuth();
   const { activeOrg } = useActiveOrg();
@@ -44,7 +54,7 @@ export function TeamProgressBlock() {
 
   if (isLoading) {
     return (
-      <Card className="col-span-full">
+      <Card>
         <CardHeader>
           <Skeleton className="h-4 w-32" />
         </CardHeader>
@@ -66,7 +76,7 @@ export function TeamProgressBlock() {
   const levels = teamLevels?.levels ?? [];
 
   return (
-    <motion.div className="col-span-full" {...BLOCK_ANIMATION}>
+    <motion.div {...BLOCK_ANIMATION}>
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
@@ -106,9 +116,13 @@ export function TeamProgressBlock() {
                       missions
                     </p>
                   </div>
-                  <Badge variant="secondary">
+                  <span
+                    className={`inline-flex items-center rounded-full px-2 py-0.5 text-[11px] font-medium font-mono ${
+                      LEVEL_BADGE_CLASS[member.level] ?? "bg-secondary text-muted-foreground"
+                    }`}
+                  >
                     {LEVEL_NAMES[member.level] ?? `Lvl ${member.level}`}
-                  </Badge>
+                  </span>
                 </div>
               ))}
             </div>

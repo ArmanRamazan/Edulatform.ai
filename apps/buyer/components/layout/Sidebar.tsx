@@ -15,6 +15,7 @@ import {
   PanelLeftClose,
   PanelLeft,
   Menu,
+  Layers,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -109,9 +110,14 @@ function SidebarContent({
       {/* Header: logo + toggle */}
       <div className="flex h-14 items-center justify-between border-b border-sidebar-border px-3">
         {!collapsed && (
-          <span className="text-base font-semibold text-sidebar-foreground">
-            EduPlatform
-          </span>
+          <div className="flex items-center gap-2">
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/20">
+              <Layers className="h-3.5 w-3.5 text-primary" />
+            </div>
+            <span className="text-sm font-semibold tracking-tight text-sidebar-foreground">
+              KnowledgeOS
+            </span>
+          </div>
         )}
         <button
           onClick={onToggle}
