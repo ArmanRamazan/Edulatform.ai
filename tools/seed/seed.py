@@ -20,20 +20,20 @@ NOTIFICATION_DB_URL = os.environ["NOTIFICATION_DB_URL"]
 LEARNING_DB_URL = os.environ["LEARNING_DB_URL"]
 RAG_DB_URL = os.environ["RAG_DB_URL"]
 
-USER_COUNT = 50_000
-COURSE_COUNT = 100_000
-ENROLLMENT_COUNT = 200_000
-PAYMENT_COUNT = 50_000
-REVIEW_COUNT = 100_000
+USER_COUNT = 1_000
+COURSE_COUNT = 100
+ENROLLMENT_COUNT = 500
+PAYMENT_COUNT = 500
+REVIEW_COUNT = 200
 BATCH_SIZE = 5_000
 
 # Learning seed constants
 QUIZ_LESSON_RATIO = 0.5  # 50% of lessons get a quiz
 CONCEPTS_PER_COURSE = (3, 6)
-QUIZ_ATTEMPT_COUNT = 50_000
-FLASHCARD_COUNT = 30_000
-STREAK_COUNT = 10_000
-COMMENT_COUNT = 20_000
+QUIZ_ATTEMPT_COUNT = 500
+FLASHCARD_COUNT = 300
+STREAK_COUNT = 200
+COMMENT_COUNT = 200
 
 # 80% students, 20% teachers
 TEACHER_RATIO = 0.2
@@ -144,7 +144,7 @@ async def seed_modules_and_lessons(pool: asyncpg.Pool) -> None:
     print("Seeding modules and lessons...")
 
     course_rows = await pool.fetch(
-        "SELECT id FROM courses ORDER BY created_at LIMIT 10000"
+        "SELECT id FROM courses ORDER BY created_at LIMIT 100"
     )
     course_ids = [str(r["id"]) for r in course_rows]
 
@@ -894,7 +894,7 @@ async def seed_xp_and_badges(
 
     buf = io.BytesIO()
     user_xp: dict[str, int] = {}
-    xp_count = min(len(student_ids) * 5, 100_000)
+    xp_count = min(len(student_ids) * 5, 5_000)
 
     for i in range(xp_count):
         student_id = random.choice(student_ids)
@@ -932,7 +932,7 @@ async def seed_xp_and_badges(
     seen_badges: set[tuple[str, str]] = set()
 
     # first_enrollment for ~30% of students
-    for sid in random.sample(student_ids, min(len(student_ids) // 3, 10_000)):
+    for sid in random.sample(student_ids, min(len(student_ids) // 3, 300)):
         key = (sid, "first_enrollment")
         if key not in seen_badges:
             seen_badges.add(key)
@@ -949,7 +949,7 @@ async def seed_xp_and_badges(
             badge_count += 1
 
     # streak_7 for ~10% of students
-    for sid in random.sample(student_ids, min(len(student_ids) // 10, 4_000)):
+    for sid in random.sample(student_ids, min(len(student_ids) // 10, 100)):
         key = (sid, "streak_7")
         if key not in seen_badges:
             seen_badges.add(key)
@@ -1029,7 +1029,7 @@ async def seed_leaderboard(
 ) -> None:
     """Seed leaderboard entries for enrolled students."""
     # Sample enrollments for leaderboard
-    sample_size = min(50_000, len(enrollment_data))
+    sample_size = min(500, len(enrollment_data))
     sample = random.sample(enrollment_data, sample_size)
     print(f"Seeding {sample_size} leaderboard entries...")
 
