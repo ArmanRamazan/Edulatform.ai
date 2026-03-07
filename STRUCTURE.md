@@ -92,6 +92,7 @@
 ├── tools/
 │   ├── orchestrator/            # Autonomous Claude Code task executor
 │   ├── seed/                    # Database seed script
+│   │   └── demo_documents/      # 5 technical MD docs seeded into RAG service
 │   ├── locust/                  # Load testing (locustfile.py)
 │   └── demo/                    # Demo script
 │
