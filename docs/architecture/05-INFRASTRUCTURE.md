@@ -1,6 +1,6 @@
 # 05 — Infrastructure
 
-> Последнее обновление: 2026-03-06
+> Последнее обновление: 2026-03-07
 
 ## Docker Compose
 
@@ -124,13 +124,32 @@ API Gateway: `GET /health/live`, `GET /health/ready`
 
 Пример: `deploy/staging/.env.staging.example`
 
+## Seed Data
+
+### Demo B2B Organization — Acme Engineering
+
+Создаётся автоматически при каждом запуске seed-скрипта (идемпотентно):
+
+| Entity | Value |
+|--------|-------|
+| Admin user | `demo@acme.com` / `demo123` — Alex Chen, role=teacher |
+| Organization | "Acme Engineering", slug=`acme` |
+| Org members | 9 team members: sarah, mike, priya, james, yuki, carlos, emma, ali, lisa (all `@acme.com`) |
+| Subscription | enterprise, active, 10/50 seats, $1000/mo |
+
+Фиксированные UUID для предсказуемых ссылок:
+- `DEMO_USER_ID` = `00000000-0000-4000-a000-000000000001`
+- `DEMO_ORG_ID`  = `00000000-0000-4000-b000-000000000001`
+
+Тесты seed-скрипта: `cd tools/seed && uv run --package seed pytest tests/ -v`
+
 ## Development Commands
 
 ```bash
 # Start all backends + databases
 docker compose -f docker-compose.dev.yml up
 
-# Seed test data
+# Seed test data (includes Acme Engineering demo org)
 docker compose -f docker-compose.dev.yml --profile seed up seed
 
 # Frontend
