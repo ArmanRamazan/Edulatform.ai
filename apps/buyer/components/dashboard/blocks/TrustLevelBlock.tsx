@@ -125,7 +125,7 @@ export function TrustLevelBlock() {
         <CardContent className="flex items-center gap-4">
           <TrustRing progress={progressPct} level={trust_level.level} />
           <div>
-            <h3 className="text-lg font-bold text-card-foreground">
+            <h3 className="text-lg font-semibold text-card-foreground">
               {levelName}
             </h3>
             <p className="text-sm text-muted-foreground">

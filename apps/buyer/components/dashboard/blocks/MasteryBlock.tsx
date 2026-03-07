@@ -16,8 +16,8 @@ const BLOCK_ANIMATION = {
 };
 
 function masteryColorClass(pct: number): string {
-  if (pct >= 80) return "[&>div]:bg-emerald-500";
-  if (pct >= 50) return "[&>div]:bg-blue-500";
+  if (pct >= 80) return "[&>div]:bg-success";
+  if (pct >= 50) return "[&>div]:bg-info";
   if (pct >= 25) return "[&>div]:bg-primary";
   return "[&>div]:bg-muted-foreground";
 }

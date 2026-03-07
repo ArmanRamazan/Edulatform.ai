@@ -25,8 +25,8 @@ const jetbrainsMono = localFont({
 });
 
 export const metadata: Metadata = {
-  title: "EduPlatform",
-  description: "Online learning platform",
+  title: "KnowledgeOS",
+  description: "AI-powered knowledge platform for engineering teams",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

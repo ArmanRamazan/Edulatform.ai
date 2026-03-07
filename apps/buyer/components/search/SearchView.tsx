@@ -101,7 +101,7 @@ export function SearchView() {
     <div className="space-y-6">
       {/* Search input */}
       <div className="relative">
-        <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-[#6b6b80]" />
+        <Search className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
         <input
           ref={inputRef}
           type="text"
@@ -109,7 +109,7 @@ export function SearchView() {
           onChange={(e) => handleInputChange(e.target.value)}
           placeholder="Search across your knowledge base and the web..."
           autoFocus
-          className="w-full rounded-xl border border-[#2a2a3e] bg-[#14141f] py-4 pl-12 pr-4 text-lg text-[#e2e2e8] placeholder-[#45455a] outline-none transition-colors focus:border-[#7c5cfc40] focus:ring-1 focus:ring-[#7c5cfc40]"
+          className="w-full rounded-xl border border-border bg-card py-4 pl-12 pr-4 text-lg text-foreground placeholder:text-muted-foreground/50 outline-none transition-colors focus:border-primary/30 focus:ring-1 focus:ring-primary/20"
         />
         {hasQuery && <RouteIndicator route={route} />}
       </div>
@@ -129,14 +129,14 @@ export function SearchView() {
               <Search className="h-6 w-6 text-muted-foreground/50" aria-hidden="true" />
             </div>
             <p className="text-base text-muted-foreground">
-              Начните вводить запрос для поиска по базе знаний и вебу
+              Search across your knowledge base and the web
             </p>
             <p className="mt-2 text-sm text-muted-foreground/50">
-              Нажмите{" "}
+              Press{" "}
               <kbd className="rounded border border-border bg-secondary px-1.5 py-0.5 font-mono text-xs text-muted-foreground">
                 /
               </kbd>{" "}
-              чтобы сфокусировать поиск
+              to focus search
             </p>
           </motion.div>
         )}
@@ -180,9 +180,9 @@ export function SearchView() {
             />
           </div>
           <div>
-            <p className="text-sm font-medium text-muted-foreground">Ничего не найдено</p>
+            <p className="text-sm font-medium text-muted-foreground">No results found</p>
             <p className="mt-0.5 text-xs text-muted-foreground/60">
-              По запросу &ldquo;{query.trim()}&rdquo; результатов нет
+              No results for &ldquo;{query.trim()}&rdquo;
             </p>
           </div>
         </motion.div>

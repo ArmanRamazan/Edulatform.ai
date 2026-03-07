@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Run independent sprints in parallel, then sequential finishers.
 #
-# Wave 1 (parallel): sprint-32, sprint-33, sprint-34, sprint-35
+# Wave 1 (parallel): sprint-32, sprint-35
 # Wave 2 (sequential): sprint-36 (depends on wave 1)
 set -euo pipefail
 
@@ -20,7 +20,7 @@ command -v claude &>/dev/null || { echo "ERROR: claude CLI not found"; exit 1; }
 # ---------------------------------------------------------------
 echo ""
 echo "================================================================"
-echo "  WAVE 1: Parallel sprints (33, 34, 35)"
+echo "  WAVE 1: Parallel sprints (32, 35)"
 echo "  Each sprint runs with isolated state via --instance"
 echo "================================================================"
 echo ""
@@ -44,8 +44,7 @@ run_sprint() {
     LOGS+=("$log_file")
 }
 
-run_sprint tasks/sprint-33-knowledge-graph.yaml s33
-run_sprint tasks/sprint-34-realtime.yaml s34
+run_sprint tasks/sprint-32-onboarding.yaml s32
 run_sprint tasks/sprint-35-seed-data.yaml s35
 
 echo ""

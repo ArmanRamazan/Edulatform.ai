@@ -11,9 +11,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import type { Variants } from "framer-motion";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { useAuth } from "@/hooks/use-auth";
 import { useMyActivity } from "@/hooks/use-activity";
 
@@ -23,12 +23,30 @@ const BLOCK_ANIMATION = {
   transition: { duration: 0.3 },
 };
 
+const LIST_VARIANTS: Variants = {
+  animate: { transition: { staggerChildren: 0.055 } },
+};
+
+const ITEM_VARIANTS: Variants = {
+  initial: { opacity: 0, x: -8 },
+  animate: { opacity: 1, x: 0, transition: { duration: 0.22, ease: [0.25, 0, 0, 1] } },
+};
+
 const ACTIVITY_ICONS: Record<string, LucideIcon> = {
   quiz_completed: BookOpen,
   flashcard_reviewed: Brain,
   badge_earned: Award,
   streak_milestone: Flame,
   concept_mastered: CheckCircle,
+};
+
+// Semantic icon+bg color per activity type — aligned to design token palette
+const ACTIVITY_COLORS: Record<string, { icon: string; bg: string }> = {
+  quiz_completed:    { icon: "text-info",    bg: "bg-info/10" },
+  flashcard_reviewed:{ icon: "text-primary", bg: "bg-primary/10" },
+  badge_earned:      { icon: "text-warning", bg: "bg-warning/10" },
+  streak_milestone:  { icon: "text-warning", bg: "bg-warning/10" },
+  concept_mastered:  { icon: "text-success", bg: "bg-success/10" },
 };
 
 function relativeTime(dateStr: string): string {
@@ -122,33 +140,46 @@ export function ActivityBlock() {
         </CardHeader>
         <CardContent>
           {activities.length === 0 ? (
-            <EmptyState
-              icon={Activity}
-              title="No recent activity"
-              description="Complete a mission or review flashcards to see activity here."
-              action={{ label: "Review flashcards", href: "/flashcards" }}
-            />
+            <div className="flex flex-col items-center gap-2 py-6 text-center">
+              <div className="flex size-10 items-center justify-center rounded-full bg-secondary">
+                <Activity className="size-4 text-muted-foreground" />
+              </div>
+              <p className="text-sm text-muted-foreground">No recent activity</p>
+              <p className="text-xs text-muted-foreground/60">
+                Complete a quiz or review flashcards to see events here
+              </p>
+            </div>
           ) : (
-            <ul className="space-y-3">
+            <motion.ul
+              className="space-y-2.5"
+              variants={LIST_VARIANTS}
+              initial="initial"
+              animate="animate"
+            >
               {activities.map((a) => {
                 const Icon = ACTIVITY_ICONS[a.activity_type] ?? CheckCircle;
+                const colors = ACTIVITY_COLORS[a.activity_type] ?? { icon: "text-muted-foreground", bg: "bg-secondary" };
                 return (
-                  <li key={a.id} className="flex items-center gap-3">
-                    <div className="flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary">
-                      <Icon className="size-4 text-muted-foreground" />
+                  <motion.li
+                    key={a.id}
+                    variants={ITEM_VARIANTS}
+                    className="flex items-center gap-3 rounded-lg px-1 py-1 transition-colors hover:bg-secondary/50"
+                  >
+                    <div className={`flex size-8 shrink-0 items-center justify-center rounded-full ${colors.bg}`}>
+                      <Icon className={`size-4 ${colors.icon}`} />
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm text-card-foreground">
                         {activityDescription(a.activity_type)}
                       </p>
-                      <p className="text-xs text-muted-foreground">
+                      <p className="font-mono text-xs text-muted-foreground">
                         {relativeTime(a.created_at)}
                       </p>
                     </div>
-                  </li>
+                  </motion.li>
                 );
               })}
-            </ul>
+            </motion.ul>
           )}
         </CardContent>
       </Card>

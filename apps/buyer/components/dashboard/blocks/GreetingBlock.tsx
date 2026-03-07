@@ -46,8 +46,8 @@ export function GreetingBlock() {
             {summary.greeting}
           </p>
           <div className="flex items-center gap-2">
-            <Flame className="size-5 text-orange-500" />
-            <span className="font-mono text-2xl font-bold text-card-foreground">
+            <Flame className="size-5 text-warning" />
+            <span className="font-mono text-2xl font-semibold text-warning">
               {summary.streak_days}
             </span>
             <span className="text-sm text-muted-foreground">
