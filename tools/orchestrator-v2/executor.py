@@ -126,6 +126,24 @@ def _cleanup_worktree(task_id: str) -> None:
     )
 
 
+def _has_commits_in_worktree(task_id: str, wt_path: Path) -> bool:
+    """Check if worktree branch has commits beyond main."""
+    if not wt_path.exists():
+        return False
+    result = subprocess.run(
+        ["git", "log", "main..HEAD", "--oneline"],
+        cwd=str(wt_path), capture_output=True, text=True,
+    )
+    return bool(result.stdout.strip())
+
+
+def _preserve_worktree(task_id: str, wt_path: Path) -> None:
+    """Keep worktree and branch alive for manual inspection/fix."""
+    branch = f"orch/task-{task_id}"
+    log(f"  PRESERVED worktree with code: {wt_path}", task_id)
+    log(f"  Branch: {branch} — inspect or cherry-pick manually", task_id)
+
+
 def prune_worktrees() -> None:
     subprocess.run(["git", "worktree", "prune"], cwd=str(ROOT), capture_output=True)
     if WORKTREE_DIR.exists():
@@ -368,7 +386,10 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
             task.finished_at = _now()
             with _state_lock:
                 state.save()
-            _cleanup_worktree(tid)
+            if _has_commits_in_worktree(tid, wt_path):
+                _preserve_worktree(tid, wt_path)
+            else:
+                _cleanup_worktree(tid)
             return
 
         # Capture diff summary for dependent tasks
@@ -421,11 +442,18 @@ def _execute_task(task: Task, state: SprintState, design_context: str) -> None:
             task.finished_at = _now()
             with _state_lock:
                 state.save()
+            if _has_commits_in_worktree(tid, wt_path):
+                _preserve_worktree(tid, wt_path)
+            else:
+                _cleanup_worktree(tid)
             return
 
     # Fallthrough: failed
     if task.status != "passed":
-        _cleanup_worktree(tid)
+        if wt_path.exists() and _has_commits_in_worktree(tid, wt_path):
+            _preserve_worktree(tid, wt_path)
+        else:
+            _cleanup_worktree(tid)
         task.status = "failed"
         task.finished_at = _now()
         with _state_lock:
