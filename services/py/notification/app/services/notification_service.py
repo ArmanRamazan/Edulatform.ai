@@ -14,6 +14,7 @@ from app.domain.notification import (
     NotificationType,
 )
 from app.repositories.notification_repo import NotificationRepository
+from app.templates import get_email_template
 
 logger = structlog.get_logger()
 
@@ -37,6 +38,7 @@ class NotificationService:
         body: str,
         email: str | None = None,
         organization_id: UUID | None = None,
+        template_kwargs: dict | None = None,
     ) -> Notification:
         email_sent = False
 
@@ -46,11 +48,16 @@ class NotificationService:
             and type in EMAIL_TRIGGERING_TYPES
         ):
             subject = EMAIL_SUBJECTS[type]
+            html_body = body
+            if template_kwargs is not None:
+                rendered = get_email_template(str(type), **template_kwargs)
+                if rendered is not None:
+                    subject, html_body = rendered
             try:
                 email_sent = await self._email_adapter.send(
                     to=email,
                     subject=subject,
-                    html_body=body,
+                    html_body=html_body,
                 )
             except Exception:
                 logger.warning(
