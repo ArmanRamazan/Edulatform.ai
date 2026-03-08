@@ -26,7 +26,26 @@ PostgreSQL 16-alpine. Каждый сервис — своя БД:
 | learning | learning | postgres:16-alpine | 5438 | 5448 |
 | rag | rag | **pgvector/pgvector:pg16** | 5439 | — |
 
-> `rag-db` использует `pgvector/pgvector:pg16` (не plain postgres) — требует расширение `vector` для хранения эмбеддингов.
+> `rag-db` использует `pgvector/pgvector:pg16` — pgvector retained для хранения метаданных (documents, chunks text). Векторные эмбеддинги (768-dim) перенесены в Qdrant.
+
+## Qdrant
+
+**Qdrant v1.9.0** — purpose-built vector database для хранения 768-dim embeddings RAG-сервиса:
+
+| Parameter | Value |
+|-----------|-------|
+| REST API port | 6333 |
+| gRPC port | 6334 |
+| Collection | `rag_chunks` |
+| Volume | `qdrant-data` (dev/prod), `qdrant-staging-data` (staging) |
+
+Qdrant заменяет pgvector для векторного поиска: HNSW-индекс, фильтрация по `org_id`, snapshot-support. pgvector остаётся в `rag-db` только для метаданных (текст чанков, документы).
+
+Env vars для `rag`-сервиса:
+```
+QDRANT_URL=http://qdrant:6333
+QDRANT_COLLECTION=rag_chunks
+```
 
 **Redis 7-alpine** на порту 6379 — кэш, сессии и rate limiting.
 
@@ -155,6 +174,8 @@ API Gateway: `GET /health/live`, `GET /health/ready`
 | `CORS_ORIGINS` | api-gateway | Allowed origins (comma-separated) |
 | `LOG_LEVEL` | all | Logging level (default: info) |
 | `RAG_DB_URL` | seed script | RAG DB connection (postgresql://rag:rag@localhost:5439/rag) |
+| `QDRANT_URL` | rag | Qdrant REST endpoint (default: http://qdrant:6333) |
+| `QDRANT_COLLECTION` | rag | Qdrant collection name for embeddings (default: rag_chunks) |
 
 ### Mock Mode
 

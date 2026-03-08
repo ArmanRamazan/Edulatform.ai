@@ -123,6 +123,21 @@ services:
       timeout: 3s
       retries: 5
 
+  qdrant:
+    image: qdrant/qdrant:v1.9.0
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant-data:/qdrant/storage
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: 6334
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/readyz || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
   nats:
     image: nats:2.10-alpine
     ports:
@@ -300,6 +315,8 @@ services:
       JWT_SECRET: dev-secret-key
       EMBEDDING_SERVICE_URL: http://embedding-orchestrator:8009
       NATS_URL: nats://nats:4222
+      QDRANT_URL: http://qdrant:6333
+      QDRANT_COLLECTION: rag_chunks
     volumes:
       - ./services/py/rag/app:/app/app
       - ./services/py/rag/migrations:/app/migrations
@@ -307,6 +324,8 @@ services:
     command: uvicorn app.main:app --host 0.0.0.0 --port 8008 --reload --timeout-graceful-shutdown 10
     depends_on:
       rag-db:
+        condition: service_healthy
+      qdrant:
         condition: service_healthy
 
   api-gateway:
@@ -398,3 +417,4 @@ volumes:
   learning-db-data:
   rag-db-data:
   nats-data:
+  qdrant-data:
