@@ -17,14 +17,15 @@ Monorepo: **Python** (business logic) + **Rust** (performance-critical) + **Type
 | course | Python | 8002 | 129 | Courses, modules, lessons, reviews, bundles |
 | enrollment | Python | 8003 | 39 | Enrollments, progress |
 | payment | Python | 8004 | 190 | Payments, subscriptions, earnings, gifts, org billing, MockStripeClient |
-| notification | Python | 8005 | 145 | Notifications, messaging, StubEmailClient |
-| ai | Python | 8006 | 291 | LLM orchestrator, tri-agent coaching, missions, unified search, MockLLMProvider |
-| learning | Python | 8007 | 272 | Quizzes, flashcards (FSRS), concepts, gamification, certificates, trust levels |
-| rag | Python | 8008 | 180 | pgvector, ingestion, semantic search, concept extraction, GitHub adapter |
+| notification | Python | 8005 | 191 | Notifications, messaging, StubEmailClient |
+| ai | Python | 8006 | 316 | LLM orchestrator, tri-agent coaching, missions, unified search, MockLLMProvider |
+| learning | Python | 8007 | 324 | Quizzes, flashcards (FSRS), concepts, gamification, certificates, trust levels |
+| rag | Python | 8008 | 230 | pgvector, ingestion, semantic search, concept extraction, GitHub adapter |
+| mcp | Python | — | 59 | MCP server for AI agents (Claude, Cursor) |
 
 **Frontend**: buyer (Next.js 15, port 3001, 28 pages) + seller (Next.js 15, port 3002)
 
-**Total: 1402 tests passed, 6 pre-existing failures** across 8 Python services.
+**Total: 1634 tests passed, 3 pre-existing failures** across 9 Python services.
 
 ## Quick Start
 
@@ -65,4 +66,4 @@ cd services/rs/<name> && cargo test && cargo clippy -- -D warnings
 
 ## Tech Stack
 
-Python 3.12 (FastAPI) | Rust (axum, PyO3) | Next.js 15 (React 19, Tailwind, shadcn/ui) | PostgreSQL 16 | pgvector | Redis 7 | NATS JetStream | Gemini Flash | Prometheus + Grafana | Docker Compose
+Python 3.12 (FastAPI) | Rust (axum, PyO3) | Next.js 15 (React 19, Tailwind, shadcn/ui) | PostgreSQL 16 | pgvector | Qdrant | Redis 7 | NATS JetStream | Gemini Flash | Prometheus + Grafana | Docker Compose

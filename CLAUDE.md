@@ -19,7 +19,7 @@ proto/               — protobuf контракты (source of truth для м�
 libs/py/             — shared Python: config, logging, errors, db utils
 libs/rs/             — shared Rust: common types, proto codegen, rag-chunker (pyo3 FFI)
 services/py/         — Python сервисы: identity, course, enrollment, payment, notification, ai, learning, rag, mcp
-services/rs/         — Rust сервисы: api-gateway, search, embedding-orchestrator, video-processor, payment-engine
+services/rs/         — Rust сервисы: api-gateway, ws-gateway, embedding-orchestrator
 apps/                — Frontend: buyer (Next.js SSR/SSG), seller (Next.js dashboard)
 packages/            — Shared frontend: ui/ (UI Kit), api-client/ (codegen), shared/ (utils)
 deploy/              — Docker, K8s manifests

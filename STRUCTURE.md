@@ -49,26 +49,26 @@
 │   │   ├── payment/              # Port 8004, DB 5436 — Payments, subscriptions
 │   │   │   ├── app/routes/       # payments, coupons, earnings, refunds, gifts, invoices, org_subscriptions
 │   │   │   ├── migrations/       # 008 migrations
-│   │   │   └── tests/            # 151 tests
+│   │   │   └── tests/            # 190 tests
 │   │   │
 │   │   ├── notification/         # Port 8005, DB 5437 — Notifications, messaging
 │   │   │   ├── app/routes/       # notifications, messaging
-│   │   │   ├── migrations/       # 007 migrations
-│   │   │   └── tests/            # 136 tests
+│   │   │   ├── migrations/       # 010 migrations
+│   │   │   └── tests/            # 191 tests
 │   │   │
 │   │   ├── ai/                   # Port 8006 — LLM orchestrator
 │   │   │   ├── app/routes/       # ai, coach, orchestrator, search, llm_config
-│   │   │   └── tests/            # 257 tests
+│   │   │   └── tests/            # 316 tests
 │   │   │
 │   │   ├── learning/             # Port 8007, DB 5438 — Learning engine
 │   │   │   ├── app/routes/       # quizzes, flashcards, concepts, missions, streaks, leaderboard, discussions, study_groups, xp, badges, certificates, pretests, trust_levels, velocity, activity, daily
 │   │   │   ├── migrations/       # 015 migrations
-│   │   │   └── tests/            # 272 tests
+│   │   │   └── tests/            # 324 tests
 │   │   │
 │   │   ├── rag/                  # Port 8008, DB 5439 — RAG & knowledge base
 │   │   │   ├── app/routes/       # ingestion, search, knowledge_base, concepts, github
 │   │   │   ├── migrations/       # 002 migrations
-│   │   │   └── tests/            # 173 tests
+│   │   │   └── tests/            # 230 tests
 │   │   │
 │   │   └── mcp/                  # MCP server — AI agent tool interface
 │   │       ├── app/
@@ -79,7 +79,7 @@
 │   │       └── tests/            # 59 tests
 │   │
 │   └── rs/
-│       ├── api-gateway/          # Port 8000 — Rust reverse proxy (axum, JWT)
+│       ├── api-gateway/          # Port 8080 — Rust reverse proxy (axum, JWT)
 │       │   ├── src/              # main.rs, config.rs, routes/
 │       │   └── tests/
 │       │
@@ -108,7 +108,7 @@
 │
 ├── docs/
 │   ├── architecture/            # 01-06: system, API, DB, auth, infra, libs
-│   ├── phases/                  # PHASE-0 through PHASE-4
+│   ├── phases/                  # PHASE-0 through PHASE-5
 │   ├── goals/                   # Product vision, architecture principles, domains
 │   └── ...
 │

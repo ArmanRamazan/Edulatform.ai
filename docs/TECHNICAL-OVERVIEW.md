@@ -12,20 +12,20 @@ Clean Architecture in every Python service: `routes → services → domain ← 
 
 | Service | Language | Framework | Port | DB Port | Tests | Purpose |
 |---------|----------|-----------|------|---------|-------|---------|
-| api-gateway | Rust | axum | 8000 | — | cargo test | JWT validation, reverse proxy |
+| api-gateway | Rust | axum | 8080 | — | cargo test | JWT validation, reverse proxy |
 | identity | Python | FastAPI | 8001 | 5433 | 156 | Auth, profiles, follows, referrals, organizations |
 | course | Python | FastAPI | 8002 | 5434 | 129 | Courses, modules, lessons, reviews, bundles, promotions, wishlist **(B2C legacy — not used in B2B flow)** |
 | enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations **(B2C legacy — not used in B2B flow)** |
 | payment | Python | FastAPI | 8004 | 5436 | 190 | Payments, subscriptions, earnings, coupons, refunds, gifts, org billing, MockStripeClient |
-| notification | Python | FastAPI | 8005 | 5437 | 145 | Notifications, reminders, direct messaging, StubEmailClient |
-| ai | Python | FastAPI | 8006 | — | 291 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, unified search, MockLLMProvider fallback, SSE coach streaming |
-| learning | Python | FastAPI | 8007 | 5438 | 272 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity, study groups, missions, certificates, trust levels |
-| rag | Python | FastAPI | 8008 | 5439 | 211 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, org repo connections, webhook ingestion, StubEmbeddingClient |
+| notification | Python | FastAPI | 8005 | 5437 | 191 | Notifications, reminders, direct messaging, StubEmailClient |
+| ai | Python | FastAPI | 8006 | — | 316 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, unified search, MockLLMProvider fallback, SSE coach streaming |
+| learning | Python | FastAPI | 8007 | 5438 | 324 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity, study groups, missions, certificates, trust levels |
+| rag | Python | FastAPI | 8008 | 5439 | 230 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, org repo connections, webhook ingestion, StubEmbeddingClient |
 | mcp | Python | FastMCP | — | — | 59 | MCP server exposing KB tools for AI agents (Claude, Cursor); auth via Bearer token to api-gateway |
 | ws-gateway | Rust | axum | 8011 | — | cargo test | WebSocket real-time notifications |
 | embedding-orchestrator | Rust | axum | 8009 | — | cargo test | Concurrent embedding API proxy |
 
-**Total: 1492 tests passed, 6 pre-existing failures** (3 enrollment, 3 notification).
+**Total: 1634 tests passed, 3 pre-existing failures** (3 enrollment).
 
 ## Frontend
 
@@ -100,6 +100,8 @@ XP points, badges, streaks, leaderboard (per course, opt-in), trust levels (B2B,
 | Redis | 7-alpine | Cache, rate limiting |
 | Prometheus | latest | Metrics (5s scrape, 15d retention) |
 | Grafana | latest | Dashboards (auto-provisioned) |
+| Qdrant | 1.9.0 | Vector database for RAG embeddings |
+| NATS | 2.10 | Async event bus (JetStream) |
 
 Docker Compose: dev (hot reload), prod (4-worker uvicorn + monitoring), staging (pre-built images).
 

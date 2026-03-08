@@ -65,10 +65,11 @@
 | course | Python | FastAPI | 8002 | 5434 | 129 | Courses, modules, lessons, reviews, bundles, promotions, wishlist, categories, analytics **(B2C Legacy)** |
 | enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations **(B2C Legacy)** |
 | payment | Python | FastAPI | 8004 | 5436 | 190 | Payments, subscriptions, earnings, coupons, refunds, gifts, org subscriptions, MockStripeClient |
-| notification | Python | FastAPI | 8005 | 5437 | 145 | Notifications, streak/flashcard reminders, direct messaging, StubEmailClient |
-| ai | Python | FastAPI | 8006 | — | 291 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, credits, unified search, MockLLMProvider |
-| learning | Python | FastAPI | 8007 | 5438 | 272 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity feed, study groups, missions, daily summary, certificates, trust levels |
-| rag | Python | FastAPI | 8008 | 5439 | 180 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, KB management, StubEmbeddingClient |
+| notification | Python | FastAPI | 8005 | 5437 | 191 | Notifications, streak/flashcard reminders, direct messaging, StubEmailClient |
+| ai | Python | FastAPI | 8006 | — | 316 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, credits, unified search, MockLLMProvider |
+| learning | Python | FastAPI | 8007 | 5438 | 324 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity feed, study groups, missions, daily summary, certificates, trust levels |
+| rag | Python | FastAPI | 8008 | 5439 | 230 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, KB management, StubEmbeddingClient |
+| mcp | Python | FastMCP | — | — | 59 | MCP server: knowledge tools for AI agents |
 
 > **Note:** Course (8002) and Enrollment (8003) services are B2C legacy. B2B flow uses Learning + RAG + AI.
 
@@ -89,8 +90,9 @@
 | Rust HTTP | axum |
 | Rust FFI | PyO3 (rag-chunker) |
 | Database | PostgreSQL 16 (asyncpg) |
-| Vectors | pgvector (768-dim embeddings) |
+| Vectors | pgvector + Qdrant (768-dim embeddings) |
 | Cache | Redis 7 |
+| Messaging | NATS JetStream 2.10 |
 | Frontend | Next.js 15 (App Router), React 19, TypeScript strict |
 | UI | Tailwind CSS, shadcn/ui (Radix), Lucide icons |
 | State | TanStack Query (server), Zustand (client) |
@@ -106,7 +108,7 @@ All client requests go through the Rust **api-gateway** which validates JWT, enf
 
 ## Testing
 
-**Total: 1402 tests passed, 6 pre-existing failures** across 8 Python + 4 Rust services.
+**Total: 1634 passed, 3 pre-existing failures (enrollment)** across 9 Python + 4 Rust services.
 
 ```bash
 cd services/py/<name> && uv run --package <name> pytest tests/ -v
