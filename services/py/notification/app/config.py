@@ -7,3 +7,6 @@ class Settings(BaseAppSettings):
     email_from_address: str = "noreply@eduplatform.ru"
     ws_gateway_url: str = "http://localhost:8011"
     nats_url: str = "nats://localhost:4222"
+    slack_webhook_url: str = ""
+    slack_signing_secret: str = ""
+    ai_service_url: str = "http://localhost:8006/api/ai"
