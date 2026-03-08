@@ -46,7 +46,7 @@ tasks:
       TDD: Write failing test first.
 
       COMMIT: feat(learning): publish mastery.updated event via NATS
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
+    test: "cd services/py/learning && uv run --package learning pytest tests/ -v"
     depends_on: []
 
   - id: notification-event-subscriber
@@ -91,5 +91,5 @@ tasks:
       TDD: Write failing tests first.
 
       COMMIT: feat(notification): subscribe to learning events via NATS
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+    test: "cd services/py/notification && uv run --package notification pytest tests/ -v"
     depends_on: [mastery-updated-event]

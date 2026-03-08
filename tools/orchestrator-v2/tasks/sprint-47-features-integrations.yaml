@@ -41,7 +41,7 @@ tasks:
       TDD: Write failing tests first.
 
       COMMIT: feat(notification): add Slack integration for reminders and search
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+    test: "cd services/py/notification && uv run --package notification pytest tests/ -v"
     depends_on: []
 
   - id: multi-org-admin-dashboard
@@ -79,7 +79,7 @@ tasks:
       5. Add to Sidebar navigation (under Settings group)
 
       COMMIT: feat(buyer): add org admin dashboard with member management
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/apps/buyer && pnpm build"
+    test: "cd apps/buyer && pnpm build"
     depends_on: []
 
   - id: proto-contracts
@@ -126,5 +126,5 @@ tasks:
       5. Add README to proto/ explaining the contract-first approach
 
       COMMIT: feat(proto): define inter-service contracts for AI, RAG, Learning, events
-    test: "test -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/proto/services/v1/ai.proto"
+    test: "test -f proto/services/v1/ai.proto"
     depends_on: []

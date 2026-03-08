@@ -42,7 +42,7 @@ tasks:
       4. Update STRUCTURE.md if it lists these services without context
 
       COMMIT: docs: mark course and enrollment services as B2C legacy
-    test: "test -f /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/course/DEPRECATED.md"
+    test: "test -f services/py/course/DEPRECATED.md"
     depends_on: []
 
   - id: add-org-id-notification
@@ -78,7 +78,7 @@ tasks:
       TDD: Write failing tests first.
 
       COMMIT: feat(notification): add organization_id for B2B multi-tenancy
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
+    test: "cd services/py/notification && uv run --package notification pytest tests/ -v"
     depends_on: []
 
   - id: add-org-id-learning-concepts
@@ -116,5 +116,5 @@ tasks:
       TDD: Write failing tests first.
 
       COMMIT: feat(learning): add organization_id filtering to concept endpoints
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
+    test: "cd services/py/learning && uv run --package learning pytest tests/ -v"
     depends_on: []

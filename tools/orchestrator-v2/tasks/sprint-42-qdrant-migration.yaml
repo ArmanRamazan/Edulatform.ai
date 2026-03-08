@@ -50,7 +50,7 @@ tasks:
          - Document: "Qdrant for vector storage (768-dim embeddings), pgvector retained for metadata"
 
       COMMIT: feat(infra): add Qdrant vector database to Docker infrastructure
-    test: "grep -q 'qdrant' /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/docker-compose.dev.yml"
+    test: "grep -q 'qdrant' docker-compose.dev.yml"
     depends_on: []
 
   - id: qdrant-adapter
@@ -116,7 +116,7 @@ tasks:
       TDD: Write failing tests first.
 
       COMMIT: feat(rag): add Qdrant vector store adapter with stub fallback
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    test: "cd services/py/rag && uv run --package rag pytest tests/ -v"
     depends_on: [qdrant-infrastructure]
 
   - id: qdrant-migration-search
@@ -158,5 +158,5 @@ tasks:
       6. Run tests: cd services/py/rag && uv run --package rag pytest tests/ -v
 
       COMMIT: refactor(rag): migrate search from pgvector to Qdrant vector store
-    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    test: "cd services/py/rag && uv run --package rag pytest tests/ -v"
     depends_on: [qdrant-adapter]
