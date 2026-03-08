@@ -10,3 +10,5 @@ class Settings(BaseAppSettings):
     chunk_overlap: int = 200
     github_token: str = ""
     embedding_service_url: str = ""
+    qdrant_url: str = ""
+    qdrant_collection: str = "rag_chunks"

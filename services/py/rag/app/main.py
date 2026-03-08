@@ -19,6 +19,9 @@ from app.repositories.embedding_client import (
     OrchestratorEmbeddingClient,
     StubEmbeddingClient,
 )
+from app.repositories.vector_store import VectorStorePort
+from app.repositories.qdrant_store import QdrantStore
+from app.repositories.stub_vector_store import StubVectorStore
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.search_repository import SearchRepository
 from app.repositories.concept_store import ConceptStoreRepository
@@ -41,6 +44,7 @@ app_settings = Settings()
 _pool: asyncpg.Pool | None = None
 _http_client: httpx.AsyncClient | None = None
 _embedding_client: EmbeddingClient | None = None
+_vector_store: VectorStorePort | None = None
 _ingestion_service: IngestionService | None = None
 _search_service: SearchService | None = None
 _extraction_service: ExtractionService | None = None
@@ -53,6 +57,11 @@ _github_connect_service: GitHubConnectService | None = None
 def get_embedding_client() -> EmbeddingClient:
     assert _embedding_client is not None
     return _embedding_client
+
+
+def get_vector_store() -> VectorStorePort:
+    assert _vector_store is not None
+    return _vector_store
 
 
 def get_ingestion_service() -> IngestionService:
@@ -92,7 +101,7 @@ def get_github_connect_service() -> GitHubConnectService:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _http_client, _embedding_client, _ingestion_service, _search_service, _extraction_service, _concept_store, _kb_service, _github_adapter, _github_connect_service
+    global _pool, _http_client, _embedding_client, _vector_store, _ingestion_service, _search_service, _extraction_service, _concept_store, _kb_service, _github_adapter, _github_connect_service
 
     configure_logging(service_name="rag")
     logger = structlog.get_logger()
@@ -137,6 +146,21 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         _embedding_client = StubEmbeddingClient(dimensions=app_settings.embedding_dimensions)
         logger.info("embedding_client", mode="stub")
 
+    if app_settings.qdrant_url:
+        qdrant_store = QdrantStore(
+            url=app_settings.qdrant_url,
+            collection=app_settings.qdrant_collection,
+        )
+        await qdrant_store.ensure_collection(
+            collection=app_settings.qdrant_collection,
+            vector_size=app_settings.embedding_dimensions,
+        )
+        _vector_store = qdrant_store
+        logger.info("vector_store", mode="qdrant", url=app_settings.qdrant_url)
+    else:
+        _vector_store = StubVectorStore()
+        logger.info("vector_store", mode="stub")
+
     doc_repo = DocumentRepository(_pool)
     search_repo = SearchRepository(_pool)
     _concept_store = ConceptStoreRepository(_pool)
@@ -175,6 +199,8 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     yield
 
     await _http_client.aclose()
+    if isinstance(_vector_store, QdrantStore):
+        await _vector_store.close()
     await _pool.close()
 
 
