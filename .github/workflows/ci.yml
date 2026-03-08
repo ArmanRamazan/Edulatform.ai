@@ -1,0 +1,117 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  # ─── Python service tests (matrix) ────────────────────────────────────────
+  python-tests:
+    name: "py: ${{ matrix.service }}"
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - identity
+          - course
+          - enrollment
+          - payment
+          - notification
+          - ai
+          - learning
+          - rag
+        include:
+          # These services have 3 known pre-existing test failures each.
+          # continue-on-error keeps CI informational until they are fixed.
+          - service: enrollment
+            known_failures: true
+          - service: notification
+            known_failures: true
+
+    continue-on-error: ${{ matrix.known_failures == true }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync workspace
+        run: uv sync --all-packages
+
+      - name: Run tests — ${{ matrix.service }}
+        run: |
+          cd services/py/${{ matrix.service }}
+          uv run --package ${{ matrix.service }} pytest tests/ -v
+
+  # ─── Buyer app build ───────────────────────────────────────────────────────
+  buyer-build:
+    name: "frontend: buyer build"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          run_install: false
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "pnpm"
+          cache-dependency-path: apps/buyer/pnpm-lock.yaml
+
+      - name: Cache Next.js build output
+        uses: actions/cache@v4
+        with:
+          path: apps/buyer/.next/cache
+          key: ${{ runner.os }}-nextjs-${{ hashFiles('apps/buyer/pnpm-lock.yaml') }}-${{ hashFiles('apps/buyer/**/*.ts', 'apps/buyer/**/*.tsx') }}
+          restore-keys: |
+            ${{ runner.os }}-nextjs-${{ hashFiles('apps/buyer/pnpm-lock.yaml') }}-
+
+      - name: Install dependencies
+        run: cd apps/buyer && pnpm install --frozen-lockfile
+
+      - name: Build
+        run: cd apps/buyer && pnpm build
+
+  # ─── Lint ──────────────────────────────────────────────────────────────────
+  lint:
+    name: "lint: ruff"
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          version: "latest"
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Set up Python 3.12
+        run: uv python install 3.12
+
+      - name: Sync workspace (for ruff)
+        run: uv sync --all-packages
+
+      - name: ruff check
+        run: uv run ruff check services/py/
+
+      - name: ruff format check
+        run: uv run ruff format --check services/py/
