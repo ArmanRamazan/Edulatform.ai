@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import uuid as _uuid_module
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
@@ -8,6 +10,7 @@ import httpx
 import structlog
 
 from common.errors import AppError, ForbiddenError, NotFoundError
+from common.nats import NATSClient
 from app.domain.mission import Mission
 from app.repositories.mission_repo import MissionRepository
 from app.services.concept_service import ConceptService
@@ -28,6 +31,7 @@ class MissionService:
         settings: object,
         concept_service: ConceptService,
         review_generator: ReviewGenerator | None = None,
+        nats_client: NATSClient | None = None,
     ) -> None:
         self._repo = mission_repo
         self._trust = trust_level_service
@@ -35,6 +39,7 @@ class MissionService:
         self._ai_url: str = settings.ai_service_url  # type: ignore[attr-defined]
         self._concept_service = concept_service
         self._review_generator = review_generator
+        self._nats_client = nats_client
 
     async def get_or_create_today(
         self, user_id: UUID, org_id: UUID, *, token: str,
@@ -146,6 +151,26 @@ class MissionService:
                     "review_generation_failed",
                     mission_id=str(mission_id),
                     user_id=str(user_id),
+                )
+
+        if self._nats_client is not None:
+            try:
+                event = {
+                    "event_id": str(_uuid_module.uuid4()),
+                    "user_id": str(user_id),
+                    "organization_id": str(mission.organization_id),
+                    "mission_id": str(mission_id),
+                    "score": score,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                await self._nats_client.publish(
+                    "platform.mission.completed", json.dumps(event).encode()
+                )
+            except Exception:
+                logger.warning(
+                    "nats_publish_failed",
+                    subject="platform.mission.completed",
+                    mission_id=str(mission_id),
                 )
 
         return completed

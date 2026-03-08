@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import json
+import uuid as _uuid_module
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 
+from common.nats import NATSClient
 from app.domain.badge import (
     BADGE_DEFINITIONS,
     Badge,
@@ -21,10 +25,14 @@ logger = structlog.get_logger()
 
 class BadgeService:
     def __init__(
-        self, repo: BadgeRepository, activity_service: ActivityService | None = None,
+        self,
+        repo: BadgeRepository,
+        activity_service: ActivityService | None = None,
+        nats_client: NATSClient | None = None,
     ) -> None:
         self._repo = repo
         self._activity_service = activity_service
+        self._nats_client = nats_client
 
     async def try_unlock(self, user_id: UUID, badge_type: str) -> Badge:
         if badge_type not in BADGE_DEFINITIONS:
@@ -41,6 +49,24 @@ class BadgeService:
                 )
             except Exception:
                 logger.warning("activity_record_failed", badge_type=badge_type)
+
+        if self._nats_client is not None:
+            try:
+                event = {
+                    "event_id": str(_uuid_module.uuid4()),
+                    "user_id": str(user_id),
+                    "badge_type": badge_type,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+                await self._nats_client.publish(
+                    "platform.badge.earned", json.dumps(event).encode()
+                )
+            except Exception:
+                logger.warning(
+                    "nats_publish_failed",
+                    subject="platform.badge.earned",
+                    badge_type=badge_type,
+                )
 
         return badge
 

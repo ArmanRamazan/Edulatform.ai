@@ -240,7 +240,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _flashcard_service = FlashcardService(flashcard_repo, activity_service=_activity_service)
 
     streak_repo = StreakRepository(_pool)
-    _streak_service = StreakService(streak_repo, activity_service=_activity_service)
+    _streak_service = StreakService(
+        streak_repo, activity_service=_activity_service, nats_client=_nats_client,
+    )
 
     leaderboard_repo = LeaderboardRepository(_pool)
     _leaderboard_service = LeaderboardService(leaderboard_repo)
@@ -252,7 +254,9 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _xp_service = XpService(xp_repo)
 
     badge_repo = BadgeRepository(_pool)
-    _badge_service = BadgeService(badge_repo, activity_service=_activity_service)
+    _badge_service = BadgeService(
+        badge_repo, activity_service=_activity_service, nats_client=_nats_client,
+    )
 
     pretest_repo = PretestRepository(_pool)
     _pretest_service = PretestService(pretest_repo, concept_repo)
@@ -280,6 +284,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         settings=app_settings,
         concept_service=_concept_service,
         review_generator=_review_generator,
+        nats_client=_nats_client,
     )
 
     _daily_service = DailyService(

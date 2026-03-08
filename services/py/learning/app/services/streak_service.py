@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
+import uuid as _uuid_module
 from datetime import date, timedelta
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 
+from common.nats import NATSClient
 from app.domain.streak import Streak, StreakResponse
 from app.repositories.streak_repo import StreakRepository
 
@@ -19,10 +22,14 @@ _STREAK_MILESTONES = frozenset({7, 14, 30, 60, 90, 180, 365})
 
 class StreakService:
     def __init__(
-        self, repo: StreakRepository, activity_service: ActivityService | None = None,
+        self,
+        repo: StreakRepository,
+        activity_service: ActivityService | None = None,
+        nats_client: NATSClient | None = None,
     ) -> None:
         self._repo = repo
         self._activity_service = activity_service
+        self._nats_client = nats_client
 
     async def record_activity(self, user_id: UUID) -> Streak:
         existing = await self._repo.get_by_user(user_id)
@@ -60,6 +67,24 @@ class StreakService:
                 )
             except Exception:
                 logger.warning("activity_record_failed", streak=new_current)
+
+        if self._nats_client is not None and new_current in _STREAK_MILESTONES:
+            try:
+                event = {
+                    "event_id": str(_uuid_module.uuid4()),
+                    "user_id": str(user_id),
+                    "streak": new_current,
+                    "timestamp": date.today().isoformat(),
+                }
+                await self._nats_client.publish(
+                    "platform.streak.milestone", json.dumps(event).encode()
+                )
+            except Exception:
+                logger.warning(
+                    "nats_publish_failed",
+                    subject="platform.streak.milestone",
+                    streak=new_current,
+                )
 
         return streak
 
