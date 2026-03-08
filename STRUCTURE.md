@@ -36,12 +36,12 @@
 │   │   │   ├── migrations/       # 010 migrations
 │   │   │   └── tests/            # 156 tests
 │   │   │
-│   │   ├── course/               # Port 8002, DB 5434 — Courses, modules, lessons
+│   │   ├── course/               # Port 8002, DB 5434 — Courses, modules, lessons [B2C LEGACY — not used in B2B flow]
 │   │   │   ├── app/routes/       # courses, modules, lessons, reviews, bundles, promotions, wishlist, categories, analytics
 │   │   │   ├── migrations/       # 010 migrations
 │   │   │   └── tests/            # 129 tests
 │   │   │
-│   │   ├── enrollment/           # Port 8003, DB 5435 — Enrollments, progress
+│   │   ├── enrollment/           # Port 8003, DB 5435 — Enrollments, progress [B2C LEGACY — not used in B2B flow]
 │   │   │   ├── app/routes/       # enrollments, progress, recommendations
 │   │   │   ├── migrations/       # 004 migrations
 │   │   │   └── tests/            # 39 tests

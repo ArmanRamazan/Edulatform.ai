@@ -62,13 +62,15 @@
 | ws-gateway | Rust | axum | 8011 | — | cargo test | WebSocket real-time notifications |
 | embedding-orchestrator | Rust | axum | 8009 | — | cargo test | Concurrent embedding API proxy |
 | identity | Python | FastAPI | 8001 | 5433 | 156 | Auth, users, profiles, follows, referrals, organizations |
-| course | Python | FastAPI | 8002 | 5434 | 129 | Courses, modules, lessons, reviews, bundles, promotions, wishlist, categories, analytics |
-| enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations |
+| course | Python | FastAPI | 8002 | 5434 | 129 | Courses, modules, lessons, reviews, bundles, promotions, wishlist, categories, analytics **(B2C Legacy)** |
+| enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations **(B2C Legacy)** |
 | payment | Python | FastAPI | 8004 | 5436 | 190 | Payments, subscriptions, earnings, coupons, refunds, gifts, org subscriptions, MockStripeClient |
 | notification | Python | FastAPI | 8005 | 5437 | 145 | Notifications, streak/flashcard reminders, direct messaging, StubEmailClient |
 | ai | Python | FastAPI | 8006 | — | 291 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, credits, unified search, MockLLMProvider |
 | learning | Python | FastAPI | 8007 | 5438 | 272 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity feed, study groups, missions, daily summary, certificates, trust levels |
 | rag | Python | FastAPI | 8008 | 5439 | 180 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, KB management, StubEmbeddingClient |
+
+> **Note:** Course (8002) and Enrollment (8003) services are B2C legacy. B2B flow uses Learning + RAG + AI.
 
 ## Frontend
 

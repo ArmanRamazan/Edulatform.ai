@@ -14,8 +14,8 @@ Clean Architecture in every Python service: `routes → services → domain ← 
 |---------|----------|-----------|------|---------|-------|---------|
 | api-gateway | Rust | axum | 8000 | — | cargo test | JWT validation, reverse proxy |
 | identity | Python | FastAPI | 8001 | 5433 | 156 | Auth, profiles, follows, referrals, organizations |
-| course | Python | FastAPI | 8002 | 5434 | 129 | Courses, modules, lessons, reviews, bundles, promotions, wishlist |
-| enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations |
+| course | Python | FastAPI | 8002 | 5434 | 129 | Courses, modules, lessons, reviews, bundles, promotions, wishlist **(B2C legacy — not used in B2B flow)** |
+| enrollment | Python | FastAPI | 8003 | 5435 | 39 | Enrollments, lesson progress, recommendations **(B2C legacy — not used in B2B flow)** |
 | payment | Python | FastAPI | 8004 | 5436 | 190 | Payments, subscriptions, earnings, coupons, refunds, gifts, org billing, MockStripeClient |
 | notification | Python | FastAPI | 8005 | 5437 | 145 | Notifications, reminders, direct messaging, StubEmailClient |
 | ai | Python | FastAPI | 8006 | — | 291 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, unified search, MockLLMProvider fallback, SSE coach streaming |
