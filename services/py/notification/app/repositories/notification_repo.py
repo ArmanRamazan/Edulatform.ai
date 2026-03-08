@@ -19,12 +19,13 @@ class NotificationRepository:
         body: str,
         email_sent: bool = False,
         organization_id: UUID | None = None,
+        event_id: str | None = None,
     ) -> Notification:
         row = await self._pool.fetchrow(
             """
-            INSERT INTO notifications (user_id, type, title, body, email_sent, organization_id)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, user_id, type, title, body, is_read, created_at, email_sent, organization_id
+            INSERT INTO notifications (user_id, type, title, body, email_sent, organization_id, event_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, user_id, type, title, body, is_read, created_at, email_sent, organization_id, event_id
             """,
             user_id,
             type,
@@ -32,8 +33,16 @@ class NotificationRepository:
             body,
             email_sent,
             organization_id,
+            event_id,
         )
         return self._to_entity(row)
+
+    async def exists_by_event_id(self, event_id: str) -> bool:
+        count = await self._pool.fetchval(
+            "SELECT count(*) FROM notifications WHERE event_id = $1",
+            event_id,
+        )
+        return count > 0
 
     async def list_by_user(
         self, user_id: UUID, limit: int = 20, offset: int = 0
@@ -126,4 +135,5 @@ class NotificationRepository:
             created_at=row["created_at"],
             email_sent=row.get("email_sent", False),
             organization_id=row.get("organization_id"),
+            event_id=row.get("event_id"),
         )

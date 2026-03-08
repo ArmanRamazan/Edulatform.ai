@@ -18,6 +18,9 @@ class NotificationType(StrEnum):
     COURSE_COMPLETED = "course_completed"
     REVIEW_RECEIVED = "review_received"
     STREAK_AT_RISK = "streak_at_risk"
+    MISSION_COMPLETED = "mission_completed"
+    BADGE_EARNED = "badge_earned"
+    STREAK_MILESTONE = "streak_milestone"
 
 
 EMAIL_TRIGGERING_TYPES: frozenset[str] = frozenset({
@@ -67,6 +70,7 @@ class Notification:
     created_at: datetime
     email_sent: bool = False
     organization_id: UUID | None = None
+    event_id: str | None = None
 
 
 class NotificationCreate(BaseModel):
@@ -86,6 +90,7 @@ class NotificationResponse(BaseModel):
     created_at: datetime
     email_sent: bool = False
     organization_id: UUID | None = None
+    event_id: str | None = None
 
 
 class NotificationListResponse(BaseModel):

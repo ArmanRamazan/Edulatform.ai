@@ -39,7 +39,13 @@ class NotificationService:
         email: str | None = None,
         organization_id: UUID | None = None,
         template_kwargs: dict | None = None,
-    ) -> Notification:
+        event_id: str | None = None,
+    ) -> Notification | None:
+        if event_id is not None:
+            if await self._repo.exists_by_event_id(event_id):
+                logger.info("event_already_processed", event_id=event_id)
+                return None
+
         email_sent = False
 
         if (
@@ -68,7 +74,9 @@ class NotificationService:
                 )
                 email_sent = False
 
-        notification = await self._repo.create(user_id, type, title, body, email_sent, organization_id)
+        notification = await self._repo.create(
+            user_id, type, title, body, email_sent, organization_id, event_id=event_id,
+        )
         logger.info(
             "notification_created",
             user_id=str(user_id),

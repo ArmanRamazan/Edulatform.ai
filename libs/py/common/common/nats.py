@@ -15,6 +15,8 @@ Publishing events:
 
 from __future__ import annotations
 
+from typing import Any
+
 import nats
 import nats.js
 from nats.js.api import StreamConfig
@@ -62,6 +64,32 @@ class NATSClient:
         if self.jetstream is None:
             raise RuntimeError("NATSClient is not connected — call connect() first")
         await self.jetstream.publish(subject, payload)
+
+    async def subscribe(
+        self,
+        subject: str,
+        cb: Any,
+        durable: str,
+        stream: str | None = None,
+    ) -> Any:
+        """Subscribe to a JetStream subject with a durable push consumer.
+
+        Args:
+            subject: NATS subject pattern to subscribe to.
+            cb: Async callback receiving nats.aio.client.Msg messages.
+            durable: Durable consumer name for at-least-once delivery.
+            stream: Stream name. If None, JetStream auto-detects.
+
+        Raises RuntimeError if connect() has not been called.
+        """
+        if self.jetstream is None:
+            raise RuntimeError("NATSClient is not connected — call connect() first")
+        return await self.jetstream.subscribe(
+            subject,
+            cb=cb,
+            durable=durable,
+            stream=stream,
+        )
 
     async def close(self) -> None:
         """Drain and close the NATS connection (safe to call when not connected)."""

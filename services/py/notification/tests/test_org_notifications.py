@@ -71,6 +71,7 @@ async def test_create_notification_stores_org_id(svc, mock_repo_for_org, org_id)
         "Welcome to the org!",
         False,
         org_id,
+        event_id=None,
     )
 
 
@@ -96,6 +97,7 @@ async def test_create_notification_without_org_id_backward_compat(svc, mock_repo
         "Welcome to the org!",
         False,
         None,
+        event_id=None,
     )
 
 

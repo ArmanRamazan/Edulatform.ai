@@ -13,6 +13,7 @@ from common.database import create_pool, update_pool_metrics
 from common.errors import register_error_handlers
 from common.health import create_health_router
 from common.logging import configure_logging
+from common.nats import NATSClient, create_nats_client
 from common.rate_limit import RateLimitMiddleware
 from app.config import Settings
 from app.repositories.notification_repo import NotificationRepository
@@ -23,6 +24,7 @@ from app.adapters.ws_client import WsPublisher
 from app.services.notification_service import NotificationService
 from app.services.smart_reminder_service import SmartReminderService
 from app.services.messaging_service import MessagingService
+from app.services.event_subscriber import NotificationEventSubscriber
 from app.routes.notifications import router as notifications_router
 from app.routes.messaging import router as messaging_router
 
@@ -34,6 +36,7 @@ _notification_service: NotificationService | None = None
 _smart_reminder_service: SmartReminderService | None = None
 _messaging_service: MessagingService | None = None
 _http_client: httpx.AsyncClient | None = None
+_nats_client: NATSClient | None = None
 
 
 def get_notification_service() -> NotificationService:
@@ -53,7 +56,7 @@ def get_messaging_service() -> MessagingService:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _notification_service, _smart_reminder_service, _messaging_service, _http_client
+    global _pool, _redis, _notification_service, _smart_reminder_service, _messaging_service, _http_client, _nats_client
 
     configure_logging(service_name="notification")
     logger = structlog.get_logger()
@@ -78,6 +81,10 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         with open("migrations/006_messages.sql") as f:
             await conn.execute(f.read())
         with open("migrations/007_email_sent.sql") as f:
+            await conn.execute(f.read())
+        with open("migrations/008_org_id.sql") as f:
+            await conn.execute(f.read())
+        with open("migrations/009_event_id.sql") as f:
             await conn.execute(f.read())
 
     _redis = Redis.from_url(app_settings.redis_url)
@@ -119,8 +126,16 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         jwt_secret=app_settings.jwt_secret,
     )
 
+    _nats_client = create_nats_client(app_settings.nats_url)
+    await _nats_client.connect()
+    await _nats_client.ensure_stream(name="PLATFORM_EVENTS", subjects=["platform.>"])
+    _event_subscriber = NotificationEventSubscriber(_nats_client, _notification_service)
+    await _event_subscriber.start()
+    logger.info("nats_subscriber_started")
+
     logger.info("service_started", port=8005)
     yield
+    await _nats_client.close()
     await _http_client.aclose()
     await _redis.aclose()
     await _pool.close()

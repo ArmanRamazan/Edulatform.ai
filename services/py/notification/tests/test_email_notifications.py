@@ -213,6 +213,7 @@ class TestEmailSentFlag:
 
         mock_repo.create.assert_called_once_with(
             user_id, NotificationType.WELCOME, "Welcome", "Hi", True, None,
+            event_id=None,
         )
 
     @pytest.mark.asyncio
@@ -233,6 +234,7 @@ class TestEmailSentFlag:
 
         mock_repo.create.assert_called_once_with(
             user_id, NotificationType.WELCOME, "Welcome", "Hi", False, None,
+            event_id=None,
         )
 
 
@@ -258,6 +260,7 @@ class TestEmailFailureHandling:
         assert result is not None
         mock_repo.create.assert_called_once_with(
             user_id, NotificationType.WELCOME, "Welcome", "Hi", False, None,
+            event_id=None,
         )
 
 
@@ -280,6 +283,7 @@ class TestBackwardCompatibility:
         assert result is not None
         mock_repo.create.assert_called_once_with(
             user_id, NotificationType.ENROLLMENT, "Enrolled", "Welcome", False, None,
+            event_id=None,
         )
 
     @pytest.mark.asyncio
