@@ -16,6 +16,7 @@ import {
   PanelLeft,
   Menu,
   Layers,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/use-auth";
@@ -231,6 +232,7 @@ export function Sidebar() {
   ];
 
   const bottomItems: NavItem[] = [
+    { href: "/org/admin", label: "Org Admin", icon: Building2 },
     { href: "/settings", label: "Settings", icon: Settings },
   ];
 

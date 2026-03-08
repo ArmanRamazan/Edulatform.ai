@@ -1519,6 +1519,19 @@ export const organizations = {
       headers: authHeaders(token),
     });
   },
+  addMember(token: string, orgId: string, data: { user_id: string; role: string }) {
+    return request<OrgMember>(`${IDENTITY_URL}/organizations/${orgId}/members`, {
+      method: "POST",
+      headers: authHeaders(token),
+      body: JSON.stringify(data),
+    });
+  },
+  removeMember(token: string, orgId: string, userId: string) {
+    return requestVoid(`${IDENTITY_URL}/organizations/${orgId}/members/${userId}`, {
+      method: "DELETE",
+      headers: authHeaders(token),
+    });
+  },
 };
 
 export const concepts = {
