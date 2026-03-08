@@ -8,6 +8,7 @@ import structlog
 from app.domain.document import Document
 from app.repositories.document_repository import DocumentRepository
 from app.repositories.embedding_client import EmbeddingClient
+from app.repositories.vector_store import VectorPayload, VectorStorePort
 from app.services.chunker import chunk_text, chunk_code, chunk_markdown, RUST_CHUNKER
 
 if TYPE_CHECKING:
@@ -33,10 +34,12 @@ class IngestionService:
         self,
         document_repo: DocumentRepository,
         embedding_client: EmbeddingClient,
+        vector_store: VectorStorePort,
         extraction_service: ExtractionService | None = None,
     ) -> None:
         self._repo = document_repo
         self._embedder = embedding_client
+        self._vector_store = vector_store
         self._extraction = extraction_service
 
     async def ingest(
@@ -84,7 +87,14 @@ class IngestionService:
             for i, (text, emb) in enumerate(zip(text_chunks, embeddings))
         ]
 
-        await self._repo.create_chunks(doc.id, chunks_data)
+        chunk_ids = await self._repo.create_chunks(doc.id, chunks_data)
+
+        for cid, emb in zip(chunk_ids, embeddings):
+            await self._vector_store.upsert(
+                chunk_id=cid,
+                embedding=emb,
+                payload=VectorPayload(chunk_id=cid, document_id=doc.id, org_id=org_id),
+            )
 
         if self._extraction is not None:
             try:
@@ -103,4 +113,5 @@ class IngestionService:
         return await self._repo.get_documents_by_org(org_id, limit, offset)
 
     async def delete(self, document_id: UUID) -> bool:
+        await self._vector_store.delete_by_document(document_id)
         return await self._repo.delete_document(document_id)

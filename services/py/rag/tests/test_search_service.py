@@ -5,10 +5,16 @@ import pytest
 
 from app.services.search_service import SearchService
 from app.domain.search import SearchResult
+from app.repositories.vector_store import VectorSearchResult
 
 
 @pytest.fixture
-def search_repo():
+def vector_store():
+    return AsyncMock()
+
+
+@pytest.fixture
+def doc_repo():
     return AsyncMock()
 
 
@@ -20,18 +26,18 @@ def embedding_client():
 
 
 @pytest.fixture
-def service(search_repo, embedding_client):
+def service(vector_store, doc_repo, embedding_client):
     return SearchService(
-        search_repo=search_repo,
+        vector_store=vector_store,
+        document_repo=doc_repo,
         embedding_client=embedding_client,
     )
 
 
-def _make_search_row(chunk_id=None):
+def _make_chunk_row(chunk_id=None):
     return {
         "id": chunk_id or uuid4(),
         "content": "Some relevant content.",
-        "similarity": 0.92,
         "document_title": "Test Doc",
         "source_type": "text",
         "source_path": "/doc.md",
@@ -41,19 +47,22 @@ def _make_search_row(chunk_id=None):
 
 
 class TestSearch:
-    async def test_embeds_query_and_searches(self, service, search_repo, embedding_client):
-        search_repo.search.return_value = [_make_search_row()]
+    async def test_embeds_query_and_searches(self, service, vector_store, doc_repo, embedding_client):
+        chunk_id = uuid4()
+        vector_store.search.return_value = [VectorSearchResult(chunk_id=chunk_id, score=0.92)]
+        doc_repo.get_chunks_with_documents.return_value = [_make_chunk_row(chunk_id=chunk_id)]
 
         results = await service.search("what is python?", uuid4(), limit=5)
 
         embedding_client.embed.assert_called_once_with("what is python?")
-        search_repo.search.assert_called_once()
+        vector_store.search.assert_called_once()
         assert len(results) == 1
         assert isinstance(results[0], SearchResult)
 
-    async def test_returns_search_results_with_correct_fields(self, service, search_repo):
+    async def test_returns_search_results_with_correct_fields(self, service, vector_store, doc_repo):
         chunk_id = uuid4()
-        search_repo.search.return_value = [_make_search_row(chunk_id=chunk_id)]
+        vector_store.search.return_value = [VectorSearchResult(chunk_id=chunk_id, score=0.92)]
+        doc_repo.get_chunks_with_documents.return_value = [_make_chunk_row(chunk_id=chunk_id)]
 
         results = await service.search("query", uuid4())
         result = results[0]
@@ -64,31 +73,48 @@ class TestSearch:
         assert result.source_type == "text"
         assert result.source_path == "/doc.md"
 
-    async def test_passes_limit_to_repo(self, service, search_repo):
-        search_repo.search.return_value = []
+    async def test_passes_limit_to_vector_store(self, service, vector_store, doc_repo):
+        vector_store.search.return_value = []
 
         await service.search("query", uuid4(), limit=10)
-        _, kwargs = search_repo.search.call_args
-        assert kwargs.get("limit", search_repo.search.call_args[0][2] if len(search_repo.search.call_args[0]) > 2 else None) == 10 or search_repo.search.call_args[0][2] == 10
+        call_kwargs = vector_store.search.call_args
+        assert call_kwargs[1].get("limit") == 10 or call_kwargs[0][2] == 10
 
-    async def test_empty_results(self, service, search_repo):
-        search_repo.search.return_value = []
+    async def test_empty_results_from_vector_store(self, service, vector_store, doc_repo):
+        vector_store.search.return_value = []
 
         results = await service.search("query", uuid4())
         assert results == []
+        doc_repo.get_chunks_with_documents.assert_not_called()
 
-    async def test_passes_org_id_to_repo(self, service, search_repo):
-        search_repo.search.return_value = []
+    async def test_passes_org_id_to_vector_store(self, service, vector_store, doc_repo):
+        vector_store.search.return_value = []
         org_id = uuid4()
 
         await service.search("query", org_id)
-        call_args = search_repo.search.call_args[0]
+        call_args = vector_store.search.call_args[0]
         assert org_id in call_args
+
+    async def test_results_sorted_by_similarity_desc(self, service, vector_store, doc_repo):
+        id1, id2 = uuid4(), uuid4()
+        vector_store.search.return_value = [
+            VectorSearchResult(chunk_id=id1, score=0.7),
+            VectorSearchResult(chunk_id=id2, score=0.95),
+        ]
+        doc_repo.get_chunks_with_documents.return_value = [
+            _make_chunk_row(chunk_id=id1),
+            _make_chunk_row(chunk_id=id2),
+        ]
+
+        results = await service.search("query", uuid4())
+        assert results[0].similarity > results[1].similarity
 
 
 class TestSearchForConcept:
-    async def test_builds_expanded_query(self, service, search_repo, embedding_client):
-        search_repo.search.return_value = [_make_search_row()]
+    async def test_builds_expanded_query(self, service, vector_store, doc_repo, embedding_client):
+        chunk_id = uuid4()
+        vector_store.search.return_value = [VectorSearchResult(chunk_id=chunk_id, score=0.9)]
+        doc_repo.get_chunks_with_documents.return_value = [_make_chunk_row(chunk_id=chunk_id)]
 
         results = await service.search_for_concept("machine learning", uuid4())
 
@@ -96,16 +122,18 @@ class TestSearchForConcept:
         assert "machine learning" in embed_call
         assert len(results) == 1
 
-    async def test_returns_search_results(self, service, search_repo):
-        search_repo.search.return_value = [_make_search_row()]
+    async def test_returns_search_results(self, service, vector_store, doc_repo):
+        chunk_id = uuid4()
+        vector_store.search.return_value = [VectorSearchResult(chunk_id=chunk_id, score=0.85)]
+        doc_repo.get_chunks_with_documents.return_value = [_make_chunk_row(chunk_id=chunk_id)]
 
         results = await service.search_for_concept("python basics", uuid4())
         assert isinstance(results[0], SearchResult)
 
-    async def test_passes_org_id(self, service, search_repo):
-        search_repo.search.return_value = []
+    async def test_passes_org_id(self, service, vector_store, doc_repo):
+        vector_store.search.return_value = []
         org_id = uuid4()
 
         await service.search_for_concept("concept", org_id)
-        call_args = search_repo.search.call_args[0]
+        call_args = vector_store.search.call_args[0]
         assert org_id in call_args

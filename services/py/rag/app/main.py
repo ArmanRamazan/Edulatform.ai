@@ -23,7 +23,6 @@ from app.repositories.vector_store import VectorStorePort
 from app.repositories.qdrant_store import QdrantStore
 from app.repositories.stub_vector_store import StubVectorStore
 from app.repositories.document_repository import DocumentRepository
-from app.repositories.search_repository import SearchRepository
 from app.repositories.concept_store import ConceptStoreRepository
 from app.routes.ingestion_routes import create_ingestion_router
 from app.routes.search_routes import create_search_router
@@ -162,7 +161,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
         logger.info("vector_store", mode="stub")
 
     doc_repo = DocumentRepository(_pool)
-    search_repo = SearchRepository(_pool)
     _concept_store = ConceptStoreRepository(_pool)
     _extraction_service = ExtractionService(
         concept_store=_concept_store,
@@ -172,10 +170,12 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _ingestion_service = IngestionService(
         document_repo=doc_repo,
         embedding_client=_embedding_client,
+        vector_store=_vector_store,
         extraction_service=_extraction_service,
     )
     _search_service = SearchService(
-        search_repo=search_repo,
+        vector_store=_vector_store,
+        document_repo=doc_repo,
         embedding_client=_embedding_client,
     )
     _kb_service = KnowledgeBaseService(

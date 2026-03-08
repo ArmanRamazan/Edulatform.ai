@@ -1,16 +1,16 @@
 # RAG Service
 
-Port 8008 | DB port 5439 | Package: rag | 173 tests
+Port 8008 | DB port 5439 | Package: rag | 230 tests
 
 ## Domain
 
-pgvector-based RAG pipeline. Document ingestion, semantic search,
+Qdrant + pgvector RAG pipeline. Document ingestion, semantic search via VectorStorePort (Qdrant prod, StubVectorStore dev/test),
 LLM concept extraction, knowledge base management. GitHub adapter.
 
 ## Services & Repos
 
-- IngestionService (DocumentRepo, EmbeddingClient, ExtractionService)
-- SearchService (SearchRepo, EmbeddingClient)
+- IngestionService (DocumentRepo, EmbeddingClient, VectorStorePort, ExtractionService)
+- SearchService (VectorStorePort, DocumentRepo, EmbeddingClient)
 - ExtractionService (ConceptStoreRepo) — LLM-based concept extraction
 - KnowledgeBaseService (DocumentRepo, ConceptStoreRepo, IngestionService, SearchService)
 - GitHubAdapter — ingest GitHub repos as knowledge base
@@ -37,11 +37,18 @@ ingestion_routes, search_routes, concept_routes, knowledge_base_routes, github_r
 - Python fallback when Rust binary unavailable
 - Test Rust: `cd libs/rs/rag-chunker && cargo test`
 
+## Vector store (strategy pattern)
+
+- QdrantStore — production (Qdrant API)
+- StubVectorStore — tests/dev (in-memory cosine similarity)
+- Selection logic: qdrant_url set? -> Qdrant. Otherwise? -> Stub
+- VectorStorePort ABC: upsert, search, delete, delete_by_document, ensure_collection
+
 ## Key patterns
 
 - No Redis (unlike other services) — no rate limiting middleware
 - JWT validation done per-router via factory params
-- pgvector extension required in PostgreSQL
+- pgvector extension required in PostgreSQL (metadata + text storage, chunks table)
 
 ## Test command
 

@@ -123,6 +123,40 @@ class DocumentRepository:
                 org_id,
             )
 
+    async def get_chunks_with_documents(
+        self,
+        chunk_ids: list[UUID],
+    ) -> list[dict]:
+        if not chunk_ids:
+            return []
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT c.id, c.content, c.metadata, c.chunk_index,
+                       d.title AS document_title, d.source_type, d.source_path
+                FROM chunks c
+                JOIN documents d ON c.document_id = d.id
+                WHERE c.id = ANY($1)
+                """,
+                chunk_ids,
+            )
+        import json as _json
+        results: list[dict] = []
+        for row in rows:
+            metadata = row["metadata"]
+            if isinstance(metadata, str):
+                metadata = _json.loads(metadata)
+            results.append({
+                "id": row["id"],
+                "content": row["content"],
+                "metadata": metadata,
+                "chunk_index": row["chunk_index"],
+                "document_title": row["document_title"],
+                "source_type": row["source_type"],
+                "source_path": row["source_path"],
+            })
+        return results
+
     async def delete_chunks_by_document(self, document_id: UUID) -> None:
         async with self._pool.acquire() as conn:
             await conn.execute(
