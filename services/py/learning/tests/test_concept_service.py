@@ -307,6 +307,100 @@ class TestMastery:
         mock_concept_repo.upsert_mastery.assert_not_called()
 
 
+class TestListConcepts:
+    """ConceptService.list_concepts — optional org_id filter."""
+
+    async def test_returns_all_concepts_without_org_filter(
+        self, concept_service, mock_concept_repo, sample_concept
+    ):
+        mock_concept_repo.list_concepts.return_value = [sample_concept]
+
+        result = await concept_service.list_concepts(org_id=None)
+
+        assert len(result) == 1
+        assert result[0].id == sample_concept.id
+        mock_concept_repo.list_concepts.assert_called_once_with(org_id=None)
+
+    async def test_filters_concepts_by_org_id(
+        self, concept_service, mock_concept_repo, course_id
+    ):
+        org_id = uuid4()
+        org_concept = Concept(
+            id=uuid4(), course_id=course_id, lesson_id=None,
+            name="Docker Basics", description="",
+            parent_id=None, order=0,
+            organization_id=org_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        mock_concept_repo.list_concepts.return_value = [org_concept]
+
+        result = await concept_service.list_concepts(org_id=org_id)
+
+        assert len(result) == 1
+        assert result[0].organization_id == org_id
+        mock_concept_repo.list_concepts.assert_called_once_with(org_id=org_id)
+
+    async def test_returns_empty_list_when_no_concepts(
+        self, concept_service, mock_concept_repo
+    ):
+        mock_concept_repo.list_concepts.return_value = []
+
+        result = await concept_service.list_concepts(org_id=uuid4())
+
+        assert result == []
+
+
+class TestGetUserMastery:
+    """ConceptService.get_user_mastery — optional org_id filter."""
+
+    async def test_returns_mastery_without_org_filter(
+        self, concept_service, mock_concept_repo, student_id, sample_concept
+    ):
+        mock_concept_repo.get_user_mastery.return_value = [
+            (sample_concept, 0.5),
+        ]
+
+        result = await concept_service.get_user_mastery(student_id, org_id=None)
+
+        assert len(result.items) == 1
+        assert result.items[0].mastery == 0.5
+        assert result.organization_id is None
+        mock_concept_repo.get_user_mastery.assert_called_once_with(student_id, org_id=None)
+
+    async def test_filters_mastery_by_org_id(
+        self, concept_service, mock_concept_repo, student_id, course_id
+    ):
+        org_id = uuid4()
+        org_concept = Concept(
+            id=uuid4(), course_id=course_id, lesson_id=None,
+            name="CI/CD", description="",
+            parent_id=None, order=0,
+            organization_id=org_id,
+            created_at=datetime.now(timezone.utc),
+        )
+        mock_concept_repo.get_user_mastery.return_value = [
+            (org_concept, 0.75),
+        ]
+
+        result = await concept_service.get_user_mastery(student_id, org_id=org_id)
+
+        assert len(result.items) == 1
+        assert result.items[0].mastery == 0.75
+        assert result.organization_id == org_id
+        mock_concept_repo.get_user_mastery.assert_called_once_with(student_id, org_id=org_id)
+
+    async def test_returns_empty_items_when_no_mastery(
+        self, concept_service, mock_concept_repo, student_id
+    ):
+        org_id = uuid4()
+        mock_concept_repo.get_user_mastery.return_value = []
+
+        result = await concept_service.get_user_mastery(student_id, org_id=org_id)
+
+        assert result.items == []
+        assert result.organization_id == org_id
+
+
 class TestApplyMasteryDelta:
     """ConceptService.apply_mastery_delta — called by MissionService after mission completion."""
 

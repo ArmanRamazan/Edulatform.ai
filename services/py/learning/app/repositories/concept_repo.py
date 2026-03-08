@@ -51,6 +51,49 @@ class ConceptRepository:
         )
         return [self._to_concept(r) for r in rows]
 
+    async def list_concepts(self, org_id: UUID | None = None) -> list[Concept]:
+        if org_id is not None:
+            rows = await self._pool.fetch(
+                f'SELECT {_CONCEPT_COLUMNS} FROM concepts WHERE organization_id = $1 ORDER BY "order", created_at',
+                org_id,
+            )
+        else:
+            rows = await self._pool.fetch(
+                f'SELECT {_CONCEPT_COLUMNS} FROM concepts ORDER BY "order", created_at',
+            )
+        return [self._to_concept(r) for r in rows]
+
+    async def get_user_mastery(
+        self, student_id: UUID, org_id: UUID | None = None
+    ) -> list[tuple[Concept, float]]:
+        if org_id is not None:
+            rows = await self._pool.fetch(
+                f"""
+                SELECT c.id, c.course_id, c.lesson_id, c.name, c.description,
+                       c.parent_id, c."order", c.created_at, c.organization_id,
+                       COALESCE(cm.mastery, 0.0) as mastery
+                FROM concepts c
+                LEFT JOIN concept_mastery cm ON cm.concept_id = c.id AND cm.student_id = $1
+                WHERE c.organization_id = $2
+                ORDER BY c."order", c.created_at
+                """,
+                student_id, org_id,
+            )
+        else:
+            rows = await self._pool.fetch(
+                f"""
+                SELECT c.id, c.course_id, c.lesson_id, c.name, c.description,
+                       c.parent_id, c."order", c.created_at, c.organization_id,
+                       cm.mastery
+                FROM concept_mastery cm
+                JOIN concepts c ON c.id = cm.concept_id
+                WHERE cm.student_id = $1
+                ORDER BY c."order", c.created_at
+                """,
+                student_id,
+            )
+        return [(self._to_concept(r), r["mastery"]) for r in rows]
+
     async def get_by_lesson(self, lesson_id: UUID) -> list[Concept]:
         rows = await self._pool.fetch(
             f'SELECT {_CONCEPT_COLUMNS} FROM concepts WHERE lesson_id = $1 ORDER BY "order"',

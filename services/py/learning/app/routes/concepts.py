@@ -14,6 +14,7 @@ from app.domain.concept import (
     PrerequisiteAdd,
     CourseGraphResponse,
     CourseMasteryResponse,
+    MasteryListResponse,
 )
 from app.services.concept_service import ConceptService
 
@@ -42,6 +43,33 @@ def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
         }
     except (jwt.PyJWTError, ValueError, KeyError) as exc:
         raise AppError("Invalid token", status_code=401) from exc
+
+
+@router.get("", response_model=list[ConceptResponse])
+async def list_concepts(
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[ConceptService, Depends(_get_concept_service)],
+    org_id: UUID | None = None,
+) -> list[ConceptResponse]:
+    concepts = await service.list_concepts(org_id=org_id)
+    return [
+        ConceptResponse(
+            id=c.id, course_id=c.course_id, lesson_id=c.lesson_id,
+            name=c.name, description=c.description,
+            parent_id=c.parent_id, order=c.order,
+            created_at=c.created_at, organization_id=c.organization_id,
+        )
+        for c in concepts
+    ]
+
+
+@router.get("/mastery", response_model=MasteryListResponse)
+async def get_user_mastery(
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[ConceptService, Depends(_get_concept_service)],
+    org_id: UUID | None = None,
+) -> MasteryListResponse:
+    return await service.get_user_mastery(claims["user_id"], org_id=org_id)
 
 
 @router.post("", response_model=ConceptResponse, status_code=201)

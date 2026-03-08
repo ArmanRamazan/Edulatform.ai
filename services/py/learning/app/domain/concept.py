@@ -87,3 +87,13 @@ class CourseGraphResponse(BaseModel):
 class CourseMasteryResponse(BaseModel):
     course_id: UUID
     items: list[MasteryResponse]
+
+
+class MasteryListResponse(BaseModel):
+    """Mastery for all (or org-filtered) concepts for a user.
+
+    organization_id is set when filtered to an org; None means unfiltered (B2C behavior).
+    """
+
+    items: list[MasteryResponse]
+    organization_id: UUID | None = None

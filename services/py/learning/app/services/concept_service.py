@@ -14,6 +14,7 @@ from app.domain.concept import (
     ConceptResponse,
     CourseGraphResponse,
     CourseMasteryResponse,
+    MasteryListResponse,
     MasteryResponse,
 )
 from app.repositories.concept_repo import ConceptRepository
@@ -145,6 +146,33 @@ class ConceptService:
             raise NotFoundError("Prerequisite link not found")
 
     # --- Read (any authenticated user) ---
+
+    async def list_concepts(self, org_id: UUID | None = None) -> list[Concept]:
+        """List concepts, optionally filtered to an organization.
+
+        B2B: pass org_id to get org-scoped concepts.
+        B2C: pass None to return all concepts (no org filter).
+        """
+        return await self._repo.list_concepts(org_id=org_id)
+
+    async def get_user_mastery(
+        self, student_id: UUID, org_id: UUID | None = None
+    ) -> MasteryListResponse:
+        """Get mastery for a user, optionally scoped to an organization's concepts.
+
+        B2B: pass org_id — returns all org concepts with mastery (0.0 default).
+        B2C: pass None — returns only concepts where the student has explicit mastery records.
+        """
+        pairs = await self._repo.get_user_mastery(student_id, org_id=org_id)
+        items = [
+            MasteryResponse(
+                concept_id=concept.id,
+                concept_name=concept.name,
+                mastery=mastery,
+            )
+            for concept, mastery in pairs
+        ]
+        return MasteryListResponse(items=items, organization_id=org_id)
 
     async def get_course_graph(self, course_id: UUID) -> CourseGraphResponse:
         concepts = await self._repo.get_by_course(course_id)
