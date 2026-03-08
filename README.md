@@ -21,7 +21,6 @@ Monorepo: **Python** (business logic) + **Rust** (performance-critical) + **Type
 | ai | Python | 8006 | 291 | LLM orchestrator, tri-agent coaching, missions, unified search, MockLLMProvider |
 | learning | Python | 8007 | 272 | Quizzes, flashcards (FSRS), concepts, gamification, certificates, trust levels |
 | rag | Python | 8008 | 180 | pgvector, ingestion, semantic search, concept extraction, GitHub adapter |
-| search | Rust | 9000 | + | Full-text search (tantivy) |
 
 **Frontend**: buyer (Next.js 15, port 3001, 28 pages) + seller (Next.js 15, port 3002)
 
@@ -66,4 +65,4 @@ cd services/rs/<name> && cargo test && cargo clippy -- -D warnings
 
 ## Tech Stack
 
-Python 3.12 (FastAPI) | Rust (axum, tantivy, PyO3) | Next.js 15 (React 19, Tailwind, shadcn/ui) | PostgreSQL 16 | pgvector | Redis 7 | Gemini Flash | Prometheus + Grafana | Docker Compose
+Python 3.12 (FastAPI) | Rust (axum, PyO3) | Next.js 15 (React 19, Tailwind, shadcn/ui) | PostgreSQL 16 | pgvector | Redis 7 | NATS JetStream | Gemini Flash | Prometheus + Grafana | Docker Compose

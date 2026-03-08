@@ -1,0 +1,162 @@
+phase: "sprint-42"
+description: "Phase A.3 — Migrate vector storage from pgvector to Qdrant for production scale"
+
+tasks:
+  - id: qdrant-infrastructure
+    title: "Add Qdrant to Docker infrastructure"
+    scope: infra
+    type: feat
+    prompt: |
+      Task: Add Qdrant vector database to Docker infrastructure, replacing pgvector for vector storage.
+
+      CONTEXT:
+      - RAG service currently uses pgvector (PostgreSQL extension) for 768-dim embeddings
+      - pgvector works for dev but is NOT a production vector DB:
+        - IVFFlat(lists=100) suboptimal for scale
+        - String serialization inefficient
+        - No native HNSW tuning, limited filtering, no sharding
+      - Qdrant is a purpose-built vector DB with HNSW, filtering, sharding, snapshots
+      - We keep pgvector in rag-db for metadata (documents, chunks text) but move embeddings to Qdrant
+
+      WHAT TO DO:
+
+      1. Add Qdrant to docker-compose.dev.yml:
+         ```yaml
+         qdrant:
+           image: qdrant/qdrant:v1.12.1
+           ports:
+             - "6333:6333"   # REST API
+             - "6334:6334"   # gRPC
+           volumes:
+             - qdrant-data:/qdrant/storage
+           environment:
+             QDRANT__SERVICE__GRPC_PORT: 6334
+           healthcheck:
+             test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+             interval: 5s
+             timeout: 3s
+             retries: 5
+         ```
+
+      2. Add qdrant-data volume to volumes section
+
+      3. Add QDRANT_URL env var to rag service:
+         QDRANT_URL: http://qdrant:6333
+
+      4. Also add to docker-compose.prod.yml and docker-compose.staging.yml if they exist
+
+      5. Update docs/architecture/05-INFRASTRUCTURE.md:
+         - Add Qdrant to infrastructure table
+         - Document: "Qdrant for vector storage (768-dim embeddings), pgvector retained for metadata"
+
+      COMMIT: feat(infra): add Qdrant vector database to Docker infrastructure
+    test: "grep -q 'qdrant' /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/docker-compose.dev.yml"
+    depends_on: []
+
+  - id: qdrant-adapter
+    title: "Create Qdrant adapter in RAG service"
+    scope: backend
+    type: feat
+    prompt: |
+      Task: Create a Qdrant vector store adapter in RAG service to replace pgvector for embedding storage and search.
+
+      CONTEXT:
+      - RAG service: services/py/rag/
+      - Current: embeddings stored in pgvector (chunks table, embedding column)
+      - Target: embeddings stored in Qdrant, text/metadata stays in PostgreSQL
+      - Clean Architecture: adapter goes in repositories/
+      - Use qdrant-client Python SDK (async support)
+
+      WHAT TO DO:
+
+      1. Add qdrant-client dependency:
+         - Edit services/py/rag/pyproject.toml
+         - Add: qdrant-client>=1.12.0
+
+      2. Create services/py/rag/app/repositories/vector_store.py:
+         ```python
+         from abc import ABC, abstractmethod
+
+         class VectorStore(ABC):
+             @abstractmethod
+             async def upsert(self, collection: str, ids: list[str], vectors: list[list[float]], payloads: list[dict]) -> None: ...
+
+             @abstractmethod
+             async def search(self, collection: str, query_vector: list[float], limit: int, filters: dict | None = None) -> list[dict]: ...
+
+             @abstractmethod
+             async def delete(self, collection: str, ids: list[str]) -> None: ...
+
+             @abstractmethod
+             async def ensure_collection(self, collection: str, vector_size: int) -> None: ...
+         ```
+
+      3. Create services/py/rag/app/repositories/qdrant_store.py:
+         - QdrantStore(VectorStore) — uses qdrant_client.AsyncQdrantClient
+         - connect(url: str) in __init__ or factory
+         - ensure_collection: creates collection with cosine distance, HNSW config
+         - upsert: batch upsert points
+         - search: vector search with optional payload filters (org_id, document_id)
+         - delete: remove points by IDs
+
+      4. Create services/py/rag/app/repositories/stub_vector_store.py:
+         - StubVectorStore(VectorStore) — in-memory dict for tests (when QDRANT_URL is empty)
+         - Same interface, stores vectors in memory, does brute-force cosine similarity
+
+      5. Wire in main.py lifespan:
+         - If QDRANT_URL is set → QdrantStore
+         - If empty → StubVectorStore (like MockLLMProvider pattern)
+
+      6. Write tests with StubVectorStore:
+         - Test upsert + search returns correct results
+         - Test filter by org_id
+         - Test delete removes vectors
+         - Test ensure_collection is idempotent
+
+      TDD: Write failing tests first.
+
+      COMMIT: feat(rag): add Qdrant vector store adapter with stub fallback
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [qdrant-infrastructure]
+
+  - id: qdrant-migration-search
+    title: "Migrate RAG search from pgvector to Qdrant adapter"
+    scope: backend
+    type: refactor
+    prompt: |
+      Task: Migrate the RAG search flow to use the new VectorStore adapter instead of direct pgvector queries.
+
+      CONTEXT:
+      - services/py/rag/app/repositories/search_repository.py — current pgvector search
+      - services/py/rag/app/repositories/vector_store.py — new VectorStore ABC (from previous task)
+      - services/py/rag/app/services/search_service.py — orchestrates search
+      - Current flow: SearchService → SearchRepository (pgvector SQL with embedding column)
+      - Target flow: SearchService → VectorStore.search() for vectors + PostgreSQL for metadata
+
+      WHAT TO DO:
+
+      1. Read current search_service.py and search_repository.py to understand the flow
+
+      2. Modify SearchService to use VectorStore:
+         - Inject VectorStore dependency alongside SearchRepository
+         - Search flow:
+           a) Call VectorStore.search(collection="chunks", query_vector=embedding, limit=limit, filters={"org_id": org_id})
+           b) Get back chunk_ids + similarity scores
+           c) Fetch chunk text + document metadata from PostgreSQL (existing repo)
+           d) Combine and return
+
+      3. Modify document ingestion to store embeddings in Qdrant:
+         - When chunks are created, also upsert vectors to Qdrant
+         - Keep chunk text in PostgreSQL (chunks table, but embedding column becomes optional)
+         - Payload in Qdrant: { org_id, document_id, chunk_index }
+
+      4. DO NOT remove the pgvector embedding column yet — keep for backward compat
+         - Add migration: ALTER TABLE chunks ALTER COLUMN embedding DROP NOT NULL (if it was NOT NULL)
+
+      5. Update all tests to use StubVectorStore
+
+      6. Run tests: cd services/py/rag && uv run --package rag pytest tests/ -v
+
+      COMMIT: refactor(rag): migrate search from pgvector to Qdrant vector store
+    test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/rag && uv run --package rag pytest tests/ -v"
+    depends_on: [qdrant-adapter]

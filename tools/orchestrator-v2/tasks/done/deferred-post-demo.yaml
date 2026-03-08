@@ -1,0 +1,94 @@
+phase: "deferred"
+description: "Post-demo backlog — not needed for MVP demo, implement later"
+
+# These items are explicitly DEFERRED. They do not block the demo.
+# Prioritize after successful demo presentation.
+
+tasks:
+  # ---- Already sufficient for demo, full implementation later ----
+
+  - id: proto-contracts
+    title: "Protobuf contracts for inter-service communication"
+    scope: infra
+    type: feat
+    status: deferred
+    prompt: |
+      Create proto/ directory with protobuf contracts for all service-to-service calls.
+      Currently services communicate via REST — proto contracts are for future gRPC migration.
+      NOT needed for demo — REST works fine.
+
+  - id: seller-app-full
+    title: "Seller App — full teacher dashboard"
+    scope: frontend
+    type: feat
+    status: deferred
+    prompt: |
+      Seller app (apps/seller/) has 4 pages and 3 components.
+      Full build: course editor, analytics, student management, earnings dashboard.
+      Demo focuses on buyer app (engineer experience), seller is secondary.
+
+  - id: ws-gateway-full
+    title: "WebSocket Gateway — full real-time implementation"
+    scope: backend
+    type: feat
+    status: deferred
+    prompt: |
+      services/rs/ws-gateway/ is scaffolded but not fully implemented.
+      Needed for: real-time notifications, live collaboration, presence.
+      Demo can use polling or show static data.
+
+  - id: embedding-orchestrator-full
+    title: "Embedding Orchestrator — full implementation"
+    scope: backend
+    type: feat
+    status: deferred
+    prompt: |
+      services/rs/embedding-orchestrator/ is scaffolded.
+      Needed for: batch embedding generation, model switching.
+      Demo uses mock embeddings in seed data.
+
+  - id: mcp-server-full
+    title: "MCP Server — real tool implementations"
+    scope: backend
+    type: feat
+    status: deferred
+    prompt: |
+      services/py/mcp/ has only 2 test files, no real tool implementations.
+      Needed for: AI agent integration via Model Context Protocol.
+      Phase 6+ feature, not demo-critical.
+
+  - id: clickhouse-analytics
+    title: "ClickHouse analytics pipeline"
+    scope: infra
+    type: feat
+    status: deferred
+    prompt: |
+      Add ClickHouse for event analytics, funnel analysis, cohort tracking.
+      Phase 6+ feature. Demo uses PostgreSQL queries for analytics.
+
+  - id: oauth-social-login
+    title: "OAuth / Social login (Google, GitHub)"
+    scope: backend
+    type: feat
+    status: deferred
+    prompt: |
+      Add OAuth2 providers: Google, GitHub SSO.
+      Demo uses email/password auth. OAuth is Phase 6+.
+
+  - id: video-processing
+    title: "Video transcoding and streaming"
+    scope: backend
+    type: feat
+    status: deferred
+    prompt: |
+      Rust video-processor service for HLS transcoding.
+      Phase 6+ feature. KnowledgeOS focuses on text/code knowledge, not video.
+
+  - id: multi-region-k8s
+    title: "Multi-region Kubernetes deployment"
+    scope: infra
+    type: feat
+    status: deferred
+    prompt: |
+      K8s manifests, Helm charts, multi-region with geo-routing.
+      Phase 6+ feature. Demo runs on single Docker Compose.

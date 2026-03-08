@@ -18,12 +18,12 @@
                        │  │  │  │  │  │  │  │  │
           ┌────────────┘  │  │  │  │  │  │  │  └────────────┐
           ▼               ▼  │  │  │  │  │  ▼               ▼
-   ┌──────────┐  ┌─────────┐│  │  │  │  │┌──────────┐ ┌────────┐
-   │ identity │  │  course  ││  │  │  │  ││   rag    │ │ search │
-   │  :8001   │  │  :8002   ││  │  │  │  ││  :8008   │ │ :9000  │
-   └────┬─────┘  └────┬─────┘│  │  │  │  │└────┬─────┘ └────────┘
-        │              │      │  │  │  │  │     │        (Rust/
-     [5433]         [5434]    │  │  │  │  │  [5439]      tantivy)
+   ┌──────────┐  ┌─────────┐│  │  │  │  │┌──────────┐
+   │ identity │  │  course  ││  │  │  │  ││   rag    │
+   │  :8001   │  │  :8002   ││  │  │  │  ││  :8008   │
+   └────┬─────┘  └────┬─────┘│  │  │  │  │└────┬─────┘
+        │              │      │  │  │  │  │     │
+     [5433]         [5434]    │  │  │  │  │  [5439]
                               ▼  │  │  │  ▼
                     ┌──────────┐ │  │  │ ┌──────────────┐
                     │enrollment│ │  │  │ │ notification  │
@@ -69,7 +69,6 @@
 | ai | Python | FastAPI | 8006 | — | 291 | LLM orchestrator (Gemini Flash), tri-agent coaching, missions, credits, unified search, MockLLMProvider |
 | learning | Python | FastAPI | 8007 | 5438 | 272 | Quizzes, flashcards (FSRS), concepts, streaks, leaderboard, discussions, XP, badges, pretests, velocity, activity feed, study groups, missions, daily summary, certificates, trust levels |
 | rag | Python | FastAPI | 8008 | 5439 | 180 | pgvector, document ingestion, semantic search, concept extraction, GitHub adapter, KB management, StubEmbeddingClient |
-| search | Rust | axum + tantivy | 9000 | — | cargo test | Full-text search index |
 
 ## Frontend
 
@@ -86,7 +85,6 @@
 | Python framework | FastAPI + uvicorn |
 | Rust runtime | tokio |
 | Rust HTTP | axum |
-| Rust search | tantivy |
 | Rust FFI | PyO3 (rag-chunker) |
 | Database | PostgreSQL 16 (asyncpg) |
 | Vectors | pgvector (768-dim embeddings) |

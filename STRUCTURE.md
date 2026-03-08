@@ -83,8 +83,10 @@
 │       │   ├── src/              # main.rs, config.rs, routes/
 │       │   └── tests/
 │       │
-│       └── search/               # Port 9000 — Tantivy full-text search
-│           └── src/              # main.rs, config.rs, routes.rs, index.rs
+│       ├── ws-gateway/           # Port 8011 — WebSocket real-time (axum)
+│       │   └── src/
+│       └── embedding-orchestrator/ # Port 8009 — Concurrent embedding proxy (axum)
+│           └── src/
 │
 ├── libs/
 │   ├── py/

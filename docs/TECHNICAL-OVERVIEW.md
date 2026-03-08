@@ -24,7 +24,6 @@ Clean Architecture in every Python service: `routes → services → domain ← 
 | mcp | Python | FastMCP | — | — | 59 | MCP server exposing KB tools for AI agents (Claude, Cursor); auth via Bearer token to api-gateway |
 | ws-gateway | Rust | axum | 8011 | — | cargo test | WebSocket real-time notifications |
 | embedding-orchestrator | Rust | axum | 8009 | — | cargo test | Concurrent embedding API proxy |
-| search | Rust | axum + tantivy | 9000 | — | cargo test | Full-text search index |
 
 **Total: 1492 tests passed, 6 pre-existing failures** (3 enrollment, 3 notification).
 

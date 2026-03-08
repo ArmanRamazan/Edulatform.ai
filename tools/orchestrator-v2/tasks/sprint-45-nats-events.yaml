@@ -1,62 +1,7 @@
 phase: "sprint-45"
-description: "Phase B.2 — NATS JetStream for async events between services"
+description: "Phase B.2 — NATS JetStream event publishers and subscribers (infra already done)"
 
 tasks:
-  - id: nats-infrastructure
-    title: "Add NATS JetStream to Docker infrastructure"
-    scope: infra
-    type: feat
-    prompt: |
-      Task: Add NATS JetStream as async event bus to Docker infrastructure.
-
-      CONTEXT:
-      - CLAUDE.md: "Между доменами — асинхронные события через NATS JetStream"
-      - Currently all inter-service communication is synchronous HTTP
-      - NATS will replace some HTTP calls with events
-
-      WHAT TO DO:
-
-      1. Add NATS to docker-compose.dev.yml:
-         ```yaml
-         nats:
-           image: nats:2.10-alpine
-           ports:
-             - "4222:4222"   # client
-             - "8222:8222"   # monitoring
-           command: "--jetstream --store_dir /data"
-           volumes:
-             - nats-data:/data
-           healthcheck:
-             test: ["CMD", "nats-server", "--signal", "ldm"]
-             interval: 5s
-             timeout: 3s
-             retries: 5
-         ```
-
-      2. Add NATS volume to volumes section
-
-      3. Add NATS_URL env var to services that will publish/subscribe:
-         - ai: NATS_URL: nats://nats:4222
-         - learning: NATS_URL: nats://nats:4222
-         - notification: NATS_URL: nats://nats:4222
-
-      4. Add nats-py dependency to common library or individual services:
-         - Check if libs/py/common/pyproject.toml exists
-         - Add nats-py>=2.7.0 as optional dependency
-
-      5. Create libs/py/common/common/nats.py:
-         - NATSClient wrapper with connect/publish/subscribe
-         - create_nats_client(url: str) factory
-         - Handles reconnection gracefully
-
-      6. Update docs/architecture/05-INFRASTRUCTURE.md:
-         - Add NATS to infrastructure table
-         - Document event patterns
-
-      COMMIT: feat(infra): add NATS JetStream infrastructure and common client
-    test: "python3 -c \"import ast; ast.parse(open('/mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/libs/py/common/common/nats.py').read()); print('OK')\""
-    depends_on: []
-
   - id: mastery-updated-event
     title: "Publish mastery.updated event from Learning service"
     scope: backend
@@ -66,14 +11,17 @@ tasks:
 
       CONTEXT:
       - Learning service owns concept_mastery table
+      - NATS JetStream already added to infrastructure (docker-compose, common/nats.py)
+      - common.nats.NATSClient wrapper exists in libs/py/common/common/nats.py
+      - NATS_URL env var already set in all Python services
       - AI service previously fetched mastery via HTTP (circular dep, fixed in sprint-41)
       - Now: Learning publishes mastery.updated → any interested service can subscribe
 
       WHAT TO DO:
 
-      1. Define event in proto/events/v1/mastery.proto (or as Python dataclass if proto not set up):
+      1. Define event as Python dataclass in services/py/learning/app/domain/events.py:
          ```python
-         @dataclass
+         @dataclass(frozen=True)
          class MasteryUpdated:
              user_id: str
              organization_id: str
@@ -83,14 +31,15 @@ tasks:
          ```
 
       2. In Learning service:
-         - Connect to NATS in lifespan (use common/nats.py)
+         - Connect to NATS in lifespan (use common.nats.create_nats_client)
+         - Create a JetStream stream "PLATFORM_EVENTS" with subjects "platform.>"
          - After mastery update in service layer, publish event:
-           await nats.publish("mastery.updated", event.to_json())
+           await nats.publish("platform.mastery.updated", event_json)
 
       3. Write tests:
          - Mock NATS client
          - Verify event published after mastery update
-         - Verify event contains correct data
+         - Verify event contains correct data (user_id, org_id, concept_id, level)
 
       4. Run tests: cd services/py/learning && uv run --package learning pytest tests/ -v
 
@@ -98,7 +47,7 @@ tasks:
 
       COMMIT: feat(learning): publish mastery.updated event via NATS
     test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/learning && uv run --package learning pytest tests/ -v"
-    depends_on: [nats-infrastructure]
+    depends_on: []
 
   - id: notification-event-subscriber
     title: "Subscribe notification service to mission.completed events"
@@ -111,26 +60,29 @@ tasks:
       - Currently notifications are only created via direct API calls
       - B2B flow: mission completed → notification should be auto-created
       - NATS JetStream provides durable subscriptions
+      - common.nats.NATSClient already exists in libs/py/common/common/nats.py
+      - NATS_URL already configured for notification service
 
       WHAT TO DO:
 
       1. In Notification service:
-         - Connect to NATS in lifespan
-         - Subscribe to: "mission.completed", "badge.earned", "streak.milestone"
+         - Connect to NATS in lifespan (use common.nats.create_nats_client)
+         - Subscribe to: "platform.mission.completed", "platform.badge.earned", "platform.streak.milestone"
          - On event: create notification record in DB
+         - Use durable consumer name for at-least-once delivery
 
       2. In Learning service (if not already):
-         - After mission completion: publish "mission.completed" event
-         - After badge earned: publish "badge.earned" event
-         - After streak milestone (7, 14, 30 days): publish "streak.milestone" event
+         - After mission completion: publish "platform.mission.completed" event
+         - After badge earned: publish "platform.badge.earned" event
+         - After streak milestone (7, 14, 30 days): publish "platform.streak.milestone" event
 
       3. Event handlers in Notification service must be idempotent:
-         - Use event_id as dedup key
+         - Use event_id (or hash of event data) as dedup key
          - Check if notification already exists before creating
 
       4. Write tests for both sides:
-         - Learning: verify events published
-         - Notification: verify subscriber creates notifications
+         - Learning: verify events published (mock NATS)
+         - Notification: verify subscriber creates notifications (mock NATS, real service logic)
 
       5. Run tests:
          - cd services/py/learning && uv run --package learning pytest tests/ -v
@@ -140,4 +92,4 @@ tasks:
 
       COMMIT: feat(notification): subscribe to learning events via NATS
     test: "cd /mnt/c/Users/aquam/PetProject/Merket_for_10_M_uesr/services/py/notification && uv run --package notification pytest tests/ -v"
-    depends_on: [nats-infrastructure, mastery-updated-event]
+    depends_on: [mastery-updated-event]
