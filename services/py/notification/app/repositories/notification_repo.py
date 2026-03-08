@@ -18,18 +18,20 @@ class NotificationRepository:
         title: str,
         body: str,
         email_sent: bool = False,
+        organization_id: UUID | None = None,
     ) -> Notification:
         row = await self._pool.fetchrow(
             """
-            INSERT INTO notifications (user_id, type, title, body, email_sent)
-            VALUES ($1, $2, $3, $4, $5)
-            RETURNING id, user_id, type, title, body, is_read, created_at, email_sent
+            INSERT INTO notifications (user_id, type, title, body, email_sent, organization_id)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, user_id, type, title, body, is_read, created_at, email_sent, organization_id
             """,
             user_id,
             type,
             title,
             body,
             email_sent,
+            organization_id,
         )
         return self._to_entity(row)
 
@@ -39,7 +41,7 @@ class NotificationRepository:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(
                 """
-                SELECT id, user_id, type, title, body, is_read, created_at, email_sent
+                SELECT id, user_id, type, title, body, is_read, created_at, email_sent, organization_id
                 FROM notifications WHERE user_id = $1
                 ORDER BY created_at DESC LIMIT $2 OFFSET $3
                 """,
@@ -53,10 +55,30 @@ class NotificationRepository:
             )
         return [self._to_entity(r) for r in rows], count
 
+    async def list_by_org(
+        self, organization_id: UUID, limit: int = 20, offset: int = 0
+    ) -> tuple[list[Notification], int]:
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT id, user_id, type, title, body, is_read, created_at, email_sent, organization_id
+                FROM notifications WHERE organization_id = $1
+                ORDER BY created_at DESC LIMIT $2 OFFSET $3
+                """,
+                organization_id,
+                limit,
+                offset,
+            )
+            count = await conn.fetchval(
+                "SELECT count(*) FROM notifications WHERE organization_id = $1",
+                organization_id,
+            )
+        return [self._to_entity(r) for r in rows], count
+
     async def get_by_id(self, notification_id: UUID) -> Notification | None:
         row = await self._pool.fetchrow(
             """
-            SELECT id, user_id, type, title, body, is_read, created_at, email_sent
+            SELECT id, user_id, type, title, body, is_read, created_at, email_sent, organization_id
             FROM notifications WHERE id = $1
             """,
             notification_id,
@@ -86,7 +108,7 @@ class NotificationRepository:
         row = await self._pool.fetchrow(
             """
             UPDATE notifications SET is_read = true WHERE id = $1
-            RETURNING id, user_id, type, title, body, is_read, created_at, email_sent
+            RETURNING id, user_id, type, title, body, is_read, created_at, email_sent, organization_id
             """,
             notification_id,
         )
@@ -103,4 +125,5 @@ class NotificationRepository:
             is_read=row["is_read"],
             created_at=row["created_at"],
             email_sent=row.get("email_sent", False),
+            organization_id=row.get("organization_id"),
         )

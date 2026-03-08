@@ -36,6 +36,7 @@ class NotificationService:
         title: str,
         body: str,
         email: str | None = None,
+        organization_id: UUID | None = None,
     ) -> Notification:
         email_sent = False
 
@@ -60,7 +61,7 @@ class NotificationService:
                 )
                 email_sent = False
 
-        notification = await self._repo.create(user_id, type, title, body, email_sent)
+        notification = await self._repo.create(user_id, type, title, body, email_sent, organization_id)
         logger.info(
             "notification_created",
             user_id=str(user_id),
@@ -86,6 +87,11 @@ class NotificationService:
         self, user_id: UUID, limit: int = 20, offset: int = 0
     ) -> tuple[list[Notification], int]:
         return await self._repo.list_by_user(user_id, limit, offset)
+
+    async def list_by_org(
+        self, organization_id: UUID, limit: int = 20, offset: int = 0
+    ) -> tuple[list[Notification], int]:
+        return await self._repo.list_by_org(organization_id, limit, offset)
 
     async def send_streak_reminders(self, user_ids: list[UUID]) -> int:
         sent = 0

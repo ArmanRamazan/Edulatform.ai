@@ -41,10 +41,12 @@ def _get_current_user_claims(authorization: Annotated[str, Header()]) -> dict:
         payload = jwt.decode(
             token, app_settings.jwt_secret, algorithms=[app_settings.jwt_algorithm]
         )
+        org_raw = payload.get("organization_id")
         return {
             "user_id": UUID(payload["sub"]),
             "role": payload.get("role", "student"),
             "is_verified": payload.get("is_verified", False),
+            "organization_id": UUID(org_raw) if org_raw else None,
         }
     except (jwt.PyJWTError, ValueError, KeyError) as exc:
         raise AppError("Invalid token", status_code=401) from exc
@@ -61,6 +63,7 @@ def _to_response(n: "Notification") -> NotificationResponse:
         is_read=n.is_read,
         created_at=n.created_at,
         email_sent=n.email_sent,
+        organization_id=n.organization_id,
     )
 
 
@@ -76,6 +79,7 @@ async def create_notification(
         title=body.title,
         body=body.body,
         email=body.email,
+        organization_id=claims.get("organization_id"),
     )
     return _to_response(notification)
 
@@ -88,6 +92,23 @@ async def list_my_notifications(
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> NotificationListResponse:
     items, total = await service.list_my(claims["user_id"], limit, offset)
+    return NotificationListResponse(
+        items=[_to_response(n) for n in items],
+        total=total,
+    )
+
+
+@router.get("/org", response_model=NotificationListResponse)
+async def list_org_notifications(
+    claims: Annotated[dict, Depends(_get_current_user_claims)],
+    service: Annotated[NotificationService, Depends(_get_notification_service)],
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> NotificationListResponse:
+    org_id = claims.get("organization_id")
+    if not org_id:
+        raise ForbiddenError("No organization in token")
+    items, total = await service.list_by_org(org_id, limit, offset)
     return NotificationListResponse(
         items=[_to_response(n) for n in items],
         total=total,

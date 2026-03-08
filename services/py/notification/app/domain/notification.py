@@ -66,6 +66,7 @@ class Notification:
     is_read: bool
     created_at: datetime
     email_sent: bool = False
+    organization_id: UUID | None = None
 
 
 class NotificationCreate(BaseModel):
@@ -84,6 +85,7 @@ class NotificationResponse(BaseModel):
     is_read: bool
     created_at: datetime
     email_sent: bool = False
+    organization_id: UUID | None = None
 
 
 class NotificationListResponse(BaseModel):
