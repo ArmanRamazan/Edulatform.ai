@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Building2,
@@ -9,10 +9,12 @@ import {
   Trash2,
   Shield,
   ShieldCheck,
-  AlertTriangle,
+  AlertCircle,
   Crown,
   CheckCircle2,
   Loader2,
+  Undo2,
+  RotateCcw,
 } from "lucide-react";
 import { useActiveOrg } from "@/hooks/use-active-org";
 import { useAuth } from "@/hooks/use-auth";
@@ -24,14 +26,6 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -46,83 +40,55 @@ function formatDate(iso: string): string {
   });
 }
 
+function formatRelative(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  if (days === 0) return "сегодня";
+  if (days === 1) return "вчера";
+  if (days < 30) return `${days}д назад`;
+  return formatDate(iso);
+}
+
+/** Deterministic accent from user_id so each avatar has its own colour */
+const AVATAR_PALETTE = [
+  "bg-primary/15 text-primary",
+  "bg-[#34d399]/15 text-[#34d399]",
+  "bg-[#38bdf8]/15 text-[#38bdf8]",
+  "bg-[#fbbf24]/15 text-[#fbbf24]",
+  "bg-[#f87171]/15 text-[#f87171]",
+] as const;
+
+function avatarClass(id: string): string {
+  let hash = 0;
+  for (let i = 0; i < id.length; i++) hash = (hash * 31 + id.charCodeAt(i)) >>> 0;
+  return AVATAR_PALETTE[hash % AVATAR_PALETTE.length];
+}
+
+/** Show first-4 … last-4 chars of UUID for readable truncation */
+function truncateId(id: string): string {
+  if (id.length <= 12) return id;
+  return `${id.slice(0, 4)}…${id.slice(-4)}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RoleBadge
+// ─────────────────────────────────────────────────────────────────────────────
+
 function RoleBadge({ role }: { role: string }) {
-  const isAdmin = role === "admin" || role === "owner";
+  const isElevated = role === "admin" || role === "owner";
   return (
     <Badge
       variant="outline"
       className={cn(
         "gap-1 text-xs font-medium",
-        isAdmin
-          ? "border-violet-500/40 bg-violet-500/10 text-violet-300"
-          : "border-zinc-600/40 bg-zinc-800/50 text-zinc-400",
+        isElevated
+          ? "border-primary/40 bg-primary/10 text-primary"
+          : "border-border bg-muted/50 text-muted-foreground",
       )}
     >
-      {isAdmin ? <ShieldCheck className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
+      {isElevated ? <ShieldCheck className="h-3 w-3" /> : <Shield className="h-3 w-3" />}
       {role}
     </Badge>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Remove confirmation dialog
-// ─────────────────────────────────────────────────────────────────────────────
-
-interface RemoveDialogProps {
-  member: OrgMember | null;
-  orgId: string;
-  onClose: () => void;
-}
-
-function RemoveDialog({ member, orgId, onClose }: RemoveDialogProps) {
-  const removeMutation = useRemoveMember(orgId);
-
-  async function handleConfirm() {
-    if (!member) return;
-    await removeMutation.mutateAsync(member.user_id);
-    onClose();
-  }
-
-  return (
-    <Dialog open={!!member} onOpenChange={onClose}>
-      <DialogContent className="border-zinc-800 bg-[#1a1a1f] sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-white">
-            <AlertTriangle className="h-5 w-5 text-red-400" />
-            Удалить участника?
-          </DialogTitle>
-          <DialogDescription className="text-zinc-400">
-            Пользователь{" "}
-            <span className="font-mono text-xs text-zinc-300">
-              {member?.user_id.slice(0, 8)}…
-            </span>{" "}
-            потеряет доступ к организации. Это действие необратимо.
-          </DialogDescription>
-        </DialogHeader>
-        <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={onClose}
-            className="border-zinc-700 bg-transparent text-zinc-300 hover:bg-zinc-800"
-          >
-            Отмена
-          </Button>
-          <Button
-            variant="destructive"
-            onClick={handleConfirm}
-            disabled={removeMutation.isPending}
-            className="gap-2"
-          >
-            {removeMutation.isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Trash2 className="h-4 w-4" />
-            )}
-            Удалить
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -132,67 +98,106 @@ function RemoveDialog({ member, orgId, onClose }: RemoveDialogProps) {
 
 interface InviteFormProps {
   orgId: string;
+  inputRef: React.RefObject<HTMLInputElement | null>;
 }
 
-function InviteForm({ orgId }: InviteFormProps) {
+function InviteForm({ orgId, inputRef }: InviteFormProps) {
   const [userId, setUserId] = useState("");
   const [role, setRole] = useState("member");
-  const [success, setSuccess] = useState(false);
+  const [successUserId, setSuccessUserId] = useState<string | null>(null);
   const inviteMutation = useInviteMember(orgId);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!userId.trim()) return;
-    await inviteMutation.mutateAsync({ user_id: userId.trim(), role });
+    const trimmed = userId.trim();
+    if (!trimmed) return;
+    await inviteMutation.mutateAsync({ user_id: trimmed, role });
+    setSuccessUserId(trimmed);
     setUserId("");
     setRole("member");
-    setSuccess(true);
-    setTimeout(() => setSuccess(false), 3000);
+    setTimeout(() => setSuccessUserId(null), 4000);
   }
 
   return (
-    <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
-      <div className="flex flex-1 flex-col gap-1.5">
-        <label className="text-xs font-medium text-zinc-400">User ID</label>
-        <Input
-          placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-          value={userId}
-          onChange={(e) => setUserId(e.target.value)}
-          className="border-zinc-700 bg-zinc-900/50 font-mono text-sm text-zinc-100 placeholder:text-zinc-600 focus-visible:ring-violet-500/50"
-          disabled={inviteMutation.isPending}
-        />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <label className="text-xs font-medium text-zinc-400">Роль</label>
-        <select
-          value={role}
-          onChange={(e) => setRole(e.target.value)}
-          disabled={inviteMutation.isPending}
-          className="h-9 rounded-md border border-zinc-700 bg-zinc-900/50 px-3 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-violet-500/50 disabled:opacity-50"
+    <div className="space-y-3">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <div className="flex flex-1 flex-col gap-1.5">
+          <label className="text-xs font-medium text-muted-foreground">User ID</label>
+          <Input
+            ref={inputRef}
+            placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+            value={userId}
+            onChange={(e) => setUserId(e.target.value)}
+            className="border-border bg-background/50 font-mono text-sm text-foreground placeholder:text-muted-foreground focus-visible:ring-primary/50"
+            disabled={inviteMutation.isPending}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="invite-role"
+            className="text-xs font-medium text-muted-foreground"
+          >
+            Роль
+          </label>
+          <select
+            id="invite-role"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            disabled={inviteMutation.isPending}
+            aria-label="Выбрать роль участника"
+            className="h-9 rounded-lg border border-border bg-background/50 px-3 text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/50 disabled:opacity-50"
+          >
+            <option value="viewer">viewer</option>
+            <option value="member">member</option>
+            <option value="admin">admin</option>
+          </select>
+        </div>
+        <Button
+          type="submit"
+          disabled={inviteMutation.isPending || !userId.trim()}
+          className="gap-2 bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          <option value="member">member</option>
-          <option value="admin">admin</option>
-          <option value="viewer">viewer</option>
-        </select>
-      </div>
-      <Button
-        type="submit"
-        disabled={inviteMutation.isPending || !userId.trim()}
-        className="gap-2 bg-violet-600 text-white hover:bg-violet-500 disabled:opacity-50"
-      >
-        {inviteMutation.isPending ? (
-          <Loader2 className="h-4 w-4 animate-spin" />
-        ) : success ? (
-          <CheckCircle2 className="h-4 w-4" />
-        ) : (
-          <UserPlus className="h-4 w-4" />
-        )}
-        {success ? "Добавлен" : "Добавить"}
-      </Button>
-      {inviteMutation.isError && (
-        <p className="text-xs text-red-400">{(inviteMutation.error as Error).message}</p>
-      )}
-    </form>
+          {inviteMutation.isPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <UserPlus className="h-4 w-4" />
+          )}
+          Добавить
+        </Button>
+      </form>
+
+      <AnimatePresence mode="wait">
+        {successUserId ? (
+          <motion.div
+            key="success"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="flex items-center gap-2 rounded-lg border border-success/20 bg-success/5 px-3 py-2"
+          >
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
+            <span className="text-xs text-foreground/80">
+              Участник{" "}
+              <span className="font-mono text-xs text-foreground">
+                {truncateId(successUserId)}
+              </span>{" "}
+              добавлен
+            </span>
+          </motion.div>
+        ) : inviteMutation.isError ? (
+          <motion.p
+            key="error"
+            initial={{ opacity: 0, y: -4 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="flex items-center gap-1.5 text-xs text-destructive"
+          >
+            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+            {(inviteMutation.error as Error).message}
+          </motion.p>
+        ) : null}
+      </AnimatePresence>
+    </div>
   );
 }
 
@@ -207,35 +212,40 @@ interface MemberRowProps {
 }
 
 function MemberRow({ member, index, onRemove }: MemberRowProps) {
-  const initial = member.user_id.charAt(0).toUpperCase();
   return (
     <motion.tr
-      initial={{ opacity: 0, y: 8 }}
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, delay: index * 0.04 }}
-      className="group border-b border-zinc-800/50 last:border-0"
+      exit={{ opacity: 0, x: -8 }}
+      transition={{ duration: 0.2, delay: Math.min(index * 0.04, 0.2) }}
+      className="group border-b border-border/50 last:border-0 transition-colors hover:bg-muted/20"
     >
       <td className="py-3 pl-4 pr-3">
         <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-violet-500/15 text-sm font-semibold text-violet-300">
-            {initial}
+          <div
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold uppercase",
+              avatarClass(member.user_id),
+            )}
+          >
+            {member.user_id.slice(0, 2)}
           </div>
-          <span className="font-mono text-xs text-zinc-400">
-            {member.user_id}
+          <span className="font-mono text-xs text-muted-foreground" title={member.user_id}>
+            {truncateId(member.user_id)}
           </span>
         </div>
       </td>
-      <td className="py-3 px-3">
+      <td className="px-3 py-3">
         <RoleBadge role={member.role} />
       </td>
-      <td className="py-3 px-3 text-xs text-zinc-500">
-        {formatDate(member.joined_at)}
+      <td className="hidden px-3 py-3 text-xs text-muted-foreground sm:table-cell">
+        <span title={formatDate(member.joined_at)}>{formatRelative(member.joined_at)}</span>
       </td>
       <td className="py-3 pl-3 pr-4 text-right">
         <button
           onClick={() => onRemove(member)}
-          className="rounded-md p-1.5 text-zinc-600 opacity-0 transition-all hover:bg-red-500/10 hover:text-red-400 group-hover:opacity-100"
-          aria-label="Remove member"
+          className="rounded-md p-1.5 text-muted-foreground/40 opacity-0 transition-all hover:bg-destructive/10 hover:text-destructive group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive/50"
+          aria-label={`Удалить участника ${truncateId(member.user_id)}`}
         >
           <Trash2 className="h-4 w-4" />
         </button>
@@ -248,163 +258,319 @@ function MemberRow({ member, index, onRemove }: MemberRowProps) {
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function OrgAdminPage() {
+export default function OrgAdminPage() {
   const { activeOrg } = useActiveOrg();
   const { token } = useAuth();
   const orgId = activeOrg?.id ?? null;
 
   const orgQuery = useOrganization(token, orgId);
   const membersQuery = useOrgMembers(orgId);
+  const removeMutation = useRemoveMember(orgId ?? "");
 
-  const [memberToRemove, setMemberToRemove] = useState<OrgMember | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<OrgMember | null>(null);
+  const pendingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inviteInputRef = useRef<HTMLInputElement | null>(null);
 
   const org = orgQuery.data;
   const members = membersQuery.data ?? [];
   const planTier = (org?.settings?.plan_tier as string | undefined) ?? "free";
 
+  const displayedMembers = pendingRemoval
+    ? members.filter((m) => m.user_id !== pendingRemoval.user_id)
+    : members;
+
+  function handleRemove(member: OrgMember) {
+    if (pendingTimerRef.current !== null) {
+      clearTimeout(pendingTimerRef.current);
+      if (pendingRemoval) removeMutation.mutate(pendingRemoval.user_id);
+    }
+    setPendingRemoval(member);
+    pendingTimerRef.current = setTimeout(() => {
+      removeMutation.mutate(member.user_id);
+      setPendingRemoval(null);
+      pendingTimerRef.current = null;
+    }, 5000);
+  }
+
+  function handleUndoRemove() {
+    if (pendingTimerRef.current !== null) {
+      clearTimeout(pendingTimerRef.current);
+      pendingTimerRef.current = null;
+    }
+    setPendingRemoval(null);
+  }
+
+  useEffect(() => {
+    return () => {
+      if (pendingTimerRef.current !== null) clearTimeout(pendingTimerRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    function handler(e: KeyboardEvent) {
+      if (e.altKey && e.key === "i") {
+        e.preventDefault();
+        inviteInputRef.current?.focus();
+        inviteInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, []);
+
   if (!activeOrg) {
     return (
       <div className="flex h-64 items-center justify-center">
-        <p className="text-sm text-zinc-500">Организация не выбрана</p>
+        <div className="flex flex-col items-center gap-2 text-center">
+          <Building2 className="h-8 w-8 text-muted-foreground/30" />
+          <p className="text-sm text-muted-foreground">Организация не выбрана</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 py-2">
+    <div className="mx-auto max-w-4xl space-y-6">
       {/* ── Page header ── */}
       <motion.div
-        initial={{ opacity: 0, y: -8 }}
+        initial={{ opacity: 0, y: -6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3 }}
+        transition={{ duration: 0.25 }}
       >
-        <h1 className="text-xl font-semibold text-white">Управление организацией</h1>
-        <p className="mt-0.5 text-sm text-zinc-500">
-          Участники, роли и настройки
-        </p>
+        <div className="flex items-start justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight text-foreground">
+              Управление организацией
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">Участники, роли и настройки</p>
+          </div>
+          <button
+            onClick={() => {
+              inviteInputRef.current?.focus();
+              inviteInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+            }}
+            className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-3 py-1.5 text-xs font-medium text-primary hover:bg-primary/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 transition-colors"
+            title="Alt+I"
+          >
+            <UserPlus className="h-3.5 w-3.5" />
+            Добавить
+          </button>
+        </div>
       </motion.div>
 
-      {/* ── Org overview ── */}
+      {/* ── Org overview card ── */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.05 }}
+        transition={{ duration: 0.25, delay: 0.05 }}
       >
-        <Card className="border-zinc-800 bg-[#1a1a1f] p-5">
-          {orgQuery.isLoading ? (
-            <div className="flex items-center gap-4">
-              <Skeleton className="h-12 w-12 rounded-xl" />
-              <div className="space-y-2">
-                <Skeleton className="h-5 w-40" />
-                <Skeleton className="h-4 w-24" />
+        {orgQuery.isError ? (
+          <Card className="border-border bg-card p-5">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-destructive/10">
+                <AlertCircle className="h-5 w-5 text-destructive" />
               </div>
-            </div>
-          ) : (
-            <div className="flex flex-wrap items-center gap-4">
-              {/* Logo / initial */}
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-violet-500/15 text-xl font-bold text-violet-300">
-                {org?.name.charAt(0).toUpperCase() ?? "?"}
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold text-white">{org?.name}</h2>
-                  <Badge
-                    variant="outline"
-                    className="border-violet-500/30 bg-violet-500/10 text-xs text-violet-300"
-                  >
-                    <Crown className="mr-1 h-3 w-3" />
-                    {planTier}
-                  </Badge>
-                  {org?.is_active === false && (
-                    <Badge variant="outline" className="border-red-500/30 text-xs text-red-400">
-                      неактивна
-                    </Badge>
-                  )}
-                </div>
-                <p className="mt-0.5 font-mono text-xs text-zinc-500">
-                  /{org?.slug}
+              <div className="flex-1">
+                <p className="text-sm font-medium text-foreground">
+                  Не удалось загрузить организацию
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Проверьте подключение и попробуйте снова
                 </p>
               </div>
-
-              {/* Stats */}
-              <div className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/50 px-4 py-2">
-                <Users className="h-4 w-4 text-zinc-500" />
-                {membersQuery.isLoading ? (
-                  <Skeleton className="h-4 w-8" />
-                ) : (
-                  <span className="text-sm font-medium text-zinc-300">
-                    {members.length}
-                  </span>
-                )}
-                <span className="text-xs text-zinc-500">участников</span>
-              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => orgQuery.refetch()}
+                className="gap-1.5 border-border text-xs"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Повторить
+              </Button>
             </div>
-          )}
-        </Card>
+          </Card>
+        ) : (
+          <Card className="border-border bg-card p-5">
+            {orgQuery.isLoading ? (
+              <div className="flex items-center gap-4">
+                <Skeleton className="h-12 w-12 rounded-xl" />
+                <div className="space-y-2">
+                  <Skeleton className="h-5 w-40" />
+                  <Skeleton className="h-4 w-24" />
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-4">
+                {/* Logo / initial */}
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/15 text-xl font-bold text-primary ring-1 ring-primary/20">
+                  {org?.name.charAt(0).toUpperCase() ?? "?"}
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                      {org?.name}
+                    </h2>
+                    {org?.is_active === false && (
+                      <Badge
+                        variant="outline"
+                        className="border-destructive/30 text-xs text-destructive"
+                      >
+                        неактивна
+                      </Badge>
+                    )}
+                  </div>
+                  <p className="mt-0.5 font-mono text-xs text-muted-foreground">/{org?.slug}</p>
+                </div>
+
+                {/* Stats pills */}
+                <div className="flex flex-wrap gap-2">
+                  <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-xs">
+                    <Crown className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="font-mono font-medium text-foreground">{planTier}</span>
+                    <span className="text-muted-foreground">план</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/30 px-3 py-1.5 text-xs">
+                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                    {membersQuery.isLoading ? (
+                      <Skeleton className="h-3 w-6" />
+                    ) : (
+                      <span className="font-mono font-medium text-foreground">
+                        {members.length}
+                      </span>
+                    )}
+                    <span className="text-muted-foreground">участников</span>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
       </motion.div>
 
       {/* ── Members section ── */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.1 }}
+        transition={{ duration: 0.25, delay: 0.1 }}
         className="space-y-3"
       >
         <div className="flex items-center justify-between">
-          <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-300">
-            <Users className="h-4 w-4 text-zinc-500" />
+          <h3 className="flex items-center gap-2 text-sm font-medium text-foreground/80">
+            <Users className="h-4 w-4 text-muted-foreground" />
             Участники
           </h3>
-          <span className="text-xs text-zinc-600">{members.length} всего</span>
+          {members.length > 0 && (
+            <span className="font-mono text-xs text-muted-foreground">{members.length}</span>
+          )}
         </div>
 
-        <Card className="border-zinc-800 bg-[#1a1a1f] overflow-hidden">
+        <Card className="overflow-hidden border-border bg-card">
           {membersQuery.isLoading ? (
-            <div className="divide-y divide-zinc-800/50">
+            <div className="divide-y divide-border/50">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="flex items-center gap-3 px-4 py-3">
                   <Skeleton className="h-8 w-8 rounded-full" />
-                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-4 w-48" />
                   <Skeleton className="ml-auto h-5 w-16" />
                 </div>
               ))}
             </div>
           ) : membersQuery.isError ? (
-            <div className="flex items-center gap-2 px-4 py-6 text-sm text-red-400">
-              <AlertTriangle className="h-4 w-4" />
-              Не удалось загрузить участников
+            <div className="flex flex-col items-center justify-center gap-3 py-10">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10">
+                <AlertCircle className="h-5 w-5 text-destructive" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-foreground">
+                  Не удалось загрузить участников
+                </p>
+                <p className="mt-0.5 text-xs text-muted-foreground">Проблема на стороне сервера</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => membersQuery.refetch()}
+                className="gap-1.5 border-border text-xs"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                Попробовать снова
+              </Button>
             </div>
-          ) : members.length === 0 ? (
-            <div className="flex flex-col items-center justify-center gap-2 py-10 text-zinc-600">
-              <Building2 className="h-8 w-8 opacity-40" />
-              <p className="text-sm">Нет участников</p>
+          ) : displayedMembers.length === 0 && !pendingRemoval ? (
+            <div className="flex flex-col items-center justify-center gap-2 py-14">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-muted/50">
+                <Building2 className="h-6 w-6 text-muted-foreground/50" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm text-muted-foreground">Нет участников</p>
+                <p className="text-xs text-muted-foreground/60">Добавьте первого участника ниже</p>
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[540px] text-sm">
+              {/* Undo banner */}
+              <AnimatePresence>
+                {pendingRemoval && (
+                  <motion.div
+                    key="undo-banner"
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden border-b border-warning/20 bg-warning/5"
+                  >
+                    <div className="flex items-center gap-3 px-4 py-2.5">
+                      <span className="flex-1 text-xs text-foreground/80">
+                        Удаляем{" "}
+                        <span className="font-mono text-xs text-foreground">
+                          {truncateId(pendingRemoval.user_id)}
+                        </span>
+                      </span>
+                      <button
+                        onClick={handleUndoRemove}
+                        autoFocus
+                        className="flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium text-warning hover:bg-warning/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning/50 transition-colors"
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                        Отменить
+                      </button>
+                      <div className="relative h-0.5 w-14 overflow-hidden rounded-full bg-border">
+                        <motion.div
+                          className="absolute inset-y-0 left-0 rounded-full bg-warning"
+                          initial={{ width: "100%" }}
+                          animate={{ width: "0%" }}
+                          transition={{ duration: 5, ease: "linear" }}
+                        />
+                      </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              <table className="w-full min-w-[520px] text-sm">
                 <thead>
-                  <tr className="border-b border-zinc-800 text-left">
-                    <th className="py-2.5 pl-4 pr-3 text-xs font-medium text-zinc-500">
+                  <tr className="border-b border-border bg-muted/20">
+                    <th className="py-2.5 pl-4 pr-3 text-left text-xs font-medium text-muted-foreground">
                       User ID
                     </th>
-                    <th className="py-2.5 px-3 text-xs font-medium text-zinc-500">
+                    <th className="px-3 py-2.5 text-left text-xs font-medium text-muted-foreground">
                       Роль
                     </th>
-                    <th className="py-2.5 px-3 text-xs font-medium text-zinc-500">
+                    <th className="hidden px-3 py-2.5 text-left text-xs font-medium text-muted-foreground sm:table-cell">
                       Вступил
                     </th>
                     <th className="py-2.5 pl-3 pr-4" />
                   </tr>
                 </thead>
                 <tbody>
-                  <AnimatePresence>
-                    {members.map((member, i) => (
+                  <AnimatePresence initial={false}>
+                    {displayedMembers.map((member, i) => (
                       <MemberRow
                         key={member.id}
                         member={member}
                         index={i}
-                        onRemove={setMemberToRemove}
+                        onRemove={handleRemove}
                       />
                     ))}
                   </AnimatePresence>
@@ -417,26 +583,22 @@ export function OrgAdminPage() {
 
       {/* ── Add member ── */}
       <motion.div
-        initial={{ opacity: 0, y: 8 }}
+        initial={{ opacity: 0, y: 6 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, delay: 0.15 }}
+        transition={{ duration: 0.25, delay: 0.15 }}
         className="space-y-3"
       >
-        <h3 className="flex items-center gap-2 text-sm font-medium text-zinc-300">
-          <UserPlus className="h-4 w-4 text-zinc-500" />
+        <h3 className="flex items-center gap-2 text-sm font-medium text-foreground/80">
+          <UserPlus className="h-4 w-4 text-muted-foreground" />
           Добавить участника
+          <kbd className="ml-1 rounded border border-border bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground/60">
+            Alt+I
+          </kbd>
         </h3>
-        <Card className="border-zinc-800 bg-[#1a1a1f] p-4">
-          <InviteForm orgId={activeOrg.id} />
+        <Card className="border-border bg-card p-4">
+          <InviteForm orgId={activeOrg.id} inputRef={inviteInputRef} />
         </Card>
       </motion.div>
-
-      {/* ── Remove confirmation dialog ── */}
-      <RemoveDialog
-        member={memberToRemove}
-        orgId={activeOrg.id}
-        onClose={() => setMemberToRemove(null)}
-      />
     </div>
   );
 }
