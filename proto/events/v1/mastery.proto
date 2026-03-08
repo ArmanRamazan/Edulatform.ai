@@ -1,0 +1,22 @@
+syntax = "proto3";
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_package = "com.knowledgeos.events.v1";
+option go_package = "github.com/knowledgeos/proto/events/v1";
+
+// MasteryUpdated is published by the learning service after a mastery delta
+// is applied following a completed mission or flashcard review session.
+//
+// NATS subject: platform.mastery.updated
+// NATS stream:  PLATFORM_EVENTS
+message MasteryUpdated {
+  string user_id    = 1;
+  string org_id     = 2;
+  string concept_id = 3;
+  double new_level  = 4;
+  // delta is the signed change in mastery level (positive = improvement).
+  double delta      = 5;
+  google.protobuf.Timestamp timestamp = 6;
+}

@@ -1,0 +1,42 @@
+syntax = "proto3";
+package services.rag.v1;
+
+option java_package = "com.knowledgeos.services.rag.v1";
+option go_package = "github.com/knowledgeos/proto/services/rag/v1";
+
+// RAGService exposes semantic search and document ingestion over pgvector.
+// Callers: ai service (Search), internal ingestion pipelines (IngestDocument).
+service RAGService {
+  rpc Search         (SearchRequest) returns (SearchResponse);
+  rpc IngestDocument (IngestRequest) returns (IngestResponse);
+}
+
+message SearchRequest {
+  string query  = 1;
+  string org_id = 2;
+  int32  limit  = 3;
+}
+
+message SearchResult {
+  string chunk_id       = 1;
+  string content        = 2;
+  double similarity     = 3;
+  string document_title = 4;
+  string document_id    = 5;
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message IngestRequest {
+  string org_id      = 1;
+  string document_id = 2;
+  string content     = 3;
+  string title       = 4;
+}
+
+message IngestResponse {
+  string document_id  = 1;
+  int32  chunks_count = 2;
+}

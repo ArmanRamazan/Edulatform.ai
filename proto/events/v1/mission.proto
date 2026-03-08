@@ -1,0 +1,21 @@
+syntax = "proto3";
+package events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_package = "com.knowledgeos.events.v1";
+option go_package = "github.com/knowledgeos/proto/events/v1";
+
+// MissionCompleted is published by the learning service when a user finishes
+// a mission session and a score has been recorded.
+//
+// NATS subject: platform.mission.completed
+// NATS stream:  PLATFORM_EVENTS
+message MissionCompleted {
+  string user_id    = 1;
+  string org_id     = 2;
+  string mission_id = 3;
+  // score is in the range [0.0, 1.0].
+  double score      = 4;
+  google.protobuf.Timestamp timestamp = 5;
+}

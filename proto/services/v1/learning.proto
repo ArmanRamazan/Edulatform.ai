@@ -1,0 +1,40 @@
+syntax = "proto3";
+package services.learning.v1;
+
+option java_package = "com.knowledgeos.services.learning.v1";
+option go_package = "github.com/knowledgeos/proto/services/learning/v1";
+
+// LearningService exposes mastery state and user statistics.
+// Callers: notification service (GetUserStats for digest emails).
+// NOTE: AI does NOT call GetMastery — learning pushes mastery in the request
+// body of POST /ai/mission/daily to prevent circular HTTP calls.
+service LearningService {
+  rpc GetMastery   (MasteryRequest)   returns (MasteryResponse);
+  rpc GetUserStats (UserStatsRequest) returns (UserStatsResponse);
+}
+
+message MasteryRequest {
+  string user_id = 1;
+  string org_id  = 2;
+}
+
+message MasteryItem {
+  string concept_id = 1;
+  double level      = 2;
+}
+
+message MasteryResponse {
+  repeated MasteryItem items = 1;
+}
+
+message UserStatsRequest {
+  string user_id = 1;
+  string org_id  = 2;
+}
+
+message UserStatsResponse {
+  int32  xp            = 1;
+  int32  streak_days   = 2;
+  int32  missions_done = 3;
+  double avg_mastery   = 4;
+}

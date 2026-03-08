@@ -1,0 +1,62 @@
+syntax = "proto3";
+package services.ai.v1;
+
+option java_package = "com.knowledgeos.services.ai.v1";
+option go_package = "github.com/knowledgeos/proto/services/ai/v1";
+
+// AIService exposes mission generation, completion scoring, and unified search.
+// Callers: learning service (GetDailyMission, CompleteMission, UnifiedSearch).
+service AIService {
+  rpc GetDailyMission  (DailyMissionRequest)    returns (DailyMissionResponse);
+  rpc UnifiedSearch    (UnifiedSearchRequest)   returns (UnifiedSearchResponse);
+  rpc CompleteMission  (CompleteMissionRequest) returns (CompleteMissionResponse);
+}
+
+message MasteryItem {
+  string concept_id = 1;
+  double mastery    = 2;
+}
+
+// DailyMissionRequest carries the caller's current mastery state so AI never
+// calls Learning back — avoiding a circular HTTP dependency.
+message DailyMissionRequest {
+  string             org_id  = 1;
+  string             user_id = 2;
+  repeated MasteryItem mastery = 3;
+}
+
+message DailyMissionResponse {
+  string concept_id     = 1;
+  string concept_name   = 2;
+  // blueprint_json holds the serialised mission blueprint (questions, tasks).
+  string blueprint_json = 3;
+}
+
+message UnifiedSearchRequest {
+  string          query     = 1;
+  string          org_id    = 2;
+  // org_terms are organisation-specific vocabulary hints for the query router.
+  repeated string org_terms = 3;
+  int32           limit     = 4;
+}
+
+message UnifiedSearchResponse {
+  // route identifies which backend answered: "rag", "external", or "hybrid".
+  string route        = 1;
+  // results_json is a serialised list of search result objects.
+  string results_json = 2;
+}
+
+message CompleteMissionRequest {
+  string org_id         = 1;
+  string user_id        = 2;
+  string mission_id     = 3;
+  // responses_json is the serialised list of user answers.
+  string responses_json = 4;
+}
+
+message CompleteMissionResponse {
+  double score    = 1;
+  string feedback = 2;
+  repeated MasteryItem mastery_updates = 3;
+}
