@@ -12,6 +12,7 @@ from common.database import create_pool, update_pool_metrics
 from common.errors import register_error_handlers
 from common.health import create_health_router
 from common.logging import configure_logging
+from common.nats import NATSClient, create_nats_client
 from common.rate_limit import RateLimitMiddleware
 import httpx
 from app.config import Settings
@@ -69,6 +70,7 @@ app_settings = Settings()
 
 _pool: asyncpg.Pool | None = None
 _redis: Redis | None = None
+_nats_client: NATSClient | None = None
 _quiz_service: QuizService | None = None
 _flashcard_service: FlashcardService | None = None
 _concept_service: ConceptService | None = None
@@ -169,10 +171,14 @@ def get_daily_service() -> DailyService:
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    global _pool, _redis, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service, _study_group_service, _certificate_service, _trust_level_service, _mission_service, _daily_service
+    global _pool, _redis, _nats_client, _quiz_service, _flashcard_service, _concept_service, _streak_service, _leaderboard_service, _discussion_service, _xp_service, _badge_service, _pretest_service, _velocity_service, _activity_service, _study_group_service, _certificate_service, _trust_level_service, _mission_service, _daily_service
 
     configure_logging(service_name="learning")
     logger = structlog.get_logger()
+
+    _nats_client = create_nats_client(app_settings.nats_url)
+    await _nats_client.connect()
+    await _nats_client.ensure_stream(name="PLATFORM_EVENTS", subjects=["platform.>"])
 
     _pool = await create_pool(
         app_settings.database_url,
@@ -218,7 +224,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     _activity_service = ActivityService(activity_repo)
 
     concept_repo = ConceptRepository(_pool)
-    _concept_service = ConceptService(concept_repo, activity_service=_activity_service)
+    _concept_service = ConceptService(
+        concept_repo,
+        activity_service=_activity_service,
+        nats_client=_nats_client,
+    )
 
     quiz_repo = QuizRepository(_pool)
     flashcard_repo = FlashcardRepository(_pool)
@@ -284,6 +294,7 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     await _http_client.aclose()
     await _redis.aclose()
     await _pool.close()
+    await _nats_client.close()
 
 
 app = FastAPI(title="Learning Engine", lifespan=lifespan)

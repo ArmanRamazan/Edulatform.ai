@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import nats
 import nats.js
+from nats.js.api import StreamConfig
 
 
 class NATSClient:
@@ -37,6 +38,21 @@ class NATSClient:
             max_reconnect_attempts=-1,
         )
         self.jetstream = self._nc.jetstream()
+
+    async def ensure_stream(self, name: str, subjects: list[str]) -> None:
+        """Create a JetStream stream if it does not already exist (idempotent).
+
+        Raises RuntimeError if connect() has not been called.
+        """
+        if self._nc is None:
+            raise RuntimeError("NATSClient is not connected — call connect() first")
+        jsm = await self._nc.jsm()
+        config = StreamConfig(name=name, subjects=subjects)
+        try:
+            await jsm.add_stream(config=config)
+        except Exception:
+            # Stream already exists — update subjects in case they changed.
+            await jsm.update_stream(config=config)
 
     async def publish(self, subject: str, payload: bytes) -> None:
         """Publish *payload* to *subject* via JetStream.

@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import dataclasses
+import json
+from datetime import datetime, timezone
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 import structlog
 
 from common.errors import ConflictError, ForbiddenError, NotFoundError
+from common.nats import NATSClient
 
 if TYPE_CHECKING:
     from app.services.activity_service import ActivityService
@@ -17,6 +21,7 @@ from app.domain.concept import (
     MasteryListResponse,
     MasteryResponse,
 )
+from app.domain.events import MasteryUpdated
 from app.repositories.concept_repo import ConceptRepository
 
 logger = structlog.get_logger()
@@ -37,10 +42,14 @@ class ConceptService:
     """
 
     def __init__(
-        self, repo: ConceptRepository, activity_service: ActivityService | None = None,
+        self,
+        repo: ConceptRepository,
+        activity_service: ActivityService | None = None,
+        nats_client: NATSClient | None = None,
     ) -> None:
         self._repo = repo
         self._activity_service = activity_service
+        self._nats_client = nats_client
 
     # --- Teacher CRUD ---
 
@@ -211,9 +220,18 @@ class ConceptService:
     # --- Mastery updates (called from quiz/flashcard/mission services) ---
 
     async def apply_mastery_delta(
-        self, student_id: UUID, concept_id: UUID, delta: float
+        self,
+        student_id: UUID,
+        concept_id: UUID,
+        delta: float,
+        organization_id: str | None = None,
     ) -> None:
-        """Apply a mastery delta to a specific concept. Called by MissionService after completion."""
+        """Apply a mastery delta to a specific concept. Called by MissionService after completion.
+
+        After persisting the update, publishes a MasteryUpdated event to NATS
+        (subject: platform.mastery.updated) if a NATSClient is configured.
+        NATS publish errors are logged and swallowed — mastery persistence takes priority.
+        """
         current = await self._repo.get_mastery(student_id, concept_id)
         current_val = current.mastery if current else 0.0
         new_val = current_val + delta
@@ -225,6 +243,24 @@ class ConceptService:
             old_value=current_val,
             new_value=new_val,
         )
+
+        if self._nats_client is not None:
+            event = MasteryUpdated(
+                user_id=str(student_id),
+                organization_id=organization_id or "",
+                concept_id=str(concept_id),
+                new_level=new_val,
+                timestamp=datetime.now(timezone.utc).isoformat(),
+            )
+            try:
+                payload = json.dumps(dataclasses.asdict(event)).encode()
+                await self._nats_client.publish("platform.mastery.updated", payload)
+            except Exception:
+                logger.warning(
+                    "mastery_event_publish_failed",
+                    student_id=str(student_id),
+                    concept_id=str(concept_id),
+                )
 
     async def update_mastery_for_lesson(
         self, student_id: UUID, lesson_id: UUID, score_delta: float
